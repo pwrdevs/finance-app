@@ -110,6 +110,29 @@ Classify transactions for filtering, reporting and analysis.
 - category_id is optional in transactions, but recommended for reporting quality.
 - type should align with transaction type to prevent inconsistent classification.
 
+## Table: accounts
+### Objective
+Store user financial containers for balance tracking across bank accounts, wallets, cash and investments.
+
+### Main fields
+- id: uuid (primary key)
+- user_id: uuid (references auth.users.id)
+- name: text
+- type: text (checking, savings, wallet, investment, other)
+- initial_balance: numeric(14,2)
+- is_active: boolean (default true)
+- created_at: timestamptz
+- updated_at: timestamptz
+
+### Relationships
+- N:1 with auth.users by user_id
+- Future N:1 optional from transactions (transactions.account_id -> accounts.id)
+
+### Important notes
+- initial_balance is required for accumulated balance calculations from the account starting point.
+- is_active supports account archival/hiding without deleting transaction history.
+- type should be constrained to: checking, savings, wallet, investment, other.
+
 ## Table: transactions
 ### Objective
 Store source financial records (manual, recurring seed, installment seed, or standalone items).
@@ -210,6 +233,7 @@ Represent concrete occurrences generated from recurring rules and/or future plan
 - auth.users 1:N people
 - auth.users 1:N cards
 - auth.users 1:N categories
+- auth.users 1:N accounts
 - auth.users 1:N transactions
 - auth.users 1:N recurrence_rules
 - auth.users 1:N transaction_instances
@@ -219,6 +243,7 @@ Represent concrete occurrences generated from recurring rules and/or future plan
 - recurrence_rules 1:N transactions
 - recurrence_rules 1:N transaction_instances
 - transactions 1:N transaction_instances (optional linkage)
+- accounts 1:N transactions (future optional linkage)
 
 ## Open Decisions (To Validate Before Migrations)
 ### Resolved/Validated (kept for history)

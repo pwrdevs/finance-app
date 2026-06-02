@@ -68,3 +68,5 @@
 - 2026-06-02: Application shell implemented with reusable header and responsive sidebar in the default layout.
 - 2026-06-02: Base UI components created: AppButton, AppInput, AppCard, AppModal and AppTable.
 - 2026-06-02: Initial dashboard page composed using base components as the starting visual foundation for Phase 1.
+- 2026-06-02: Database model updated with initial accounts table (checking, savings, wallet, investment, other), including initial_balance and is_active for future accumulated balance and account lifecycle control.
+- 2026-06-02: Documented future optional relationship transactions.account_id -> accounts.id without creating migrations or physical tables.
