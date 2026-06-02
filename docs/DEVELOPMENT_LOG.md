@@ -64,3 +64,7 @@
 - 2026-06-02: Root .env configured for Supabase public URL/key, preserving .env.example as the template source.
 - 2026-06-02: Verified .gitignore already covers .env and kept Supabase setup limited to environment configuration only.
 - 2026-06-02: Planned validation includes Nuxt project configuration check and a simple Supabase connectivity test without creating tables, migrations, or authentication flows.
+- 2026-06-02: Design System foundation started with PWRDEVS visual direction (military/sage/olive palette), reusable theme tokens and global styles.
+- 2026-06-02: Application shell implemented with reusable header and responsive sidebar in the default layout.
+- 2026-06-02: Base UI components created: AppButton, AppInput, AppCard, AppModal and AppTable.
+- 2026-06-02: Initial dashboard page composed using base components as the starting visual foundation for Phase 1.
