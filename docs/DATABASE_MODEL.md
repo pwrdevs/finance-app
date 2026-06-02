@@ -17,9 +17,12 @@ Out of scope in this version:
 - Main tables include: id, user_id, created_at, updated_at
 - user_id references auth.users(id) for user-based data isolation
 - All business tables use Row Level Security policies by user_id
+- For MVP, RLS policies must enforce user_id = auth.uid()
+- For MVP, use standard foreign keys; composite foreign keys or validation triggers can be evaluated later
 - Monetary values use decimal/numeric type (avoid float)
 - Timestamps use timestamptz
 - Soft delete is optional and can be added later if needed
+- For constrained categorical fields in MVP, use text columns with CHECK constraints (prefer this over PostgreSQL enums for easier evolution)
 
 ## Table: profiles
 ### Objective
@@ -71,6 +74,7 @@ Store credit card accounts used in expense transactions and reconciliation.
 - id: uuid (primary key)
 - user_id: uuid (references auth.users.id)
 - name: text
+- person_id: uuid (references people.id)
 - brand: text (optional)
 - closing_day: smallint (optional, 1-31)
 - due_day: smallint (optional, 1-31)
@@ -81,11 +85,15 @@ Store credit card accounts used in expense transactions and reconciliation.
 
 ### Relationships
 - N:1 with auth.users by user_id
+- N:1 with people by person_id
 - 1:N with transactions (transactions.card_id -> cards.id)
 
 ### Important notes
 - card_id is optional in transactions (some expenses/income do not use cards).
+- person_id identifies the card owner/responsible person and supports filtering card expenses by owner.
 - closing_day and due_day support billing-cycle and projection features.
+- In MVP, current and future card statement partials should be calculated dynamically from transactions and transaction_instances linked by card_id.
+- A dedicated card_statements table is out of scope for MVP and can be evaluated later if statement snapshots/freezing become necessary.
 
 ## Table: categories
 ### Objective
@@ -170,6 +178,10 @@ Store source financial records (manual, recurring seed, installment seed, or sta
 - is_checked is mandatory from business perspective (default false).
 - A check constraint should guarantee type in (income, expense).
 - Installments can be represented by shared installment_group_id plus number/total.
+- For financial calculations in MVP (balances, reports, card invoices, projections), transactions act as parent/template/origin records while transaction_instances are the primary financial source.
+- Financial queries must avoid double counting by not summing transactions and transaction_instances together for the same business event.
+- Installment constraints must enforce: installment_number >= 1, installment_total >= 1, and installment_number <= installment_total.
+- Installment fields should be all null together or all filled together: installment_group_id, installment_number, installment_total.
 
 ## Table: recurrence_rules
 ### Objective
@@ -225,8 +237,33 @@ Represent concrete occurrences generated from recurring rules and/or future plan
 
 ### Important notes
 - This table enables future cash projection and precise month-by-month planning.
+- This is the primary financial source table for balances, reports, card invoices and future projections in MVP.
 - Optional override fields (value, person, card, category) allow per-instance edits without breaking the full series.
 - A uniqueness rule on recurrence_rule_id + instance_date is recommended when applicable.
+
+## Future Feature: attachments
+### Objective
+Allow users to attach supporting files (receipts, invoices, screenshots, PDFs) to transactions.
+
+### Future fields (suggested)
+- id: uuid (primary key)
+- user_id: uuid (references auth.users.id)
+- transaction_id: uuid (references transactions.id)
+- file_name: text
+- file_url: text
+- file_type: text
+- file_size: bigint
+- created_at: timestamptz
+- updated_at: timestamptz
+
+### Relationships
+- N:1 with auth.users by user_id
+- N:1 with transactions by transaction_id
+
+### Important notes
+- This is a future feature and is not part of the initial MVP implementation.
+- No migration or physical table should be created now.
+- Storage can be handled with Supabase Storage when the feature moves into implementation scope.
 
 ## Relationship Summary
 - auth.users 1:1 profiles (through user_id unique)
@@ -238,12 +275,14 @@ Represent concrete occurrences generated from recurring rules and/or future plan
 - auth.users 1:N recurrence_rules
 - auth.users 1:N transaction_instances
 - people 1:N transactions
+- people 1:N cards
 - cards 1:N transactions
 - categories 1:N transactions
 - recurrence_rules 1:N transactions
 - recurrence_rules 1:N transaction_instances
 - transactions 1:N transaction_instances (optional linkage)
 - accounts 1:N transactions (future optional linkage)
+- transactions 1:N attachments (future optional linkage)
 
 ## Open Decisions (To Validate Before Migrations)
 ### Resolved/Validated (kept for history)
@@ -253,8 +292,8 @@ Represent concrete occurrences generated from recurring rules and/or future plan
 
 ### Still Open
 - Decide if transfer/internal movement needs a dedicated type beyond income/expense.
-- Define final enum strategy: PostgreSQL enums vs constrained text.
 - Define indexing priorities for dashboard and monthly report queries.
+- Evaluate whether card statement snapshots require a dedicated card_statements table after MVP dynamic-calculation usage.
 
 ## Validated Decisions
 
@@ -311,6 +350,22 @@ Implementation impact (documentation level):
 Implementation impact (documentation level):
 - Keep transaction_instances as the projection/occurrence table.
 - Apply a 12-month generation horizon for MVP planning.
+
+### 7. Multi-tenant safety and foreign keys
+- For MVP, every main table must include user_id.
+- RLS policies must enforce user_id = auth.uid().
+- Use normal foreign keys initially.
+- Composite foreign keys or validation triggers can be evaluated later if needed.
+
+Implementation impact (documentation level):
+- Keep user_id mandatory in all business tables.
+- Apply RLS consistently per table before enabling client-side operations.
+
+### 8. Enum strategy
+- For MVP, use text columns with CHECK constraints instead of PostgreSQL enum types.
+
+Implementation impact (documentation level):
+- Apply CHECK constraints on constrained text fields (for example: transaction type/origin, category type, recurrence frequency, instance status, account type).
 
 ## Note
 This section records validated business decisions and complements the model without creating migrations.

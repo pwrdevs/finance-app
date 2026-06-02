@@ -70,3 +70,11 @@
 - 2026-06-02: Initial dashboard page composed using base components as the starting visual foundation for Phase 1.
 - 2026-06-02: Database model updated with initial accounts table (checking, savings, wallet, investment, other), including initial_balance and is_active for future accumulated balance and account lifecycle control.
 - 2026-06-02: Documented future optional relationship transactions.account_id -> accounts.id without creating migrations or physical tables.
+- 2026-06-02: Added future-feature modeling for attachments linked to transactions (receipts/invoices/screenshots/PDFs), documented only without migrations or table creation.
+- 2026-06-02: Card statement tracking defined for MVP as dynamic calculation from transactions/transaction_instances by card_id; potential future card_statements table kept as post-MVP evaluation.
+- 2026-06-02: Final pre-migration rule defined: transaction_instances is the primary financial source (balances, reports, card invoices, projections), while transactions remain parent/template records to avoid double counting.
+- 2026-06-02: Cards model finalized with person_id reference to people for owner/responsible tracking and owner-based card expense filtering.
+- 2026-06-02: Multi-tenant MVP strategy finalized with mandatory user_id in business tables, RLS policy user_id = auth.uid(), and standard foreign keys first (composite FKs/triggers deferred for later evaluation).
+- 2026-06-02: Enum strategy finalized for MVP: text columns plus CHECK constraints instead of PostgreSQL enums.
+- 2026-06-02: Installment integrity rules documented (minimum values, number <= total, and all-null/all-filled installment fields).
+- 2026-06-02: Future attachments feature aligned to global timestamp convention by including both created_at and updated_at.
