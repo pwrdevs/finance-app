@@ -2,6 +2,9 @@
 export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   modules: ['@nuxtjs/tailwindcss', '@nuxt/eslint', '@nuxtjs/supabase'],
+  supabase: {
+    redirect: false
+  },
   tailwindcss: {
     exposeConfig: true,
     viewer: false

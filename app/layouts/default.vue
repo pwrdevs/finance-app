@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import AppHeader from '~/components/layout/AppHeader.vue'
+import AppSidebar from '~/components/layout/AppSidebar.vue'
+
 const isSidebarOpen = ref(false)
 
 const sidebarLinks = [
   { label: 'Dashboard', to: '/' },
+  { label: 'Setup', to: '/setup' },
   { label: 'Transactions', to: '#' },
   { label: 'Cards', to: '#' },
   { label: 'People', to: '#' },
