@@ -90,3 +90,11 @@
 - 2026-06-07: `/setup` updated to expose authentication diagnostics (`auth.uid()`, logged email, and session status) plus table-access diagnostics for `people`, `accounts`, `categories`, and `cards`.
 - 2026-06-07: Visual validation executed on `/`, `/login`, `/register`, `/dashboard` (middleware redirect confirmed); sign-up flow confirmed with success message and expected login response `Email not confirmed` for unverified account.
 - 2026-06-07: Browser-level `/setup` asynchronous status rendering showed intermittent request aborts (`net::ERR_ABORTED`) in the integrated browser environment; connectivity and permission behavior were additionally validated by terminal requests (`/auth/v1/settings` = 200, table reads with anon = 401 permission denied), consistent with current RLS/grant state.
+- 2026-06-07: Phase 3 master data CRUD delivered for `people`, `accounts`, `categories`, and `cards` with dedicated pages (`/people`, `/accounts`, `/categories`, `/cards`) using `useMasterData` + `useSupabaseClient()` operations.
+- 2026-06-07: CRUD scope implemented with list/create/edit/disable (`is_active = false`) plus basic filters (search, status, and type/person when applicable).
+- 2026-06-07: Accounts now enforce allowed types (`checking`, `savings`, `wallet`, `investment`, `other`) and categories enforce (`income`, `expense`) through shared composable constants used by UI forms and filters.
+- 2026-06-07: Cards flow now requires selecting an existing `person_id` and validates relationship client-side before save; list view resolves person name and supports person-based filtering.
+- 2026-06-07: Sidebar navigation aligned to Phase 3 links: Dashboard, People, Accounts, Categories, Cards, Setup.
+- 2026-06-07: Setup page now shows real record counts for `people`, `accounts`, `categories`, and `cards` using Supabase head-count queries.
+- 2026-06-07: Dev server validated from `/tmp/finance-app-dev` mirror due OneDrive `ETIMEDOUT` file-read instability in local workspace; routes and middleware behavior confirmed on running app.
+- 2026-06-07: Full authenticated CRUD persistence validation is pending confirmed Supabase credentials because sign-up currently requires email confirmation before login.

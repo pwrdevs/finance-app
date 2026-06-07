@@ -5,11 +5,12 @@ import AppSidebar from '~/components/layout/AppSidebar.vue'
 const isSidebarOpen = ref(false)
 
 const sidebarLinks = [
-  { label: 'Home', to: '/' },
   { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Setup', to: '/setup' },
-  { label: 'Login', to: '/login' },
-  { label: 'Register', to: '/register' }
+  { label: 'People', to: '/people' },
+  { label: 'Accounts', to: '/accounts' },
+  { label: 'Categories', to: '/categories' },
+  { label: 'Cards', to: '/cards' },
+  { label: 'Setup', to: '/setup' }
 ]
 
 function toggleSidebar() {

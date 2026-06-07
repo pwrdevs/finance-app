@@ -78,6 +78,17 @@ function isAuthRequiredResponse(status: number, payload: unknown) {
   return code === '42501' || /permission denied|authenticated user|auth\.uid/i.test(message)
 }
 
+function isAuthRequiredError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const code = 'code' in error ? String(error.code ?? '') : ''
+  const message = 'message' in error ? String(error.message ?? '') : ''
+
+  return code === '42501' || /permission denied|authenticated user|auth\.uid/i.test(message)
+}
+
 async function checkConnection() {
   const { url, key } = getPublicSupabaseConfig()
 
@@ -116,38 +127,21 @@ async function checkAuthStatus() {
 }
 
 async function fetchCounts() {
-  const { url, key } = getPublicSupabaseConfig()
-
-  if (!url || !key) {
-    tableAccessState.value = 'error'
-    tableAccessMessage.value = 'Supabase URL or publishable key is missing from runtime config.'
-    return
-  }
-
-  const results = await Promise.all(
+  await Promise.all(
     tableCounts.value.map(async (entry) => {
       try {
-        const response = await fetch(`${url}/rest/v1/${entry.table}?select=id`, {
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`,
-            Prefer: 'count=exact'
-          }
-        })
+        const { count, error, status } = await supabase
+          .from(entry.table)
+          .select('id', { count: 'exact', head: true })
 
-        const payload = await response.json().catch(() => null)
-
-        if (response.ok) {
-          const countHeader = response.headers.get('content-range')
-          const count = countHeader?.split('/').at(1)
-
-          entry.count = count ? Number(count) : 0
+        if (!error) {
+          entry.count = count ?? 0
           entry.error = null
           entry.accessState = 'ok'
           return
         }
 
-        if (isAuthRequiredResponse(response.status, payload)) {
+        if (status === 401 || status === 403 || isAuthRequiredError(error)) {
           entry.count = null
           entry.error = 'Database access requires authenticated user or table grants'
           entry.accessState = 'auth-required'
@@ -155,9 +149,7 @@ async function fetchCounts() {
         }
 
         entry.count = null
-        entry.error = typeof payload === 'object' && payload && 'message' in payload
-          ? String(payload.message ?? 'Unexpected table access error')
-          : `Unexpected table access error (${response.status})`
+        entry.error = 'message' in error ? String(error.message ?? 'Unexpected table access error') : 'Unexpected table access error'
         entry.accessState = 'error'
       } catch (err) {
         entry.count = null
@@ -167,24 +159,22 @@ async function fetchCounts() {
     })
   )
 
-  if (results.every(() => true)) {
-    const states = tableCounts.value.map(entry => entry.accessState)
+  const states = tableCounts.value.map(entry => entry.accessState)
 
-    if (states.every(state => state === 'ok')) {
-      tableAccessState.value = 'ok'
-      tableAccessMessage.value = 'Database tables are reachable with the current client session.'
-      return
-    }
-
-    if (states.some(state => state === 'auth-required') && !states.some(state => state === 'error')) {
-      tableAccessState.value = 'auth-required'
-      tableAccessMessage.value = 'Database access requires authenticated user or table grants'
-      return
-    }
-
-    tableAccessState.value = 'error'
-    tableAccessMessage.value = 'Unexpected database table access error'
+  if (states.every(state => state === 'ok')) {
+    tableAccessState.value = 'ok'
+    tableAccessMessage.value = 'Database tables are reachable with the current client session.'
+    return
   }
+
+  if (states.some(state => state === 'auth-required') && !states.some(state => state === 'error')) {
+    tableAccessState.value = 'auth-required'
+    tableAccessMessage.value = 'Database access requires authenticated user or table grants'
+    return
+  }
+
+  tableAccessState.value = 'error'
+  tableAccessMessage.value = 'Unexpected database table access error'
 }
 
 function resetSetupState() {
