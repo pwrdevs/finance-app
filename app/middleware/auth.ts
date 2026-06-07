@@ -1,4 +1,4 @@
-const PUBLIC_ROUTES = new Set(['/', '/login', '/register', '/setup'])
+const PUBLIC_ROUTES = new Set(['/', '/login'])
 
 export default defineNuxtRouteMiddleware((to) => {
   const session = useSupabaseSession()
@@ -10,7 +10,7 @@ export default defineNuxtRouteMiddleware((to) => {
     return navigateTo('/login')
   }
 
-  if (isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+  if (isAuthenticated && (to.path === '/login' || to.path === '/')) {
     return navigateTo('/dashboard')
   }
 })

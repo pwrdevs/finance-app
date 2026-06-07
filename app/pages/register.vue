@@ -4,7 +4,8 @@ import AppCard from '~/components/common/AppCard.vue'
 import AppInput from '~/components/common/AppInput.vue'
 
 definePageMeta({
-  middleware: 'auth'
+  middleware: 'admin',
+  layout: 'auth'
 })
 
 const email = ref('')
@@ -28,17 +29,17 @@ async function onSubmit() {
   localError.value = ''
 
   if (!email.value || !password.value || !confirmPassword.value) {
-    localError.value = 'Email, password and confirmation are required.'
+    localError.value = 'E-mail, senha e confirmação são obrigatórios.'
     return
   }
 
   if (password.value.length < 6) {
-    localError.value = 'Password must have at least 6 characters.'
+    localError.value = 'A senha deve ter pelo menos 6 caracteres.'
     return
   }
 
   if (password.value !== confirmPassword.value) {
-    localError.value = 'Password confirmation does not match.'
+    localError.value = 'A confirmação da senha não confere.'
     return
   }
 
@@ -60,16 +61,16 @@ async function onSubmit() {
 <template>
   <section class="mx-auto w-full max-w-xl space-y-6">
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Authentication</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Create account</h2>
-      <p class="mt-2 text-sm text-muted">Register using email and password.</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Administração</p>
+      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Criar usuário</h2>
+      <p class="mt-2 text-sm text-muted">Cadastro restrito a administradores.</p>
     </div>
 
-    <AppCard title="Register" subtitle="Creates a Supabase auth user">
+    <AppCard title="Novo usuário" subtitle="Cria um usuário de autenticação">
       <form class="space-y-4" @submit.prevent="onSubmit">
         <AppInput
           v-model="email"
-          label="Email"
+          label="E-mail"
           type="email"
           placeholder="you@example.com"
           required
@@ -77,18 +78,18 @@ async function onSubmit() {
 
         <AppInput
           v-model="password"
-          label="Password"
+          label="Senha"
           type="password"
-          placeholder="Choose a password"
-          hint="Minimum 6 characters"
+          placeholder="Defina uma senha"
+          hint="Mínimo de 6 caracteres"
           required
         />
 
         <AppInput
           v-model="confirmPassword"
-          label="Confirm password"
+          label="Confirmar senha"
           type="password"
-          placeholder="Repeat your password"
+          placeholder="Repita a senha"
           required
         />
 
@@ -106,18 +107,11 @@ async function onSubmit() {
 
         <AppButton
           type="submit"
-          label="Create account"
+          label="Criar usuário"
           :disabled="isSubmitting"
           block
         />
       </form>
-
-      <p class="mt-4 text-sm text-muted">
-        Already have an account?
-        <NuxtLink to="/login" class="font-semibold text-primary-dark hover:underline">
-          Sign in
-        </NuxtLink>
-      </p>
     </AppCard>
   </section>
 </template>

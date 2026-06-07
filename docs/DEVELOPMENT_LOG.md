@@ -136,3 +136,8 @@
 - 2026-06-07: Dashboard financial consistency hardened so canceled instances are excluded from main totals (`income`, `expense`, `net`, `pending`, `reconciled`, and active launch count), while canceled remains visible in dedicated canceled metrics.
 - 2026-06-07: Cards UX updated with billing-cycle emphasis (`closing_day`/`due_day`) and responsive mobile cards to prepare statement-oriented flows.
 - 2026-06-07: Responsiveness revalidated for desktop/tablet/mobile in critical routes (`/dashboard`, `/transactions`, `/cards`) and production build passed after polish changes.
+- 2026-06-07: User-facing setup route (`/setup`) converted to compatibility redirect for `/settings`, while technical diagnostics were moved to `/developer/setup` under admin middleware.
+- 2026-06-07: Admin foundation expanded with protected APIs and UI for user management (`/developer/users`): list users, create user, activate/deactivate access, and trigger password recovery link generation via Supabase Admin API.
+- 2026-06-07: People module hardened to fix save-flow instability by improving authenticated user resolution in `useMasterData` (`session` fallback to `supabase.auth.getUser()`) and correcting page typing in `people.vue` edit modal.
+- 2026-06-07: People page UX localized to PT-BR and error handling improved to surface backend/API status messages instead of generic `Failed to save person` fallback when available.
+- 2026-06-07: Local workspace build in OneDrive path still shows intermittent `ETIMEDOUT` read failures unrelated to source code; production build validation completed successfully in stable mirror `/tmp/finance-app-dev`.

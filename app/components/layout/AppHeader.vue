@@ -22,7 +22,7 @@ const emit = defineEmits<{
         </button>
 
         <div class="flex items-center gap-2">
-          <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary-dark shadow-soft" />
+          <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-8 w-8 rounded-lg object-contain shadow-soft" />
           <div>
             <p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">PWRDEVS</p>
             <h1 class="text-sm font-semibold text-foreground">{{ appName }}</h1>
@@ -32,7 +32,7 @@ const emit = defineEmits<{
 
       <div class="hidden items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs text-muted shadow-sm sm:flex">
         <span class="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-        System online
+        Sistema online
       </div>
     </div>
   </header>

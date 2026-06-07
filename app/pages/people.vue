@@ -28,12 +28,32 @@ const notes = ref('')
 const isActive = ref(true)
 
 const columns = [
-  { key: 'name', label: 'Name' },
-  { key: 'notes', label: 'Notes' },
+  { key: 'name', label: 'Nome' },
+  { key: 'notes', label: 'Observações' },
   { key: 'status', label: 'Status' },
-  { key: 'created_at', label: 'Created' },
-  { key: 'actions', label: 'Actions', align: 'right' as const }
+  { key: 'created_at', label: 'Criado em' },
+  { key: 'actions', label: 'Ações', align: 'right' as const }
 ]
+
+function extractErrorMessage(err: unknown, fallback: string) {
+  if (err instanceof Error && err.message) {
+    return err.message
+  }
+
+  if (err && typeof err === 'object') {
+    const statusMessage = 'statusMessage' in err ? String((err as { statusMessage?: unknown }).statusMessage ?? '') : ''
+    if (statusMessage) {
+      return statusMessage
+    }
+
+    const message = 'message' in err ? String((err as { message?: unknown }).message ?? '') : ''
+    if (message) {
+      return message
+    }
+  }
+
+  return fallback
+}
 
 const filteredRows = computed(() => {
   const normalizedSearch = search.value.trim().toLowerCase()
@@ -60,12 +80,12 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
-      status: row.is_active ? 'Active' : 'Inactive'
+      status: row.is_active ? 'Ativo' : 'Inativo'
     }))
 })
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-CA')
+  return new Date(value).toLocaleDateString('pt-BR')
 }
 
 function resetForm() {
@@ -81,7 +101,7 @@ function openCreateModal() {
   isModalOpen.value = true
 }
 
-function openEditModal(row: PersonRecord) {
+function openEditModal(row: PersonItem) {
   editingId.value = row.id
   name.value = row.name
   notes.value = row.notes ?? ''
@@ -97,7 +117,7 @@ async function fetchRows() {
   try {
     rows.value = await listPeople()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to load people.'
+    pageError.value = extractErrorMessage(err, 'Não foi possível carregar as pessoas.')
   } finally {
     loading.value = false
   }
@@ -107,7 +127,7 @@ async function submitForm() {
   modalError.value = ''
 
   if (!name.value.trim()) {
-    modalError.value = 'Name is required.'
+    modalError.value = 'O nome é obrigatório.'
     return
   }
 
@@ -116,7 +136,7 @@ async function submitForm() {
   try {
     await upsertPerson(
       {
-        name: name.value,
+        name: name.value.trim(),
         notes: notes.value,
         is_active: isActive.value
       },
@@ -126,7 +146,7 @@ async function submitForm() {
     isModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    modalError.value = err instanceof Error ? err.message : 'Failed to save person.'
+    modalError.value = extractErrorMessage(err, 'Não foi possível salvar a pessoa.')
   } finally {
     saving.value = false
   }
@@ -139,7 +159,7 @@ async function deactivate(row: PersonItem) {
     await deactivatePerson(row.id)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to deactivate person.'
+    pageError.value = extractErrorMessage(err, 'Não foi possível desativar a pessoa.')
   }
 }
 
@@ -151,38 +171,38 @@ onMounted(async () => {
 <template>
   <section class="space-y-6">
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Master Data</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">People</h2>
-      <p class="mt-2 text-sm text-muted">Manage responsible people used across the finance records.</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dados Mestres</p>
+      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Pessoas</h2>
+      <p class="mt-2 text-sm text-muted">Gerencie responsáveis usados nos lançamentos financeiros.</p>
     </div>
 
-    <AppCard title="Filters">
+    <AppCard title="Filtros">
       <div class="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-end">
-        <AppInput v-model="search" label="Search" placeholder="Search by name or note" />
+        <AppInput v-model="search" label="Busca" placeholder="Buscar por nome ou observação" />
 
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Status</label>
           <select v-model="statusFilter" class="h-11 rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="all">All</option>
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+            <option value="all">Todos</option>
           </select>
         </div>
 
-        <AppButton label="New person" @click="openCreateModal" />
+        <AppButton label="Nova pessoa" @click="openCreateModal" />
       </div>
     </AppCard>
 
     <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
 
-    <AppCard title="People list" :subtitle="loading ? 'Loading data...' : `${filteredRows.length} record(s)`">
-      <AppTable :columns="columns" :rows="filteredRows" empty-message="No people found.">
+    <AppCard title="Lista de pessoas" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
+      <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhuma pessoa encontrada.">
         <template #cell-notes="{ value }">
           <span class="text-sm text-muted">{{ value || '—' }}</span>
         </template>
 
         <template #cell-status="{ value }">
-          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
+          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
             {{ value }}
           </span>
         </template>
@@ -193,12 +213,12 @@ onMounted(async () => {
 
         <template #cell-actions="{ row }">
           <div class="flex justify-end gap-2">
-            <AppButton size="sm" variant="ghost" label="Edit" @click="openEditModal(row as PersonItem)" />
+            <AppButton size="sm" variant="ghost" label="Editar" @click="openEditModal(row as PersonItem)" />
             <AppButton
               v-if="(row as PersonItem).is_active"
               size="sm"
               variant="danger"
-              label="Disable"
+              label="Desativar"
               @click="deactivate(row as PersonItem)"
             />
           </div>
@@ -206,14 +226,14 @@ onMounted(async () => {
       </AppTable>
     </AppCard>
 
-    <AppModal v-model="isModalOpen" :title="editingId ? 'Edit person' : 'New person'" description="Create or update a person record.">
+    <AppModal v-model="isModalOpen" :title="editingId ? 'Editar pessoa' : 'Nova pessoa'" description="Crie ou atualize uma pessoa.">
       <div class="space-y-4">
-        <AppInput v-model="name" label="Name" placeholder="Person name" required />
-        <AppInput v-model="notes" label="Notes" placeholder="Optional notes" />
+        <AppInput v-model="name" label="Nome" placeholder="Nome da pessoa" required />
+        <AppInput v-model="notes" label="Observações" placeholder="Observações opcionais" />
 
         <label class="flex items-center gap-2 text-sm text-foreground">
           <input v-model="isActive" type="checkbox" class="h-4 w-4 rounded border-border" />
-          Active
+          Ativo
         </label>
 
         <p v-if="modalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ modalError }}</p>
@@ -221,8 +241,8 @@ onMounted(async () => {
 
       <template #footer>
         <div class="flex justify-end gap-2">
-          <AppButton label="Cancel" variant="ghost" @click="isModalOpen = false" />
-          <AppButton :label="saving ? 'Saving...' : 'Save'" :disabled="saving" @click="submitForm" />
+          <AppButton label="Cancelar" variant="ghost" @click="isModalOpen = false" />
+          <AppButton :label="saving ? 'Salvando...' : 'Salvar'" :disabled="saving" @click="submitForm" />
         </div>
       </template>
     </AppModal>

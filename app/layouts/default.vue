@@ -6,12 +6,12 @@ const isSidebarOpen = ref(false)
 
 const sidebarLinks = [
   { label: 'Dashboard', to: '/dashboard' },
-  { label: 'People', to: '/people' },
-  { label: 'Accounts', to: '/accounts' },
-  { label: 'Categories', to: '/categories' },
-  { label: 'Cards', to: '/cards' },
-  { label: 'Transactions', to: '/transactions' },
-  { label: 'Setup', to: '/setup' }
+  { label: 'Responsáveis', to: '/people' },
+  { label: 'Contas', to: '/accounts' },
+  { label: 'Categorias', to: '/categories' },
+  { label: 'Cartões', to: '/cards' },
+  { label: 'Lançamentos', to: '/transactions' },
+  { label: 'Configurações', to: '/settings' }
 ]
 
 function toggleSidebar() {

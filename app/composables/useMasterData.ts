@@ -88,14 +88,24 @@ export function useMasterData() {
   const supabase = useSupabaseClient()
   const session = useSupabaseSession()
 
-  function getUserId() {
+  async function getUserId() {
     const userId = session.value?.user?.id
 
-    if (!userId) {
+    if (userId) {
+      return userId
+    }
+
+    const { data, error } = await supabase.auth.getUser()
+
+    if (error) {
+      throw new Error(error.message || 'Authenticated user is required for master data operations.')
+    }
+
+    if (!data.user?.id) {
       throw new Error('Authenticated user is required for master data operations.')
     }
 
-    return userId
+    return data.user.id
   }
 
   async function listPeople() {
@@ -132,7 +142,7 @@ export function useMasterData() {
     const { error } = await supabase
       .from('people')
       .insert({
-        user_id: getUserId(),
+        user_id: await getUserId(),
         name: payload.name.trim(),
         notes: normalizeOptionalText(payload.notes),
         is_active: payload.is_active ?? true
@@ -189,7 +199,7 @@ export function useMasterData() {
     const { error } = await supabase
       .from('accounts')
       .insert({
-        user_id: getUserId(),
+        user_id: await getUserId(),
         name: payload.name.trim(),
         type: payload.type,
         initial_balance: payload.initial_balance,
@@ -248,7 +258,7 @@ export function useMasterData() {
     const { error } = await supabase
       .from('categories')
       .insert({
-        user_id: getUserId(),
+        user_id: await getUserId(),
         name: payload.name.trim(),
         type: payload.type,
         color: normalizeOptionalText(payload.color),
@@ -310,7 +320,7 @@ export function useMasterData() {
     const { error } = await supabase
       .from('cards')
       .insert({
-        user_id: getUserId(),
+        user_id: await getUserId(),
         name: payload.name.trim(),
         person_id: payload.person_id,
         brand: normalizeOptionalText(payload.brand),
