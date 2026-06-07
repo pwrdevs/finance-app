@@ -101,3 +101,7 @@
 - 2026-06-07: Migration fix `002_fix_authenticated_grants.sql` created and applied to Supabase to grant `authenticated` access on schema `public` and CRUD privileges on `profiles`, `people`, `accounts`, `categories`, and `cards` (no table/RLS/policy structure changes).
 - 2026-06-07: Post-fix database validation confirmed `authenticated` requests now return `200` for `profiles`, `people`, `accounts`, `categories`, and `cards`; `anon` remains blocked with `401 permission denied` across all core tables.
 - 2026-06-07: Phase 3 revalidation executed after grant fix: create/edit flows succeeded for people/accounts/categories/cards in app UI and persisted in Supabase; soft-disable behavior was validated by authenticated REST updates (`is_active=false`) with persisted state confirmed by subsequent reads.
+- 2026-06-07: Migration `003_transactions_recurrence_instances.sql` applied to the linked Supabase project via `supabase db push`.
+- 2026-06-07: Post-apply remote validation confirmed `transactions`, `recurrence_rules`, and `transaction_instances` exist and main indexes were created, including `uq_transaction_instances_user_recurrence_instance_date`.
+- 2026-06-07: Validation confirmed `anon` remains blocked on new tables (`401 permission denied` on REST reads) and migration state is synchronized (`003` local = `003` remote).
+- 2026-06-07: Remote lint on schema `public` returned no errors after migration 003 (`supabase db lint --linked`).
