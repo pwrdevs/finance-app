@@ -3,6 +3,9 @@ import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composab
 export const TRANSACTION_TYPES = ['income', 'expense'] as const
 export type TransactionType = (typeof TRANSACTION_TYPES)[number]
 
+export const TRANSACTION_ORIGIN_TYPES = ['single', 'installment'] as const
+export type TransactionOriginType = (typeof TRANSACTION_ORIGIN_TYPES)[number]
+
 export const TRANSACTION_STATUS = ['pending', 'paid', 'skipped', 'canceled'] as const
 export type TransactionStatus = (typeof TRANSACTION_STATUS)[number]
 
@@ -13,6 +16,8 @@ interface SourceTransaction {
   description: string | null
   due_date: string
   origin_type: 'single' | 'recurring' | 'installment'
+  installment_group_id: string | null
+  installment_total: number | null
 }
 
 interface TransactionInstanceRecord {
@@ -38,6 +43,7 @@ export interface TransactionInstanceItem {
   transaction_id: string | null
   title: string
   type: TransactionType
+  origin_type: 'single' | 'recurring' | 'installment'
   description: string | null
   instance_date: string
   due_date: string
@@ -51,6 +57,9 @@ export interface TransactionInstanceItem {
   account_id: string | null
   category_id: string | null
   created_at: string
+  installment_group_id: string | null
+  installment_number: number | null
+  installment_total: number | null
 }
 
 export interface TransactionFilters {
@@ -59,12 +68,15 @@ export interface TransactionFilters {
 }
 
 export interface CreateSingleTransactionPayload {
+  origin_type: TransactionOriginType
   title: string
   type: TransactionType
   expected_value: number
   real_value?: number | null
-  due_date: string
-  instance_date: string
+  due_date?: string
+  instance_date?: string
+  installment_total?: number
+  installment_start_date?: string
   person_id?: string | null
   account_id?: string | null
   card_id?: string | null
@@ -114,8 +126,70 @@ function deriveCheckedAt(isChecked: boolean) {
   return isChecked ? new Date().toISOString() : null
 }
 
+function generateGroupId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function addMonthsKeepingDay(dateText: string, monthOffset: number) {
+  const [yearText, monthText, dayText] = dateText.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+
+  const baseMonthIndex = month - 1
+  const targetMonthIndex = baseMonthIndex + monthOffset
+  const targetYear = year + Math.floor(targetMonthIndex / 12)
+  const normalizedMonthIndex = ((targetMonthIndex % 12) + 12) % 12
+
+  const lastDay = new Date(Date.UTC(targetYear, normalizedMonthIndex + 1, 0)).getUTCDate()
+  const clampedDay = Math.min(day, lastDay)
+
+  const isoYear = String(targetYear).padStart(4, '0')
+  const isoMonth = String(normalizedMonthIndex + 1).padStart(2, '0')
+  const isoDay = String(clampedDay).padStart(2, '0')
+
+  return `${isoYear}-${isoMonth}-${isoDay}`
+}
+
+function splitInstallmentValues(totalValue: number, installmentTotal: number) {
+  const totalCents = Math.round(totalValue * 100)
+  const baseCents = Math.floor(totalCents / installmentTotal)
+  const remainder = totalCents - (baseCents * installmentTotal)
+
+  const centsValues = new Array(installmentTotal).fill(baseCents)
+  centsValues[installmentTotal - 1] = centsValues[installmentTotal - 1] + remainder
+
+  return centsValues.map(value => value / 100)
+}
+
+function getInstallmentNumber(startDate: string, instanceDate: string, installmentTotal: number) {
+  const [startYear, startMonth] = startDate.split('-').map(Number)
+  const [instanceYear, instanceMonth] = instanceDate.split('-').map(Number)
+
+  const rawNumber = ((instanceYear - startYear) * 12) + (instanceMonth - startMonth) + 1
+
+  if (!Number.isFinite(rawNumber) || rawNumber < 1) {
+    return 1
+  }
+
+  if (rawNumber > installmentTotal) {
+    return installmentTotal
+  }
+
+  return rawNumber
+}
+
 function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem {
   const source = record.source_transaction
+  const installmentTotal = source?.installment_total ?? null
+  const installmentNumber =
+    source?.origin_type === 'installment' && installmentTotal
+      ? getInstallmentNumber(source.due_date, record.instance_date, installmentTotal)
+      : null
 
   return {
     id: record.id,
@@ -123,6 +197,7 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     transaction_id: source?.id ?? null,
     title: source?.title ?? 'Untitled transaction',
     type: source?.type ?? 'expense',
+    origin_type: source?.origin_type ?? 'single',
     description: source?.description ?? null,
     instance_date: record.instance_date,
     due_date: source?.due_date ?? record.instance_date,
@@ -135,7 +210,10 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     card_id: record.card_id,
     account_id: record.account_id,
     category_id: record.category_id,
-    created_at: record.created_at
+    created_at: record.created_at,
+    installment_group_id: source?.installment_group_id ?? null,
+    installment_number: installmentNumber,
+    installment_total: installmentTotal
   }
 }
 
@@ -179,12 +257,13 @@ export function useTransactions() {
           title,
           description,
           due_date,
-          origin_type
+          origin_type,
+          installment_group_id,
+          installment_total
         )
       `)
       .gte('instance_date', from)
       .lt('instance_date', to)
-      .eq('source_transaction.origin_type', 'single')
       .order('instance_date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -192,20 +271,33 @@ export function useTransactions() {
       throw error
     }
 
-    return ((data ?? []) as TransactionInstanceRecord[]).map(mapInstance)
+    const mapped = ((data ?? []) as TransactionInstanceRecord[])
+      .map(mapInstance)
+      .filter((entry) => entry.origin_type !== 'recurring')
+
+    return mapped
   }
 
   async function createSingleTransaction(payload: CreateSingleTransactionPayload) {
+    if (payload.origin_type === 'installment') {
+      await createInstallmentTransaction(payload)
+      return
+    }
+
     const userId = getUserId()
     const isChecked = payload.is_checked ?? false
     const checkedAt = deriveCheckedAt(isChecked)
+
+    if (!payload.due_date || !payload.instance_date) {
+      throw new Error('Due date and instance date are required for single transactions.')
+    }
 
     const { data: transactionData, error: transactionError } = await supabase
       .from('transactions')
       .insert({
         user_id: userId,
         type: payload.type,
-        origin_type: 'single',
+        origin_type: payload.origin_type,
         title: payload.title.trim(),
         description: normalizeOptionalText(payload.description),
         expected_value: payload.expected_value,
@@ -247,7 +339,84 @@ export function useTransactions() {
     }
   }
 
-  async function updateTransactionInstance(id: string, payload: UpdateTransactionInstancePayload, sourceTransactionId?: string | null) {
+  async function createInstallmentTransaction(payload: CreateSingleTransactionPayload) {
+    const userId = getUserId()
+    const installmentTotal = payload.installment_total ?? 0
+    const startDate = payload.installment_start_date
+
+    if (!startDate) {
+      throw new Error('Installment start date is required.')
+    }
+
+    if (installmentTotal < 2) {
+      throw new Error('Installment total must be at least 2.')
+    }
+
+    if (!normalizeOptionalId(payload.card_id)) {
+      throw new Error('Card is required for installment transactions.')
+    }
+
+    const groupId = generateGroupId()
+    const parcelValues = splitInstallmentValues(payload.expected_value, installmentTotal)
+
+    const { data: transactionData, error: transactionError } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type: payload.type,
+        origin_type: 'installment',
+        title: payload.title.trim(),
+        description: normalizeOptionalText(payload.description),
+        expected_value: payload.expected_value,
+        real_value: null,
+        due_date: startDate,
+        is_checked: false,
+        checked_at: null,
+        person_id: normalizeOptionalId(payload.person_id),
+        card_id: normalizeOptionalId(payload.card_id),
+        account_id: normalizeOptionalId(payload.account_id),
+        category_id: normalizeOptionalId(payload.category_id),
+        installment_group_id: groupId,
+        installment_number: 1,
+        installment_total: installmentTotal
+      })
+      .select('id')
+      .single()
+
+    if (transactionError) {
+      throw transactionError
+    }
+
+    const instances = parcelValues.map((parcelValue, index) => ({
+      user_id: userId,
+      source_transaction_id: transactionData.id,
+      instance_date: addMonthsKeepingDay(startDate, index),
+      expected_value: parcelValue,
+      real_value: null,
+      is_checked: false,
+      checked_at: null,
+      status: 'pending' as const,
+      person_id: normalizeOptionalId(payload.person_id),
+      card_id: normalizeOptionalId(payload.card_id),
+      account_id: normalizeOptionalId(payload.account_id),
+      category_id: normalizeOptionalId(payload.category_id)
+    }))
+
+    const { error: instanceError } = await supabase
+      .from('transaction_instances')
+      .insert(instances)
+
+    if (instanceError) {
+      throw instanceError
+    }
+  }
+
+  async function updateTransactionInstance(
+    id: string,
+    payload: UpdateTransactionInstancePayload,
+    sourceTransactionId?: string | null,
+    sourceOriginType?: 'single' | 'recurring' | 'installment'
+  ) {
     const checkedAt = deriveCheckedAt(payload.is_checked)
     const normalizedDescription = normalizeOptionalText(payload.description)
     const normalizedPersonId = normalizeOptionalId(payload.person_id)
@@ -275,7 +444,7 @@ export function useTransactions() {
       throw instanceError
     }
 
-    if (!sourceTransactionId) {
+    if (!sourceTransactionId || sourceOriginType !== 'single') {
       return
     }
 
@@ -320,7 +489,8 @@ export function useTransactions() {
         status: item.status,
         is_checked: checked
       },
-      item.source_transaction_id
+      item.source_transaction_id,
+      item.origin_type
     )
   }
 
@@ -342,7 +512,8 @@ export function useTransactions() {
         status,
         is_checked: item.is_checked
       },
-      item.source_transaction_id
+      item.source_transaction_id,
+      item.origin_type
     )
   }
 
@@ -364,6 +535,7 @@ export function useTransactions() {
 
   return {
     createSingleTransaction,
+    createTransaction: createSingleTransaction,
     listFilterOptions,
     listManualInstances,
     setChecked,

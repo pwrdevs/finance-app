@@ -5,8 +5,10 @@ import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import {
+  TRANSACTION_ORIGIN_TYPES,
   TRANSACTION_STATUS,
   TRANSACTION_TYPES,
+  type TransactionOriginType,
   type TransactionInstanceItem,
   type TransactionStatus,
   type TransactionType
@@ -18,7 +20,7 @@ definePageMeta({
 })
 
 const {
-  createSingleTransaction,
+  createTransaction,
   listFilterOptions,
   listManualInstances,
   setChecked,
@@ -50,11 +52,14 @@ const isModalOpen = ref(false)
 const editingRow = ref<TransactionInstanceItem | null>(null)
 
 const formTitle = ref('')
+const formOriginType = ref<TransactionOriginType>('single')
 const formType = ref<TransactionType>('expense')
 const formExpectedValue = ref('')
 const formRealValue = ref('')
 const formDueDate = ref('')
 const formInstanceDate = ref('')
+const formInstallmentTotal = ref('2')
+const formInstallmentStartDate = ref('')
 const formPersonId = ref('')
 const formAccountId = ref('')
 const formCardId = ref('')
@@ -66,6 +71,7 @@ const formChecked = ref(false)
 const columns = [
   { key: 'instance_date', label: 'Date' },
   { key: 'title', label: 'Title' },
+  { key: 'installment_label', label: 'Installment' },
   { key: 'type', label: 'Type' },
   { key: 'expected_value', label: 'Expected', align: 'right' as const },
   { key: 'real_value', label: 'Real', align: 'right' as const },
@@ -114,6 +120,9 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
+      installment_label: row.origin_type === 'installment' && row.installment_number && row.installment_total
+        ? `${row.installment_number}/${row.installment_total}`
+        : '—',
       person_name: row.person_id ? (peopleMap.value.get(row.person_id) || 'Unknown') : '—',
       account_name: row.account_id ? (accountsMap.value.get(row.account_id) || 'Unknown') : '—',
       card_name: row.card_id ? (cardsMap.value.get(row.card_id) || 'Unknown') : '—',
@@ -151,11 +160,14 @@ function formatCurrency(value: number | null) {
 function resetForm() {
   editingRow.value = null
   formTitle.value = ''
+  formOriginType.value = 'single'
   formType.value = 'expense'
   formExpectedValue.value = ''
   formRealValue.value = ''
   formDueDate.value = `${monthYear.value}-01`
   formInstanceDate.value = `${monthYear.value}-01`
+  formInstallmentTotal.value = '2'
+  formInstallmentStartDate.value = `${monthYear.value}-01`
   formPersonId.value = ''
   formAccountId.value = ''
   formCardId.value = ''
@@ -169,11 +181,14 @@ function resetForm() {
 function fillFormFromRow(row: TransactionInstanceItem) {
   editingRow.value = row
   formTitle.value = row.title
+  formOriginType.value = row.origin_type === 'installment' ? 'installment' : 'single'
   formType.value = row.type
   formExpectedValue.value = String(row.expected_value)
   formRealValue.value = row.real_value == null ? '' : String(row.real_value)
   formDueDate.value = row.due_date
   formInstanceDate.value = row.instance_date
+  formInstallmentTotal.value = String(row.installment_total ?? 2)
+  formInstallmentStartDate.value = row.instance_date
   formPersonId.value = row.person_id ?? ''
   formAccountId.value = row.account_id ?? ''
   formCardId.value = row.card_id ?? ''
@@ -262,8 +277,29 @@ async function submitForm() {
   }
 
   if (!formDueDate.value || !formInstanceDate.value) {
-    modalError.value = 'Due date and instance date are required.'
-    return
+    if (formOriginType.value === 'single') {
+      modalError.value = 'Due date and instance date are required.'
+      return
+    }
+  }
+
+  const parsedInstallmentTotal = Number(formInstallmentTotal.value)
+
+  if (formOriginType.value === 'installment') {
+    if (!Number.isInteger(parsedInstallmentTotal) || parsedInstallmentTotal < 2) {
+      modalError.value = 'Installment total must be an integer greater than or equal to 2.'
+      return
+    }
+
+    if (!formCardId.value) {
+      modalError.value = 'Card is required for installment transactions.'
+      return
+    }
+
+    if (!formInstallmentStartDate.value) {
+      modalError.value = 'Installment start date is required.'
+      return
+    }
   }
 
   saving.value = true
@@ -287,16 +323,20 @@ async function submitForm() {
           status: formStatus.value,
           is_checked: formChecked.value
         },
-        editingRow.value.source_transaction_id
+        editingRow.value.source_transaction_id,
+        editingRow.value.origin_type
       )
     } else {
-      await createSingleTransaction({
+      await createTransaction({
+        origin_type: formOriginType.value,
         title: formTitle.value,
         type: formType.value,
         expected_value: parsedExpected,
         real_value: parsedReal,
-        due_date: formDueDate.value,
-        instance_date: formInstanceDate.value,
+        due_date: formOriginType.value === 'single' ? formDueDate.value : formInstallmentStartDate.value,
+        instance_date: formOriginType.value === 'single' ? formInstanceDate.value : formInstallmentStartDate.value,
+        installment_total: formOriginType.value === 'installment' ? parsedInstallmentTotal : undefined,
+        installment_start_date: formOriginType.value === 'installment' ? formInstallmentStartDate.value : undefined,
         person_id: formPersonId.value || null,
         account_id: formAccountId.value || null,
         card_id: formCardId.value || null,
@@ -488,11 +528,19 @@ watch(monthYear, async () => {
 
     <AppModal
       v-model="isModalOpen"
-      :title="editingRow ? 'Edit transaction instance' : 'New single transaction'"
-      description="Creates or updates a manual single launch and its financial instance."
+      :title="editingRow ? 'Edit transaction instance' : 'New transaction'"
+      description="Creates single or installment launches using transaction_instances as financial source."
     >
       <div class="space-y-4">
         <AppInput v-model="formTitle" label="Title" placeholder="Transaction title" required />
+
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Origin Type</label>
+          <select v-model="formOriginType" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
+            <option v-for="entry in TRANSACTION_ORIGIN_TYPES" :key="entry" :value="entry">{{ entry }}</option>
+          </select>
+          <p v-if="editingRow" class="text-xs text-muted">Origin type cannot be changed in edit mode.</p>
+        </div>
 
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Type</label>
@@ -502,13 +550,24 @@ watch(monthYear, async () => {
         </div>
 
         <div class="grid gap-4 md:grid-cols-2">
-          <AppInput v-model="formExpectedValue" label="Expected value" type="number" placeholder="0.00" required />
+          <AppInput
+            v-model="formExpectedValue"
+            :label="formOriginType === 'installment' ? 'Expected total purchase value' : 'Expected value'"
+            type="number"
+            placeholder="0.00"
+            required
+          />
           <AppInput v-model="formRealValue" label="Real value" type="number" placeholder="Optional" />
         </div>
 
-        <div class="grid gap-4 md:grid-cols-2">
+        <div v-if="formOriginType === 'single'" class="grid gap-4 md:grid-cols-2">
           <AppInput v-model="formDueDate" label="Due date" type="date" required />
           <AppInput v-model="formInstanceDate" label="Instance date" type="date" required />
+        </div>
+
+        <div v-else class="grid gap-4 md:grid-cols-2">
+          <AppInput v-model="formInstallmentTotal" label="Installment total" type="number" placeholder="2" required />
+          <AppInput v-model="formInstallmentStartDate" label="Installment start date" type="date" required />
         </div>
 
         <div class="grid gap-4 md:grid-cols-2">
