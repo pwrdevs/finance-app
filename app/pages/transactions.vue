@@ -503,15 +503,31 @@ watch(monthYear, async () => {
       <p class="mt-2 text-sm text-muted">Single, installment and recurring transactions using transaction_instances as the financial source.</p>
     </div>
 
-    <AppCard title="Filters">
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <AppCard title="Filters" subtitle="Start with month, card and status on mobile.">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <AppInput v-model="monthYear" label="Month / Year" type="month" />
+
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Card</label>
+          <select v-model="cardFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option value="all">All</option>
+            <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+          </select>
+        </div>
 
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Type</label>
           <select v-model="typeFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
             <option value="all">All</option>
             <option v-for="entry in TRANSACTION_TYPES" :key="entry" :value="entry">{{ entry }}</option>
+          </select>
+        </div>
+
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Status</label>
+          <select v-model="statusFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option value="all">All</option>
+            <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
           </select>
         </div>
 
@@ -532,26 +548,10 @@ watch(monthYear, async () => {
         </div>
 
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Card</label>
-          <select v-model="cardFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-          </select>
-        </div>
-
-        <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Category</label>
           <select v-model="categoryFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
             <option value="all">All</option>
             <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-          </select>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Status</label>
-          <select v-model="statusFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
           </select>
         </div>
 
@@ -566,7 +566,7 @@ watch(monthYear, async () => {
       </div>
 
       <div class="mt-4">
-        <AppButton label="New transaction" block @click="openCreateModal" />
+        <AppButton label="New transaction" size="lg" block @click="openCreateModal" />
       </div>
     </AppCard>
 
@@ -576,40 +576,42 @@ watch(monthYear, async () => {
       title="Instances list"
       :subtitle="loading
         ? 'Loading data...'
-        : `${filteredRows.length} record(s) in ${monthYearLabel} • Expected balance: ${formatCurrency(totalExpected)} • Real balance: ${formatCurrency(totalReal)}`"
+        : `${filteredRows.length} record(s) in ${monthYearLabel} · Expected ${formatCurrency(totalExpected)} · Real ${formatCurrency(totalReal)}`"
     >
       <div class="space-y-3 md:hidden">
         <article
           v-for="row in filteredRows"
           :key="row.id"
-          class="rounded-2xl border border-border bg-surface p-4 shadow-soft"
+          class="rounded-2xl border border-border bg-surface p-3 shadow-soft"
         >
           <div class="flex items-start justify-between gap-2">
-            <div>
-              <p class="text-sm font-semibold text-foreground">{{ row.title }}</p>
-              <p class="text-xs text-muted">{{ row.instance_date }} • {{ row.origin_label }}</p>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold text-foreground">{{ row.title }}</p>
+              <p class="mt-1 text-[11px] uppercase tracking-[0.12em] text-muted">
+                {{ row.instance_date }} · {{ row.origin_label }}
+              </p>
             </div>
             <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize" :class="row.type === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
               {{ row.type }}
             </span>
           </div>
 
-          <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <p class="text-muted">Expected</p>
-              <p class="font-semibold text-foreground">{{ formatCurrency(Number(row.expected_value)) }}</p>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Expected</p>
+              <p class="mt-1 font-semibold text-foreground">{{ formatCurrency(Number(row.expected_value)) }}</p>
             </div>
-            <div>
-              <p class="text-muted">Real</p>
-              <p class="font-semibold text-foreground">{{ formatCurrency(row.real_value == null ? null : Number(row.real_value)) }}</p>
+            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Real</p>
+              <p class="mt-1 font-semibold text-foreground">{{ formatCurrency(row.real_value == null ? null : Number(row.real_value)) }}</p>
             </div>
-            <div>
-              <p class="text-muted">Installment</p>
-              <p class="font-semibold text-foreground">{{ row.installment_label }}</p>
+            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Card</p>
+              <p class="mt-1 truncate font-semibold text-foreground">{{ row.card_name }}</p>
             </div>
-            <div>
-              <p class="text-muted">Checked</p>
-              <p class="font-semibold" :class="row.checked_badge === 'Checked' ? 'text-emerald-700' : 'text-amber-700'">{{ row.checked_badge }}</p>
+            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Checked</p>
+              <p class="mt-1 font-semibold" :class="row.checked_badge === 'Checked' ? 'text-emerald-700' : 'text-amber-700'">{{ row.checked_badge }}</p>
             </div>
           </div>
 
@@ -624,9 +626,10 @@ watch(monthYear, async () => {
             </select>
           </div>
 
-          <div class="mt-4 grid gap-2">
-            <AppButton label="Edit" block @click="openEditModal(row as TransactionInstanceItem)" />
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <AppButton size="lg" label="Edit" block @click="openEditModal(row as TransactionInstanceItem)" />
             <AppButton
+              size="lg"
               :variant="row.is_checked ? 'secondary' : 'primary'"
               :label="row.is_checked ? 'Uncheck' : 'Check'"
               block
@@ -634,9 +637,11 @@ watch(monthYear, async () => {
             />
             <AppButton
               v-if="row.status !== 'canceled'"
+              size="lg"
               variant="danger"
               label="Cancel"
               block
+              class="col-span-2"
               @click="changeStatus(row as TransactionInstanceItem, 'canceled')"
             />
           </div>

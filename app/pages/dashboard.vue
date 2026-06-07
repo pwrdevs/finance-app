@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppCard from '~/components/common/AppCard.vue'
 import AppTable from '~/components/common/AppTable.vue'
+import type { CardItem } from '~/composables/useMasterData'
 import type { TransactionType } from '~/composables/useTransactions'
 
 definePageMeta({
@@ -8,10 +9,12 @@ definePageMeta({
 })
 
 const { getMonthlySummary } = useFinancialSummary()
+const { listCards } = useMasterData()
 const session = useSupabaseSession()
 
 const loading = ref(false)
 const pageError = ref('')
+const cards = ref<CardItem[]>([])
 
 const now = new Date()
 const selectedMonth = ref(String(now.getMonth() + 1).padStart(2, '0'))
@@ -25,6 +28,11 @@ const summary = ref({
   pendingTotal: 0,
   canceledTotal: 0,
   numberOfTransactions: 0,
+  cardStatements: [] as Array<{
+    card_id: string
+    totalExpense: number
+    transactionCount: number
+  }>,
   recentLaunches: [] as Array<{
     id: string
     title: string
@@ -75,6 +83,15 @@ const launchRows = computed(() => {
   }))
 })
 
+const cardStatementRows = computed(() => {
+  const cardMap = new Map(cards.value.map(card => [card.id, card.name]))
+
+  return summary.value.cardStatements.map((statement) => ({
+    ...statement,
+    card_name: cardMap.get(statement.card_id) || 'Unknown card'
+  }))
+})
+
 function formatCurrency(value: number) {
   return value.toFixed(2)
 }
@@ -88,12 +105,16 @@ async function fetchSummary() {
   pageError.value = ''
 
   try {
-    const data = await getMonthlySummary({
-      month: Number(selectedMonth.value),
-      year: Number(selectedYear.value)
-    })
+    const [data, cardList] = await Promise.all([
+      getMonthlySummary({
+        month: Number(selectedMonth.value),
+        year: Number(selectedYear.value)
+      }),
+      listCards()
+    ])
 
     summary.value = data
+    cards.value = cardList
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : 'Failed to load financial summary.'
   } finally {
@@ -178,6 +199,29 @@ watch(
         <p class="text-2xl font-semibold text-foreground">{{ summary.numberOfTransactions }}</p>
       </AppCard>
     </div>
+
+    <AppCard title="Card statement summary" subtitle="Expense-only totals by card. Canceled instances are excluded.">
+      <div v-if="cardStatementRows.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <article
+          v-for="statement in cardStatementRows"
+          :key="statement.card_id"
+          class="rounded-2xl border border-border bg-primary-light/20 p-4"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-foreground">{{ statement.card_name }}</p>
+              <p class="text-xs text-muted">{{ statement.transactionCount }} expense(s) this month</p>
+            </div>
+            <span class="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Card</span>
+          </div>
+          <p class="mt-4 text-2xl font-semibold text-foreground">{{ formatCurrency(statement.totalExpense) }}</p>
+        </article>
+      </div>
+
+      <p v-else class="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted">
+        No card expenses found for this month.
+      </p>
+    </AppCard>
 
     <AppCard title="Latest Launches" :subtitle="`${launchRows.length} record(s) in selected month`">
       <AppTable :columns="columns" :rows="launchRows" empty-message="No launches found for this period.">

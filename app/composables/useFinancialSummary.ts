@@ -15,7 +15,14 @@ interface TransactionInstanceSummaryRecord {
   status: TransactionStatus
   is_checked: boolean
   created_at: string
+  card_id: string | null
   source_transaction: SourceTransactionSummary | null
+}
+
+export interface CardStatementSummary {
+  card_id: string
+  totalExpense: number
+  transactionCount: number
 }
 
 export interface FinancialSummaryFilters {
@@ -44,6 +51,7 @@ export interface MonthlyFinancialSummary {
   pendingTotal: number
   canceledTotal: number
   numberOfTransactions: number
+  cardStatements: CardStatementSummary[]
   recentLaunches: MonthlyLaunchItem[]
 }
 
@@ -81,6 +89,7 @@ export function useFinancialSummary() {
         status,
         is_checked,
         created_at,
+        card_id,
         source_transaction:source_transaction_id (
           id,
           title,
@@ -131,6 +140,32 @@ export function useFinancialSummary() {
       .filter(item => item.status === 'canceled')
       .reduce((sum, item) => sum + item.expected_value, 0)
 
+    const cardStatementsMap = new Map<string, { totalExpense: number; transactionCount: number }>()
+
+    for (const row of rows) {
+      if (row.status === 'canceled') {
+        continue
+      }
+
+      if (row.source_transaction?.type !== 'expense' || !row.card_id) {
+        continue
+      }
+
+      const current = cardStatementsMap.get(row.card_id) || { totalExpense: 0, transactionCount: 0 }
+      cardStatementsMap.set(row.card_id, {
+        totalExpense: current.totalExpense + toNumber(row.expected_value),
+        transactionCount: current.transactionCount + 1
+      })
+    }
+
+    const cardStatements = Array.from(cardStatementsMap.entries())
+      .map(([card_id, value]) => ({
+        card_id,
+        totalExpense: value.totalExpense,
+        transactionCount: value.transactionCount
+      }))
+      .sort((left, right) => right.totalExpense - left.totalExpense)
+
     return {
       totalIncome,
       totalExpense,
@@ -139,6 +174,7 @@ export function useFinancialSummary() {
       pendingTotal,
       canceledTotal,
       numberOfTransactions: launches.length,
+      cardStatements,
       recentLaunches: launches.slice(0, 8)
     }
   }
