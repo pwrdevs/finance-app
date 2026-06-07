@@ -168,19 +168,21 @@ export function useFinancialSummary() {
       created_at: row.created_at
     }))
 
-    const totalIncome = launches
+    const activeLaunches = launches.filter(item => item.status !== 'canceled')
+
+    const totalIncome = activeLaunches
       .filter(item => item.type === 'income')
       .reduce((sum, item) => sum + item.expected_value, 0)
 
-    const totalExpense = launches
+    const totalExpense = activeLaunches
       .filter(item => item.type === 'expense')
       .reduce((sum, item) => sum + item.expected_value, 0)
 
-    const checkedTotal = launches
+    const checkedTotal = activeLaunches
       .filter(item => item.is_checked)
       .reduce((sum, item) => sum + item.expected_value, 0)
 
-    const pendingTotal = launches
+    const pendingTotal = activeLaunches
       .filter(item => item.status === 'pending')
       .reduce((sum, item) => sum + item.expected_value, 0)
 
@@ -221,7 +223,7 @@ export function useFinancialSummary() {
       checkedTotal,
       pendingTotal,
       canceledTotal,
-      numberOfTransactions: launches.length,
+      numberOfTransactions: activeLaunches.length,
       cardStatements,
       recentLaunches: launches.slice(0, 8)
     }

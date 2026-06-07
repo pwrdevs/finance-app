@@ -132,3 +132,7 @@
 - 2026-06-07: Added accumulated balance projection in `useFinancialSummary` using `accounts.initial_balance` + `transaction_instances` month-by-month movement for a 12-month horizon (`income` adds, `expense` subtracts, `canceled` excluded, `real_value` overrides `expected_value` when present).
 - 2026-06-07: Dashboard gained `Accumulated balance projection` section showing initial balance, selected month balance, accumulated balance after selected month, and the next 12 projected months.
 - 2026-06-07: Validation passed for projection build/runtime wiring and mixed launch logic (single/installment/recurring) based on `transaction_instances` typed source processing.
+- 2026-06-07: MVP QA and polish phase completed across `transactions`, `dashboard`, and `cards` with updated labels, clearer error/empty states, and mobile-first action clarity.
+- 2026-06-07: Dashboard financial consistency hardened so canceled instances are excluded from main totals (`income`, `expense`, `net`, `pending`, `reconciled`, and active launch count), while canceled remains visible in dedicated canceled metrics.
+- 2026-06-07: Cards UX updated with billing-cycle emphasis (`closing_day`/`due_day`) and responsive mobile cards to prepare statement-oriented flows.
+- 2026-06-07: Responsiveness revalidated for desktop/tablet/mobile in critical routes (`/dashboard`, `/transactions`, `/cards`) and production build passed after polish changes.

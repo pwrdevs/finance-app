@@ -168,7 +168,7 @@ watch(
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dashboard</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Monthly Financial Summary</h2>
-      <p class="mt-2 text-sm text-muted">Summary based on transaction_instances as the primary financial source.</p>
+      <p class="mt-2 text-sm text-muted">Summary based on transaction_instances. Main totals exclude canceled launches.</p>
     </div>
 
     <AppCard title="Filters" :subtitle="loading ? 'Loading monthly data...' : 'Choose month and year to refresh the summary.'">
@@ -192,25 +192,25 @@ watch(
     <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
 
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <AppCard title="Total Income">
+      <AppCard title="Income (active)">
         <p class="text-2xl font-semibold text-emerald-700">{{ formatCurrency(summary.totalIncome) }}</p>
       </AppCard>
 
-      <AppCard title="Total Expense">
+      <AppCard title="Expense (active)">
         <p class="text-2xl font-semibold text-rose-700">{{ formatCurrency(summary.totalExpense) }}</p>
       </AppCard>
 
-      <AppCard title="Monthly Balance">
+      <AppCard title="Net month (active)">
         <p class="text-2xl font-semibold" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
           {{ formatCurrency(summary.monthlyBalance) }}
         </p>
       </AppCard>
 
-      <AppCard title="Checked Total">
+      <AppCard title="Reconciled (active)">
         <p class="text-2xl font-semibold text-foreground">{{ formatCurrency(summary.checkedTotal) }}</p>
       </AppCard>
 
-      <AppCard title="Pending Total">
+      <AppCard title="Pending (active)">
         <p class="text-2xl font-semibold text-foreground">{{ formatCurrency(summary.pendingTotal) }}</p>
       </AppCard>
 
@@ -218,12 +218,12 @@ watch(
         <p class="text-2xl font-semibold text-foreground">{{ formatCurrency(summary.canceledTotal) }}</p>
       </AppCard>
 
-      <AppCard title="Number of Transactions">
+      <AppCard title="Active launches">
         <p class="text-2xl font-semibold text-foreground">{{ summary.numberOfTransactions }}</p>
       </AppCard>
     </div>
 
-    <AppCard title="Card statement summary" subtitle="Expense-only totals by card. Canceled instances are excluded.">
+    <AppCard title="Card statement summary" subtitle="Expense-only totals by card. Canceled launches are excluded.">
       <div v-if="cardStatementRows.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <article
           v-for="statement in cardStatementRows"
@@ -233,7 +233,7 @@ watch(
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="text-sm font-semibold text-foreground">{{ statement.card_name }}</p>
-              <p class="text-xs text-muted">{{ statement.transactionCount }} expense(s) this month</p>
+              <p class="text-xs text-muted">{{ statement.transactionCount }} expense(s) in selected month</p>
             </div>
             <span class="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Card</span>
           </div>
@@ -246,7 +246,7 @@ watch(
       </p>
     </AppCard>
 
-    <AppCard title="Accumulated balance projection" subtitle="12-month projection based on account initial balances and transaction instances.">
+    <AppCard title="Accumulated balance projection" subtitle="12-month projection using account opening balances and instance movements.">
       <div class="grid gap-4 md:grid-cols-3">
         <article class="rounded-2xl border border-border bg-primary-light/20 p-4">
           <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Initial balance</p>
@@ -272,7 +272,27 @@ watch(
         </article>
       </div>
 
-      <div class="mt-4 overflow-x-auto">
+      <div class="mt-4 space-y-3 md:hidden">
+        <article
+          v-for="row in projectionRows"
+          :key="`mobile-${row.monthKey}`"
+          class="rounded-2xl border border-border bg-surface p-3"
+        >
+          <p class="text-sm font-semibold text-foreground">{{ row.monthLabel }}</p>
+          <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded-xl bg-primary-light/20 px-2.5 py-2">
+              <p class="uppercase tracking-[0.12em] text-muted">Month</p>
+              <p class="mt-1 font-semibold" :class="row.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">{{ formatCurrency(row.monthBalance) }}</p>
+            </div>
+            <div class="rounded-xl bg-primary-light/20 px-2.5 py-2">
+              <p class="uppercase tracking-[0.12em] text-muted">Accumulated</p>
+              <p class="mt-1 font-semibold" :class="row.accumulatedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">{{ formatCurrency(row.accumulatedBalance) }}</p>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="mt-4 hidden overflow-x-auto md:block">
         <table class="min-w-full text-sm">
           <thead>
             <tr class="border-b border-border text-left text-xs uppercase tracking-[0.12em] text-muted">

@@ -38,6 +38,7 @@ const columns = [
   { key: 'name', label: 'Name' },
   { key: 'person_name', label: 'Person' },
   { key: 'brand', label: 'Brand' },
+  { key: 'billing_cycle', label: 'Billing cycle' },
   { key: 'closing_day', label: 'Closing day', align: 'center' as const },
   { key: 'due_day', label: 'Due day', align: 'center' as const },
   { key: 'credit_limit', label: 'Credit limit', align: 'right' as const },
@@ -88,6 +89,13 @@ const filteredRows = computed(() => {
       ...row,
       person_name: peopleMap.value.get(row.person_id) || 'Unknown person',
       status: row.is_active ? 'Active' : 'Inactive',
+      billing_cycle: row.closing_day && row.due_day
+        ? `Closes day ${row.closing_day} • due day ${row.due_day}`
+        : row.closing_day
+          ? `Closes day ${row.closing_day}`
+          : row.due_day
+            ? `Due day ${row.due_day}`
+            : 'Not configured',
       closing_day: row.closing_day ?? '—',
       due_day: row.due_day ?? '—',
       credit_limit: row.credit_limit == null ? '—' : Number(row.credit_limit).toFixed(2)
@@ -241,7 +249,7 @@ onMounted(async () => {
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Master Data</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Cards</h2>
-      <p class="mt-2 text-sm text-muted">Manage credit cards linked to existing people.</p>
+      <p class="mt-2 text-sm text-muted">Manage credit cards, billing cycles, and statement-ready metadata.</p>
     </div>
 
     <AppCard title="Filters">
@@ -265,14 +273,70 @@ onMounted(async () => {
           </select>
         </div>
 
-        <AppButton label="New card" @click="openCreateModal" />
+        <AppButton label="New card" size="lg" @click="openCreateModal" />
       </div>
     </AppCard>
 
     <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
 
     <AppCard title="Cards list" :subtitle="loading ? 'Loading data...' : `${filteredRows.length} record(s)`">
-      <AppTable :columns="columns" :rows="filteredRows" empty-message="No cards found.">
+      <div class="space-y-3 md:hidden">
+        <article
+          v-for="row in filteredRows"
+          :key="row.id"
+          class="rounded-2xl border border-border bg-surface p-3"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold text-foreground">{{ row.name }}</p>
+              <p class="mt-1 text-xs text-muted">{{ row.person_name }} · {{ row.brand || 'No brand' }}</p>
+            </div>
+            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="row.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
+              {{ row.status }}
+            </span>
+          </div>
+
+          <div class="mt-3 space-y-2 text-xs">
+            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+              <p class="uppercase tracking-[0.12em] text-muted">Billing cycle</p>
+              <p class="mt-1 font-semibold text-foreground">{{ row.billing_cycle }}</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+                <p class="uppercase tracking-[0.12em] text-muted">Closing</p>
+                <p class="mt-1 font-semibold text-foreground">{{ row.closing_day }}</p>
+              </div>
+              <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+                <p class="uppercase tracking-[0.12em] text-muted">Due</p>
+                <p class="mt-1 font-semibold text-foreground">{{ row.due_day }}</p>
+              </div>
+            </div>
+            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
+              <p class="uppercase tracking-[0.12em] text-muted">Credit limit</p>
+              <p class="mt-1 font-semibold text-foreground">{{ row.credit_limit }}</p>
+            </div>
+          </div>
+
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <AppButton size="lg" variant="ghost" label="Edit" block @click="openEditModal(row as CardItem)" />
+            <AppButton
+              v-if="(row as CardItem).is_active"
+              size="lg"
+              variant="danger"
+              label="Disable"
+              block
+              @click="deactivate(row as CardItem)"
+            />
+          </div>
+        </article>
+
+        <p v-if="!filteredRows.length" class="rounded-xl border border-border bg-surface px-4 py-5 text-center text-sm text-muted">
+          No cards found. Create one to prepare future statement tracking.
+        </p>
+      </div>
+
+      <div class="hidden md:block">
+        <AppTable :columns="columns" :rows="filteredRows" empty-message="No cards found.">
         <template #cell-status="{ value }">
           <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
             {{ value }}
@@ -291,7 +355,8 @@ onMounted(async () => {
             />
           </div>
         </template>
-      </AppTable>
+        </AppTable>
+      </div>
     </AppCard>
 
     <AppModal v-model="isModalOpen" :title="editingId ? 'Edit card' : 'New card'" description="Create or update a card record.">

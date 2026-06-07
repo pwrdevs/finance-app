@@ -6,7 +6,6 @@ import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import {
   RECURRING_SCOPE,
-  TRANSACTION_ORIGIN_TYPES,
   TRANSACTION_STATUS,
   TRANSACTION_TYPES,
   type RecurringScope,
@@ -98,6 +97,18 @@ const columns = [
   { key: 'actions', label: 'Actions', align: 'right' as const }
 ]
 
+const originTypeOptions = [
+  { value: 'single', label: 'Single launch' },
+  { value: 'installment', label: 'Installment purchase' },
+  { value: 'recurring', label: 'Recurring monthly launch' }
+] as const
+
+const originTypeLabelMap: Record<TransactionOriginType, string> = {
+  single: 'Single',
+  installment: 'Installment',
+  recurring: 'Recurring'
+}
+
 const recurringScopeOptions = [
   { value: 'single', label: 'Only this instance' },
   { value: 'future', label: 'This and future instances' },
@@ -110,6 +121,18 @@ const cardsMap = computed(() => new Map(cards.value.map(entry => [entry.id, entr
 const categoriesMap = computed(() => new Map(categories.value.map(entry => [entry.id, entry.name])))
 
 const isEditingRecurring = computed(() => editingRow.value?.origin_type === 'recurring')
+
+const originTypeHint = computed(() => {
+  if (formOriginType.value === 'single') {
+    return 'Creates one instance for the selected date.'
+  }
+
+  if (formOriginType.value === 'installment') {
+    return 'Splits the total purchase into monthly card installments.'
+  }
+
+  return 'Generates monthly instances (up to 12 months in current MVP).'
+})
 
 const monthYearLabel = computed(() => {
   const date = new Date(`${monthYear.value}-01T00:00:00`)
@@ -142,7 +165,7 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
-      origin_label: row.origin_type,
+      origin_label: originTypeLabelMap[row.origin_type],
       installment_label: row.origin_type === 'installment' && row.installment_number && row.installment_total
         ? `${row.installment_number}/${row.installment_total}`
         : '—',
@@ -276,7 +299,7 @@ async function fetchRows() {
     const period = parseMonthYear(monthYear.value)
     rows.value = await listManualInstances(period)
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to load transactions.'
+    pageError.value = err instanceof Error ? err.message : 'Unable to load transactions for the selected month.'
   } finally {
     loading.value = false
   }
@@ -290,7 +313,7 @@ async function fetchOptions() {
     cards.value = options.cards
     categories.value = options.categories
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to load form filters.'
+    pageError.value = err instanceof Error ? err.message : 'Unable to load filters and form options.'
   }
 }
 
@@ -298,13 +321,13 @@ async function submitForm() {
   modalError.value = ''
 
   if (!formTitle.value.trim()) {
-    modalError.value = 'Title is required.'
+    modalError.value = 'Title is required to save this launch.'
     return
   }
 
   const parsedExpected = Number(formExpectedValue.value)
-  if (Number.isNaN(parsedExpected)) {
-    modalError.value = 'Expected value must be a valid number.'
+  if (Number.isNaN(parsedExpected) || parsedExpected <= 0) {
+    modalError.value = 'Expected value must be a valid number greater than zero.'
     return
   }
 
@@ -315,7 +338,7 @@ async function submitForm() {
   }
 
   if (formOriginType.value === 'single' && (!formDueDate.value || !formInstanceDate.value)) {
-    modalError.value = 'Due date and instance date are required.'
+    modalError.value = 'Due date and instance date are required for a single launch.'
     return
   }
 
@@ -432,7 +455,7 @@ async function submitForm() {
     isModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    modalError.value = err instanceof Error ? err.message : 'Failed to save transaction.'
+    modalError.value = err instanceof Error ? err.message : 'Unable to save this transaction right now.'
   } finally {
     saving.value = false
   }
@@ -445,7 +468,7 @@ async function toggleChecked(row: TransactionInstanceItem) {
     await setChecked(row, !row.is_checked)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to update checked state.'
+    pageError.value = err instanceof Error ? err.message : 'Unable to update reconciliation status.'
   }
 }
 
@@ -461,7 +484,7 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
     await setStatus(row, nextStatus)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to update status.'
+    pageError.value = err instanceof Error ? err.message : 'Unable to update transaction status.'
   }
 }
 
@@ -480,7 +503,7 @@ async function confirmRecurringCancel() {
     isCancelModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    cancelError.value = err instanceof Error ? err.message : 'Failed to cancel recurring transaction.'
+    cancelError.value = err instanceof Error ? err.message : 'Unable to cancel recurring transaction for the selected scope.'
   } finally {
     cancelSaving.value = false
   }
@@ -500,7 +523,7 @@ watch(monthYear, async () => {
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Transactions</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Financial Launches</h2>
-      <p class="mt-2 text-sm text-muted">Single, installment and recurring transactions using transaction_instances as the financial source.</p>
+      <p class="mt-2 text-sm text-muted">Single, installment, and recurring launches. Financial calculations use transaction_instances as source of truth.</p>
     </div>
 
     <AppCard title="Filters" subtitle="Start with month, card and status on mobile.">
@@ -631,7 +654,7 @@ watch(monthYear, async () => {
             <AppButton
               size="lg"
               :variant="row.is_checked ? 'secondary' : 'primary'"
-              :label="row.is_checked ? 'Uncheck' : 'Check'"
+              :label="row.is_checked ? 'Undo reconcile' : 'Reconcile'"
               block
               @click="toggleChecked(row as TransactionInstanceItem)"
             />
@@ -648,7 +671,7 @@ watch(monthYear, async () => {
         </article>
 
         <p v-if="!filteredRows.length" class="rounded-xl border border-border bg-surface px-4 py-5 text-center text-sm text-muted">
-          No transactions found for this period.
+          No transactions found for this period. Try changing filters or create a new launch.
         </p>
       </div>
 
@@ -665,7 +688,7 @@ watch(monthYear, async () => {
           </template>
 
           <template #cell-origin_label="{ value }">
-            <span class="capitalize">{{ value }}</span>
+            <span>{{ value }}</span>
           </template>
 
           <template #cell-expected_value="{ value }">
@@ -698,7 +721,7 @@ watch(monthYear, async () => {
               <AppButton
                 size="sm"
                 :variant="(row as TransactionInstanceItem).is_checked ? 'secondary' : 'primary'"
-                :label="(row as TransactionInstanceItem).is_checked ? 'Uncheck' : 'Check'"
+                :label="(row as TransactionInstanceItem).is_checked ? 'Undo reconcile' : 'Reconcile'"
                 @click="toggleChecked(row as TransactionInstanceItem)"
               />
               <AppButton
@@ -726,9 +749,10 @@ watch(monthYear, async () => {
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Origin Type</label>
           <select v-model="formOriginType" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
-            <option v-for="entry in TRANSACTION_ORIGIN_TYPES" :key="entry" :value="entry">{{ entry }}</option>
+            <option v-for="entry in originTypeOptions" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
           </select>
           <p v-if="editingRow" class="text-xs text-muted">Origin type cannot be changed in edit mode.</p>
+          <p v-else class="text-xs text-muted">{{ originTypeHint }}</p>
         </div>
 
         <div class="space-y-2">
