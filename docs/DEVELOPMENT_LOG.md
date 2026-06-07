@@ -110,3 +110,7 @@
 - 2026-06-07: Manual create flow implemented as dual write: insert parent row in `transactions` with `origin_type = 'single'` and linked row in `transaction_instances` via `source_transaction_id`.
 - 2026-06-07: Actions implemented for manual launches: create, edit instance data (with source transaction sync for single launches), toggle checked, update status, and soft cancel through `status = 'canceled'`.
 - 2026-06-07: Authenticated browser validation on `/transactions` passed for required checks: create income, create expense, edit `real_value`, mark checked, cancel status; records remained after reload, confirming persistence in Supabase.
+- 2026-06-07: First real financial dashboard delivered with new composable `useFinancialSummary` and `/dashboard` rewrite using `transaction_instances` as primary source.
+- 2026-06-07: Dashboard now supports month/year filters and summary cards for total income, total expense, monthly balance, checked total, pending total, canceled total, and number of transactions.
+- 2026-06-07: Dashboard now lists latest launches for the selected month with type/status/checked indicators.
+- 2026-06-07: Authenticated validation passed on `/dashboard`: totals matched current month launches (`income=6000.00`, `expense=1220.00`, `balance=4780.00`, `checked=6000.00`, `pending=6000.00`, `canceled=1220.00`, `count=4`) and month filter behavior was confirmed (`May=0`, `June=loaded data`).
