@@ -98,3 +98,6 @@
 - 2026-06-07: Setup page now shows real record counts for `people`, `accounts`, `categories`, and `cards` using Supabase head-count queries.
 - 2026-06-07: Dev server validated from `/tmp/finance-app-dev` mirror due OneDrive `ETIMEDOUT` file-read instability in local workspace; routes and middleware behavior confirmed on running app.
 - 2026-06-07: Full authenticated CRUD persistence validation is pending confirmed Supabase credentials because sign-up currently requires email confirmation before login.
+- 2026-06-07: Migration fix `002_fix_authenticated_grants.sql` created and applied to Supabase to grant `authenticated` access on schema `public` and CRUD privileges on `profiles`, `people`, `accounts`, `categories`, and `cards` (no table/RLS/policy structure changes).
+- 2026-06-07: Post-fix database validation confirmed `authenticated` requests now return `200` for `profiles`, `people`, `accounts`, `categories`, and `cards`; `anon` remains blocked with `401 permission denied` across all core tables.
+- 2026-06-07: Phase 3 revalidation executed after grant fix: create/edit flows succeeded for people/accounts/categories/cards in app UI and persisted in Supabase; soft-disable behavior was validated by authenticated REST updates (`is_active=false`) with persisted state confirmed by subsequent reads.
