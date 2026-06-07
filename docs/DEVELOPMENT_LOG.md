@@ -105,3 +105,8 @@
 - 2026-06-07: Post-apply remote validation confirmed `transactions`, `recurrence_rules`, and `transaction_instances` exist and main indexes were created, including `uq_transaction_instances_user_recurrence_instance_date`.
 - 2026-06-07: Validation confirmed `anon` remains blocked on new tables (`401 permission denied` on REST reads) and migration state is synchronized (`003` local = `003` remote).
 - 2026-06-07: Remote lint on schema `public` returned no errors after migration 003 (`supabase db lint --linked`).
+- 2026-06-07: Phase 4 transactions foundation delivered with new composable `useTransactions` and new authenticated page `/transactions` focused on manual single launches.
+- 2026-06-07: Sidebar navigation updated to include `Transactions`; page now lists `transaction_instances` as the primary financial source with month/year and business filters (type, person, card, account, category, status, checked).
+- 2026-06-07: Manual create flow implemented as dual write: insert parent row in `transactions` with `origin_type = 'single'` and linked row in `transaction_instances` via `source_transaction_id`.
+- 2026-06-07: Actions implemented for manual launches: create, edit instance data (with source transaction sync for single launches), toggle checked, update status, and soft cancel through `status = 'canceled'`.
+- 2026-06-07: Authenticated browser validation on `/transactions` passed for required checks: create income, create expense, edit `real_value`, mark checked, cancel status; records remained after reload, confirming persistence in Supabase.

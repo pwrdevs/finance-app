@@ -10,6 +10,7 @@ const sidebarLinks = [
   { label: 'Accounts', to: '/accounts' },
   { label: 'Categories', to: '/categories' },
   { label: 'Cards', to: '/cards' },
+  { label: 'Transactions', to: '/transactions' },
   { label: 'Setup', to: '/setup' }
 ]
 
