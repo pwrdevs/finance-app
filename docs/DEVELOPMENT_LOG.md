@@ -78,3 +78,9 @@
 - 2026-06-02: Enum strategy finalized for MVP: text columns plus CHECK constraints instead of PostgreSQL enums.
 - 2026-06-02: Installment integrity rules documented (minimum values, number <= total, and all-null/all-filled installment fields).
 - 2026-06-02: Future attachments feature aligned to global timestamp convention by including both created_at and updated_at.
+- 2026-06-02: Migration 001 SQL created for profiles, accounts, people, cards and categories with UUID PKs, timestamps, user_id, standard FKs, basic indexes, RLS and user-scoped policies.
+- 2026-06-02: profiles.full_name kept nullable in migration to support first-login onboarding before user profile completion.
+- 2026-06-02: cards.person_id uses standard FK to people(id) in MVP; multi-tenant ownership integrity between cards.user_id and people.user_id is protected by RLS (user_id = auth.uid()), with future option to harden via trigger or composite FK.
+- 2026-06-02: Migration file generated for review only and not applied/executed against Supabase yet.
+- 2026-06-03: Migration 001 applied to the linked Supabase project.
+- 2026-06-03: Post-apply validation confirmed profiles, people, accounts, categories and cards exist; RLS is enabled; policies were created; and the planned indexes are present.
