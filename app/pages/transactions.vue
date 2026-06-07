@@ -5,9 +5,11 @@ import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import {
+  RECURRING_SCOPE,
   TRANSACTION_ORIGIN_TYPES,
   TRANSACTION_STATUS,
   TRANSACTION_TYPES,
+  type RecurringScope,
   type TransactionOriginType,
   type TransactionInstanceItem,
   type TransactionStatus,
@@ -20,18 +22,22 @@ definePageMeta({
 })
 
 const {
+  cancelRecurringTransaction,
   createTransaction,
   listFilterOptions,
   listManualInstances,
   setChecked,
   setStatus,
+  updateRecurringTransaction,
   updateTransactionInstance
 } = useTransactions()
 
 const loading = ref(false)
 const saving = ref(false)
+const cancelSaving = ref(false)
 const pageError = ref('')
 const modalError = ref('')
+const cancelError = ref('')
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
 const typeFilter = ref<'all' | TransactionType>('all')
@@ -49,7 +55,9 @@ const cards = ref<CardItem[]>([])
 const categories = ref<CategoryItem[]>([])
 
 const isModalOpen = ref(false)
+const isCancelModalOpen = ref(false)
 const editingRow = ref<TransactionInstanceItem | null>(null)
+const cancelTargetRow = ref<TransactionInstanceItem | null>(null)
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
@@ -60,6 +68,11 @@ const formDueDate = ref('')
 const formInstanceDate = ref('')
 const formInstallmentTotal = ref('2')
 const formInstallmentStartDate = ref('')
+const formRecurringStartDate = ref('')
+const formRecurringEndDate = ref('')
+const formRecurringNoEndDate = ref(true)
+const formRecurringScope = ref<RecurringScope>('single')
+const cancelRecurringScope = ref<RecurringScope>('single')
 const formPersonId = ref('')
 const formAccountId = ref('')
 const formCardId = ref('')
@@ -71,6 +84,7 @@ const formChecked = ref(false)
 const columns = [
   { key: 'instance_date', label: 'Date' },
   { key: 'title', label: 'Title' },
+  { key: 'origin_label', label: 'Origin' },
   { key: 'installment_label', label: 'Installment' },
   { key: 'type', label: 'Type' },
   { key: 'expected_value', label: 'Expected', align: 'right' as const },
@@ -84,10 +98,18 @@ const columns = [
   { key: 'actions', label: 'Actions', align: 'right' as const }
 ]
 
+const recurringScopeOptions = [
+  { value: 'single', label: 'Only this instance' },
+  { value: 'future', label: 'This and future instances' },
+  { value: 'series', label: 'Full series (future only)' }
+] as const
+
 const peopleMap = computed(() => new Map(people.value.map(entry => [entry.id, entry.name])))
 const accountsMap = computed(() => new Map(accounts.value.map(entry => [entry.id, entry.name])))
 const cardsMap = computed(() => new Map(cards.value.map(entry => [entry.id, entry.name])))
 const categoriesMap = computed(() => new Map(categories.value.map(entry => [entry.id, entry.name])))
+
+const isEditingRecurring = computed(() => editingRow.value?.origin_type === 'recurring')
 
 const monthYearLabel = computed(() => {
   const date = new Date(`${monthYear.value}-01T00:00:00`)
@@ -120,6 +142,7 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
+      origin_label: row.origin_type,
       installment_label: row.origin_type === 'installment' && row.installment_number && row.installment_total
         ? `${row.installment_number}/${row.installment_total}`
         : '—',
@@ -168,6 +191,10 @@ function resetForm() {
   formInstanceDate.value = `${monthYear.value}-01`
   formInstallmentTotal.value = '2'
   formInstallmentStartDate.value = `${monthYear.value}-01`
+  formRecurringStartDate.value = `${monthYear.value}-01`
+  formRecurringEndDate.value = ''
+  formRecurringNoEndDate.value = true
+  formRecurringScope.value = 'single'
   formPersonId.value = ''
   formAccountId.value = ''
   formCardId.value = ''
@@ -181,7 +208,7 @@ function resetForm() {
 function fillFormFromRow(row: TransactionInstanceItem) {
   editingRow.value = row
   formTitle.value = row.title
-  formOriginType.value = row.origin_type === 'installment' ? 'installment' : 'single'
+  formOriginType.value = row.origin_type
   formType.value = row.type
   formExpectedValue.value = String(row.expected_value)
   formRealValue.value = row.real_value == null ? '' : String(row.real_value)
@@ -189,6 +216,10 @@ function fillFormFromRow(row: TransactionInstanceItem) {
   formInstanceDate.value = row.instance_date
   formInstallmentTotal.value = String(row.installment_total ?? 2)
   formInstallmentStartDate.value = row.instance_date
+  formRecurringStartDate.value = row.due_date
+  formRecurringEndDate.value = ''
+  formRecurringNoEndDate.value = false
+  formRecurringScope.value = 'single'
   formPersonId.value = row.person_id ?? ''
   formAccountId.value = row.account_id ?? ''
   formCardId.value = row.card_id ?? ''
@@ -207,6 +238,13 @@ function openCreateModal() {
 function openEditModal(row: TransactionInstanceItem) {
   fillFormFromRow(row)
   isModalOpen.value = true
+}
+
+function openRecurringCancelModal(row: TransactionInstanceItem) {
+  cancelTargetRow.value = row
+  cancelRecurringScope.value = 'single'
+  cancelError.value = ''
+  isCancelModalOpen.value = true
 }
 
 function parseOptionalNumber(value: string) {
@@ -276,11 +314,9 @@ async function submitForm() {
     return
   }
 
-  if (!formDueDate.value || !formInstanceDate.value) {
-    if (formOriginType.value === 'single') {
-      modalError.value = 'Due date and instance date are required.'
-      return
-    }
+  if (formOriginType.value === 'single' && (!formDueDate.value || !formInstanceDate.value)) {
+    modalError.value = 'Due date and instance date are required.'
+    return
   }
 
   const parsedInstallmentTotal = Number(formInstallmentTotal.value)
@@ -302,30 +338,71 @@ async function submitForm() {
     }
   }
 
+  if (formOriginType.value === 'recurring') {
+    if (!formRecurringStartDate.value) {
+      modalError.value = 'Recurring start date is required.'
+      return
+    }
+
+    if (!editingRow.value && !formRecurringNoEndDate.value && !formRecurringEndDate.value) {
+      modalError.value = 'Recurring end date is required when no end date is disabled.'
+      return
+    }
+
+    if (formRecurringEndDate.value && formRecurringEndDate.value < formRecurringStartDate.value) {
+      modalError.value = 'Recurring end date must be greater than or equal to start date.'
+      return
+    }
+  }
+
   saving.value = true
 
   try {
     if (editingRow.value) {
-      await updateTransactionInstance(
-        editingRow.value.id,
-        {
-          title: formTitle.value,
-          type: formType.value,
-          expected_value: parsedExpected,
-          real_value: parsedReal,
-          due_date: formDueDate.value,
-          instance_date: formInstanceDate.value,
-          person_id: formPersonId.value || null,
-          account_id: formAccountId.value || null,
-          card_id: formCardId.value || null,
-          category_id: formCategoryId.value || null,
-          description: formDescription.value,
-          status: formStatus.value,
-          is_checked: formChecked.value
-        },
-        editingRow.value.source_transaction_id,
-        editingRow.value.origin_type
-      )
+      if (editingRow.value.origin_type === 'recurring') {
+        await updateRecurringTransaction(
+          editingRow.value,
+          {
+            title: formTitle.value,
+            type: formType.value,
+            expected_value: parsedExpected,
+            real_value: parsedReal,
+            due_date: formDueDate.value,
+            instance_date: formInstanceDate.value,
+            person_id: formPersonId.value || null,
+            account_id: formAccountId.value || null,
+            card_id: formCardId.value || null,
+            category_id: formCategoryId.value || null,
+            description: formDescription.value,
+            status: formStatus.value,
+            is_checked: formChecked.value,
+            recurring_end_date: formRecurringNoEndDate.value ? null : (formRecurringEndDate.value || null),
+            recurring_no_end_date: formRecurringNoEndDate.value
+          },
+          formRecurringScope.value
+        )
+      } else {
+        await updateTransactionInstance(
+          editingRow.value.id,
+          {
+            title: formTitle.value,
+            type: formType.value,
+            expected_value: parsedExpected,
+            real_value: parsedReal,
+            due_date: formDueDate.value,
+            instance_date: formInstanceDate.value,
+            person_id: formPersonId.value || null,
+            account_id: formAccountId.value || null,
+            card_id: formCardId.value || null,
+            category_id: formCategoryId.value || null,
+            description: formDescription.value,
+            status: formStatus.value,
+            is_checked: formChecked.value
+          },
+          editingRow.value.source_transaction_id,
+          editingRow.value.origin_type
+        )
+      }
     } else {
       await createTransaction({
         origin_type: formOriginType.value,
@@ -337,6 +414,11 @@ async function submitForm() {
         instance_date: formOriginType.value === 'single' ? formInstanceDate.value : formInstallmentStartDate.value,
         installment_total: formOriginType.value === 'installment' ? parsedInstallmentTotal : undefined,
         installment_start_date: formOriginType.value === 'installment' ? formInstallmentStartDate.value : undefined,
+        recurring_start_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : undefined,
+        recurring_end_date: formOriginType.value === 'recurring' && !formRecurringNoEndDate.value
+          ? (formRecurringEndDate.value || null)
+          : null,
+        recurring_no_end_date: formOriginType.value === 'recurring' ? formRecurringNoEndDate.value : undefined,
         person_id: formPersonId.value || null,
         account_id: formAccountId.value || null,
         card_id: formCardId.value || null,
@@ -370,11 +452,37 @@ async function toggleChecked(row: TransactionInstanceItem) {
 async function changeStatus(row: TransactionInstanceItem, nextStatus: TransactionStatus) {
   pageError.value = ''
 
+  if (row.origin_type === 'recurring' && nextStatus === 'canceled') {
+    openRecurringCancelModal(row)
+    return
+  }
+
   try {
     await setStatus(row, nextStatus)
     await fetchRows()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Failed to update status.'
+  }
+}
+
+async function confirmRecurringCancel() {
+  cancelError.value = ''
+
+  if (!cancelTargetRow.value) {
+    cancelError.value = 'No recurring transaction selected for cancellation.'
+    return
+  }
+
+  cancelSaving.value = true
+
+  try {
+    await cancelRecurringTransaction(cancelTargetRow.value, cancelRecurringScope.value)
+    isCancelModalOpen.value = false
+    await fetchRows()
+  } catch (err) {
+    cancelError.value = err instanceof Error ? err.message : 'Failed to cancel recurring transaction.'
+  } finally {
+    cancelSaving.value = false
   }
 }
 
@@ -391,8 +499,8 @@ watch(monthYear, async () => {
   <section class="space-y-6">
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Transactions</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Manual Launches</h2>
-      <p class="mt-2 text-sm text-muted">Single transactions using transaction_instances as the financial source.</p>
+      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Financial Launches</h2>
+      <p class="mt-2 text-sm text-muted">Single, installment and recurring transactions using transaction_instances as the financial source.</p>
     </div>
 
     <AppCard title="Filters">
@@ -457,8 +565,8 @@ watch(monthYear, async () => {
         </div>
       </div>
 
-      <div class="mt-4 flex justify-end">
-        <AppButton label="New transaction" @click="openCreateModal" />
+      <div class="mt-4">
+        <AppButton label="New transaction" block @click="openCreateModal" />
       </div>
     </AppCard>
 
@@ -470,66 +578,142 @@ watch(monthYear, async () => {
         ? 'Loading data...'
         : `${filteredRows.length} record(s) in ${monthYearLabel} • Expected balance: ${formatCurrency(totalExpected)} • Real balance: ${formatCurrency(totalReal)}`"
     >
-      <AppTable :columns="columns" :rows="filteredRows" empty-message="No transactions found for this period.">
-        <template #cell-instance_date="{ value }">
-          {{ String(value) }}
-        </template>
+      <div class="space-y-3 md:hidden">
+        <article
+          v-for="row in filteredRows"
+          :key="row.id"
+          class="rounded-2xl border border-border bg-surface p-4 shadow-soft"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="text-sm font-semibold text-foreground">{{ row.title }}</p>
+              <p class="text-xs text-muted">{{ row.instance_date }} • {{ row.origin_label }}</p>
+            </div>
+            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize" :class="row.type === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
+              {{ row.type }}
+            </span>
+          </div>
 
-        <template #cell-type="{ value }">
-          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize" :class="value === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
-            {{ value }}
-          </span>
-        </template>
+          <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <p class="text-muted">Expected</p>
+              <p class="font-semibold text-foreground">{{ formatCurrency(Number(row.expected_value)) }}</p>
+            </div>
+            <div>
+              <p class="text-muted">Real</p>
+              <p class="font-semibold text-foreground">{{ formatCurrency(row.real_value == null ? null : Number(row.real_value)) }}</p>
+            </div>
+            <div>
+              <p class="text-muted">Installment</p>
+              <p class="font-semibold text-foreground">{{ row.installment_label }}</p>
+            </div>
+            <div>
+              <p class="text-muted">Checked</p>
+              <p class="font-semibold" :class="row.checked_badge === 'Checked' ? 'text-emerald-700' : 'text-amber-700'">{{ row.checked_badge }}</p>
+            </div>
+          </div>
 
-        <template #cell-expected_value="{ value }">
-          {{ formatCurrency(Number(value)) }}
-        </template>
+          <div class="mt-3 space-y-2">
+            <label class="block text-xs font-medium text-foreground">Status</label>
+            <select
+              class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground"
+              :value="row.status"
+              @change="changeStatus(row as TransactionInstanceItem, ($event.target as HTMLSelectElement).value as TransactionStatus)"
+            >
+              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
+            </select>
+          </div>
 
-        <template #cell-real_value="{ value }">
-          {{ formatCurrency(value == null ? null : Number(value)) }}
-        </template>
-
-        <template #cell-status="{ row }">
-          <select
-            class="h-9 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
-            :value="(row as TransactionInstanceItem).status"
-            @change="changeStatus(row as TransactionInstanceItem, ($event.target as HTMLSelectElement).value as TransactionStatus)"
-          >
-            <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
-          </select>
-        </template>
-
-        <template #cell-checked_badge="{ value }">
-          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Checked' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
-            {{ value }}
-          </span>
-        </template>
-
-        <template #cell-actions="{ row }">
-          <div class="flex justify-end gap-2">
-            <AppButton size="sm" variant="ghost" label="Edit" @click="openEditModal(row as TransactionInstanceItem)" />
+          <div class="mt-4 grid gap-2">
+            <AppButton label="Edit" block @click="openEditModal(row as TransactionInstanceItem)" />
             <AppButton
-              size="sm"
-              :variant="(row as TransactionInstanceItem).is_checked ? 'secondary' : 'primary'"
-              :label="(row as TransactionInstanceItem).is_checked ? 'Uncheck' : 'Check'"
+              :variant="row.is_checked ? 'secondary' : 'primary'"
+              :label="row.is_checked ? 'Uncheck' : 'Check'"
+              block
               @click="toggleChecked(row as TransactionInstanceItem)"
             />
             <AppButton
-              v-if="(row as TransactionInstanceItem).status !== 'canceled'"
-              size="sm"
+              v-if="row.status !== 'canceled'"
               variant="danger"
               label="Cancel"
+              block
               @click="changeStatus(row as TransactionInstanceItem, 'canceled')"
             />
           </div>
-        </template>
-      </AppTable>
+        </article>
+
+        <p v-if="!filteredRows.length" class="rounded-xl border border-border bg-surface px-4 py-5 text-center text-sm text-muted">
+          No transactions found for this period.
+        </p>
+      </div>
+
+      <div class="hidden md:block">
+        <AppTable :columns="columns" :rows="filteredRows" empty-message="No transactions found for this period.">
+          <template #cell-instance_date="{ value }">
+            {{ String(value) }}
+          </template>
+
+          <template #cell-type="{ value }">
+            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize" :class="value === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
+              {{ value }}
+            </span>
+          </template>
+
+          <template #cell-origin_label="{ value }">
+            <span class="capitalize">{{ value }}</span>
+          </template>
+
+          <template #cell-expected_value="{ value }">
+            {{ formatCurrency(Number(value)) }}
+          </template>
+
+          <template #cell-real_value="{ value }">
+            {{ formatCurrency(value == null ? null : Number(value)) }}
+          </template>
+
+          <template #cell-status="{ row }">
+            <select
+              class="h-9 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
+              :value="(row as TransactionInstanceItem).status"
+              @change="changeStatus(row as TransactionInstanceItem, ($event.target as HTMLSelectElement).value as TransactionStatus)"
+            >
+              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
+            </select>
+          </template>
+
+          <template #cell-checked_badge="{ value }">
+            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Checked' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
+              {{ value }}
+            </span>
+          </template>
+
+          <template #cell-actions="{ row }">
+            <div class="flex justify-end gap-2">
+              <AppButton size="sm" variant="ghost" label="Edit" @click="openEditModal(row as TransactionInstanceItem)" />
+              <AppButton
+                size="sm"
+                :variant="(row as TransactionInstanceItem).is_checked ? 'secondary' : 'primary'"
+                :label="(row as TransactionInstanceItem).is_checked ? 'Uncheck' : 'Check'"
+                @click="toggleChecked(row as TransactionInstanceItem)"
+              />
+              <AppButton
+                v-if="(row as TransactionInstanceItem).status !== 'canceled'"
+                size="sm"
+                variant="danger"
+                label="Cancel"
+                @click="changeStatus(row as TransactionInstanceItem, 'canceled')"
+              />
+            </div>
+          </template>
+        </AppTable>
+      </div>
     </AppCard>
 
     <AppModal
       v-model="isModalOpen"
       :title="editingRow ? 'Edit transaction instance' : 'New transaction'"
-      description="Creates single or installment launches using transaction_instances as financial source."
+      description="Creates and manages single, installment and recurring launches."
+      max-width-class="max-w-2xl"
     >
       <div class="space-y-4">
         <AppInput v-model="formTitle" label="Title" placeholder="Transaction title" required />
@@ -549,7 +733,7 @@ watch(monthYear, async () => {
           </select>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-2">
+        <div class="grid gap-4 sm:grid-cols-2">
           <AppInput
             v-model="formExpectedValue"
             :label="formOriginType === 'installment' ? 'Expected total purchase value' : 'Expected value'"
@@ -560,17 +744,42 @@ watch(monthYear, async () => {
           <AppInput v-model="formRealValue" label="Real value" type="number" placeholder="Optional" />
         </div>
 
-        <div v-if="formOriginType === 'single'" class="grid gap-4 md:grid-cols-2">
+        <div v-if="formOriginType === 'single'" class="grid gap-4 sm:grid-cols-2">
           <AppInput v-model="formDueDate" label="Due date" type="date" required />
           <AppInput v-model="formInstanceDate" label="Instance date" type="date" required />
         </div>
 
-        <div v-else class="grid gap-4 md:grid-cols-2">
+        <div v-else-if="formOriginType === 'installment'" class="grid gap-4 sm:grid-cols-2">
           <AppInput v-model="formInstallmentTotal" label="Installment total" type="number" placeholder="2" required />
           <AppInput v-model="formInstallmentStartDate" label="Installment start date" type="date" required />
         </div>
 
-        <div class="grid gap-4 md:grid-cols-2">
+        <div v-else class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-medium text-foreground">Repeat monthly</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <AppInput v-model="formRecurringStartDate" label="Start date" type="date" required />
+            <AppInput
+              v-model="formRecurringEndDate"
+              label="End date (optional)"
+              type="date"
+              :disabled="formRecurringNoEndDate"
+              placeholder="Optional"
+            />
+          </div>
+          <label class="flex items-center gap-2 text-sm text-foreground">
+            <input v-model="formRecurringNoEndDate" type="checkbox" class="h-4 w-4 rounded border-border" />
+            No end date (MVP will generate 12 months)
+          </label>
+        </div>
+
+        <div v-if="isEditingRecurring" class="space-y-2 rounded-xl border border-border p-3">
+          <label class="block text-sm font-medium text-foreground">Apply edit to</label>
+          <select v-model="formRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-2">
             <label class="block text-sm font-medium text-foreground">Person</label>
             <select v-model="formPersonId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
@@ -622,9 +831,40 @@ watch(monthYear, async () => {
       </div>
 
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <AppButton label="Cancel" variant="ghost" @click="isModalOpen = false" />
-          <AppButton :label="saving ? 'Saving...' : 'Save'" :disabled="saving" @click="submitForm" />
+        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          <AppButton label="Cancel" variant="ghost" block @click="isModalOpen = false" />
+          <AppButton :label="saving ? 'Saving...' : 'Save'" :disabled="saving" block @click="submitForm" />
+        </div>
+      </template>
+    </AppModal>
+
+    <AppModal
+      v-model="isCancelModalOpen"
+      title="Cancel recurring transaction"
+      description="Choose how cancellation should be applied."
+      max-width-class="max-w-lg"
+    >
+      <div class="space-y-3">
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Cancel scope</label>
+          <select v-model="cancelRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+        </div>
+
+        <p v-if="cancelError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ cancelError }}</p>
+      </div>
+
+      <template #footer>
+        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          <AppButton label="Back" variant="ghost" block @click="isCancelModalOpen = false" />
+          <AppButton
+            label="Confirm cancel"
+            variant="danger"
+            :disabled="cancelSaving"
+            block
+            @click="confirmRecurringCancel"
+          />
         </div>
       </template>
     </AppModal>
