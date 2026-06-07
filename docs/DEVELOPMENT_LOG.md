@@ -84,3 +84,9 @@
 - 2026-06-02: Migration file generated for review only and not applied/executed against Supabase yet.
 - 2026-06-03: Migration 001 applied to the linked Supabase project.
 - 2026-06-03: Post-apply validation confirmed profiles, people, accounts, categories and cards exist; RLS is enabled; policies were created; and the planned indexes are present.
+- 2026-06-07: Phase 2 authentication foundation implemented with Supabase email/password flows (register, login, logout), reusable composables (`useAuth`, `useProfile`), auth middleware, and new pages (`/login`, `/register`, `/dashboard`).
+- 2026-06-07: Route protection baseline implemented through `app/middleware/auth.ts`: unauthenticated access allowed for `/`, `/login`, `/register`, `/setup`, with protected routes redirected to `/login`; authenticated users are redirected from `/login` and `/register` to `/dashboard`.
+- 2026-06-07: Profile bootstrap logic added to create `profiles` row on first authenticated session using minimum payload (`user_id`) and existing table defaults (including `created_at`).
+- 2026-06-07: `/setup` updated to expose authentication diagnostics (`auth.uid()`, logged email, and session status) plus table-access diagnostics for `people`, `accounts`, `categories`, and `cards`.
+- 2026-06-07: Visual validation executed on `/`, `/login`, `/register`, `/dashboard` (middleware redirect confirmed); sign-up flow confirmed with success message and expected login response `Email not confirmed` for unverified account.
+- 2026-06-07: Browser-level `/setup` asynchronous status rendering showed intermittent request aborts (`net::ERR_ABORTED`) in the integrated browser environment; connectivity and permission behavior were additionally validated by terminal requests (`/auth/v1/settings` = 200, table reads with anon = 401 permission denied), consistent with current RLS/grant state.

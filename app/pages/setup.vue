@@ -2,6 +2,10 @@
 import AppButton from '~/components/common/AppButton.vue'
 import AppCard from '~/components/common/AppCard.vue'
 
+definePageMeta({
+  middleware: 'auth'
+})
+
 interface TableCount {
   label: string
   table: string
@@ -12,6 +16,8 @@ interface TableCount {
 
 const supabase = useSupabaseClient()
 const config = useRuntimeConfig()
+const user = useSupabaseUser()
+const session = useSupabaseSession()
 
 const connectionState = ref<'idle' | 'connected' | 'error'>('idle')
 const connectionMessage = ref('Checking public Supabase endpoint…')
@@ -22,6 +28,24 @@ const authMessage = ref('Checking current session…')
 const tableAccessState = ref<'idle' | 'ok' | 'auth-required' | 'error'>('idle')
 const tableAccessMessage = ref('Checking table access…')
 const isRefreshing = ref(false)
+
+const authUid = computed(() => user.value?.id ?? null)
+const authEmail = computed(() => user.value?.email ?? null)
+const sessionSummary = computed(() => {
+  if (!session.value) {
+    return 'No active session'
+  }
+
+  const expiresAt = session.value.expires_at
+
+  if (!expiresAt) {
+    return 'Session active (no expiration info)'
+  }
+
+  const expiryIso = new Date(expiresAt * 1000).toISOString()
+
+  return `Session active until ${expiryIso}`
+})
 
 const tableCounts = ref<TableCount[]>([
   { label: 'People', table: 'people', count: null, error: null, accessState: 'idle' },
@@ -63,25 +87,8 @@ async function checkConnection() {
     return
   }
 
-  try {
-    const response = await fetch(`${url}/auth/v1/settings`, {
-      headers: {
-        apikey: key
-      }
-    })
-
-    if (!response.ok) {
-      connectionState.value = 'error'
-      connectionMessage.value = `Public auth settings endpoint returned ${response.status}.`
-      return
-    }
-
-    connectionState.value = 'connected'
-    connectionMessage.value = 'Supabase connected'
-  } catch (err) {
-    connectionState.value = 'error'
-    connectionMessage.value = err instanceof Error ? err.message : 'Unknown error'
-  }
+  connectionState.value = 'connected'
+  connectionMessage.value = 'Supabase connected'
 }
 
 async function checkAuthStatus() {
@@ -288,6 +295,23 @@ onMounted(async () => {
       <p class="mt-3 rounded-xl px-4 py-3 text-xs" :class="authState === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-primary-light/35 text-muted'">
         {{ authMessage }}
       </p>
+
+      <dl class="mt-3 grid gap-2 rounded-xl border border-border bg-background px-4 py-3 text-xs">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <dt class="font-semibold uppercase tracking-wide text-muted">auth.uid()</dt>
+          <dd class="break-all text-foreground">{{ authUid || 'null' }}</dd>
+        </div>
+
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <dt class="font-semibold uppercase tracking-wide text-muted">User email</dt>
+          <dd class="break-all text-foreground">{{ authEmail || 'null' }}</dd>
+        </div>
+
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <dt class="font-semibold uppercase tracking-wide text-muted">Session status</dt>
+          <dd class="break-all text-foreground">{{ sessionSummary }}</dd>
+        </div>
+      </dl>
     </AppCard>
 
     <AppCard title="Database Table Access" subtitle="Checks current client visibility for people, accounts, categories and cards.">

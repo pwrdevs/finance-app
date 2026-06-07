@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import AppButton from '~/components/common/AppButton.vue'
+import AppCard from '~/components/common/AppCard.vue'
+import AppInput from '~/components/common/AppInput.vue'
+import AppModal from '~/components/common/AppModal.vue'
+import AppTable from '~/components/common/AppTable.vue'
+
+definePageMeta({
+  middleware: 'auth'
+})
+
 const config = useRuntimeConfig()
 const currentEnvironment = computed(() => config.public.appEnv || 'development')
 
@@ -41,8 +51,9 @@ const rows = [
           placeholder="Search transactions"
           hint="Demo input using design system component"
         />
-        <div class="flex items-end">
-          <AppButton label="New transaction" @click="isModalOpen = true" />
+        <div class="flex items-end gap-2">
+          <AppButton label="Login" variant="secondary" @click="navigateTo('/login')" />
+          <AppButton label="Register" @click="navigateTo('/register')" />
         </div>
       </div>
     </div>
