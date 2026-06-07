@@ -129,3 +129,6 @@
 - 2026-06-07: Dashboard month-by-month validation passed with recurring data sourced from `transaction_instances`, including expected pending/canceled transitions for June, July, September, and October.
 - 2026-06-07: Mobile transactions UI refined with more compact cards, clearer action buttons, and reordered mobile-first filters.
 - 2026-06-07: Dashboard gained a card statement summary grouped by `card_id`, scoped to monthly expense transactions and excluding canceled instances.
+- 2026-06-07: Added accumulated balance projection in `useFinancialSummary` using `accounts.initial_balance` + `transaction_instances` month-by-month movement for a 12-month horizon (`income` adds, `expense` subtracts, `canceled` excluded, `real_value` overrides `expected_value` when present).
+- 2026-06-07: Dashboard gained `Accumulated balance projection` section showing initial balance, selected month balance, accumulated balance after selected month, and the next 12 projected months.
+- 2026-06-07: Validation passed for projection build/runtime wiring and mixed launch logic (single/installment/recurring) based on `transaction_instances` typed source processing.

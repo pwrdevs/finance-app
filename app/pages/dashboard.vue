@@ -8,7 +8,7 @@ definePageMeta({
   middleware: 'auth'
 })
 
-const { getMonthlySummary } = useFinancialSummary()
+const { getAccumulatedBalanceProjection, getMonthlySummary } = useFinancialSummary()
 const { listCards } = useMasterData()
 const session = useSupabaseSession()
 
@@ -43,6 +43,20 @@ const summary = ref({
     real_value: number | null
     status: string
     is_checked: boolean
+  }>
+})
+
+const accumulatedProjection = ref({
+  initialBalance: 0,
+  firstMonthBalance: 0,
+  firstMonthAccumulatedBalance: 0,
+  months: [] as Array<{
+    month: number
+    year: number
+    monthKey: string
+    monthLabel: string
+    monthBalance: number
+    accumulatedBalance: number
   }>
 })
 
@@ -92,6 +106,8 @@ const cardStatementRows = computed(() => {
   }))
 })
 
+const projectionRows = computed(() => accumulatedProjection.value.months)
+
 function formatCurrency(value: number) {
   return value.toFixed(2)
 }
@@ -105,16 +121,23 @@ async function fetchSummary() {
   pageError.value = ''
 
   try {
-    const [data, cardList] = await Promise.all([
+    const period = {
+      month: Number(selectedMonth.value),
+      year: Number(selectedYear.value)
+    }
+
+    const [data, cardList, projection] = await Promise.all([
       getMonthlySummary({
-        month: Number(selectedMonth.value),
-        year: Number(selectedYear.value)
+        month: period.month,
+        year: period.year
       }),
-      listCards()
+      listCards(),
+      getAccumulatedBalanceProjection(period)
     ])
 
     summary.value = data
     cards.value = cardList
+    accumulatedProjection.value = projection
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : 'Failed to load financial summary.'
   } finally {
@@ -221,6 +244,56 @@ watch(
       <p v-else class="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted">
         No card expenses found for this month.
       </p>
+    </AppCard>
+
+    <AppCard title="Accumulated balance projection" subtitle="12-month projection based on account initial balances and transaction instances.">
+      <div class="grid gap-4 md:grid-cols-3">
+        <article class="rounded-2xl border border-border bg-primary-light/20 p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Initial balance</p>
+          <p class="mt-3 text-2xl font-semibold" :class="accumulatedProjection.initialBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+            {{ formatCurrency(accumulatedProjection.initialBalance) }}
+          </p>
+        </article>
+
+        <article class="rounded-2xl border border-border bg-primary-light/20 p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Month balance</p>
+          <p class="mt-1 text-xs text-muted">{{ monthOptions.find(item => item.value === selectedMonth)?.label }} {{ selectedYear }}</p>
+          <p class="mt-2 text-2xl font-semibold" :class="accumulatedProjection.firstMonthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+            {{ formatCurrency(accumulatedProjection.firstMonthBalance) }}
+          </p>
+        </article>
+
+        <article class="rounded-2xl border border-border bg-primary-light/20 p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Accumulated balance</p>
+          <p class="mt-1 text-xs text-muted">After selected month</p>
+          <p class="mt-2 text-2xl font-semibold" :class="accumulatedProjection.firstMonthAccumulatedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+            {{ formatCurrency(accumulatedProjection.firstMonthAccumulatedBalance) }}
+          </p>
+        </article>
+      </div>
+
+      <div class="mt-4 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="border-b border-border text-left text-xs uppercase tracking-[0.12em] text-muted">
+              <th class="px-3 py-2">Month</th>
+              <th class="px-3 py-2 text-right">Month balance</th>
+              <th class="px-3 py-2 text-right">Accumulated</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in projectionRows" :key="row.monthKey" class="border-b border-border/80">
+              <td class="px-3 py-2 font-medium text-foreground">{{ row.monthLabel }}</td>
+              <td class="px-3 py-2 text-right font-semibold" :class="row.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+                {{ formatCurrency(row.monthBalance) }}
+              </td>
+              <td class="px-3 py-2 text-right font-semibold" :class="row.accumulatedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+                {{ formatCurrency(row.accumulatedBalance) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </AppCard>
 
     <AppCard title="Latest Launches" :subtitle="`${launchRows.length} record(s) in selected month`">

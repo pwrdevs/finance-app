@@ -30,6 +30,10 @@ export interface FinancialSummaryFilters {
   year: number
 }
 
+interface AccountBalanceRecord {
+  initial_balance: number
+}
+
 export interface MonthlyLaunchItem {
   id: string
   title: string
@@ -55,6 +59,22 @@ export interface MonthlyFinancialSummary {
   recentLaunches: MonthlyLaunchItem[]
 }
 
+export interface AccumulatedBalanceMonth {
+  month: number
+  year: number
+  monthKey: string
+  monthLabel: string
+  monthBalance: number
+  accumulatedBalance: number
+}
+
+export interface AccumulatedBalanceProjection {
+  initialBalance: number
+  firstMonthBalance: number
+  firstMonthAccumulatedBalance: number
+  months: AccumulatedBalanceMonth[]
+}
+
 function getMonthRange(filters: FinancialSummaryFilters) {
   const firstDay = new Date(Date.UTC(filters.year, filters.month - 1, 1))
   const nextMonth = new Date(Date.UTC(filters.year, filters.month, 1))
@@ -71,6 +91,34 @@ function toNumber(value: number | null | undefined) {
   }
 
   return Number(value)
+}
+
+function toMonthKeyFromDate(dateText: string) {
+  return dateText.slice(0, 7)
+}
+
+function toMonthKey(year: number, month: number) {
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`
+}
+
+function addMonths(year: number, month: number, offset: number) {
+  const date = new Date(Date.UTC(year, month - 1 + offset, 1))
+
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1
+  }
+}
+
+function toMonthLabel(year: number, month: number) {
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-CA', {
+    month: 'short',
+    year: 'numeric'
+  })
+}
+
+function resolveInstanceValue(expectedValue: number, realValue: number | null) {
+  return realValue == null ? expectedValue : realValue
 }
 
 export function useFinancialSummary() {
@@ -179,7 +227,95 @@ export function useFinancialSummary() {
     }
   }
 
+  async function getAccumulatedBalanceProjection(filters: FinancialSummaryFilters): Promise<AccumulatedBalanceProjection> {
+    const projectionMonths = 12
+    const { year: startYear, month: startMonth } = { year: filters.year, month: filters.month }
+    const endMonthPosition = addMonths(startYear, startMonth, projectionMonths)
+    const from = `${String(startYear).padStart(4, '0')}-${String(startMonth).padStart(2, '0')}-01`
+    const to = `${String(endMonthPosition.year).padStart(4, '0')}-${String(endMonthPosition.month).padStart(2, '0')}-01`
+
+    const [{ data: accountRows, error: accountError }, { data: instanceRows, error: instanceError }] = await Promise.all([
+      supabase
+        .from('accounts')
+        .select('initial_balance'),
+      supabase
+        .from('transaction_instances')
+        .select(`
+          instance_date,
+          expected_value,
+          real_value,
+          status,
+          source_transaction:source_transaction_id (
+            type
+          )
+        `)
+        .gte('instance_date', from)
+        .lt('instance_date', to)
+        .order('instance_date', { ascending: true })
+    ])
+
+    if (accountError) {
+      throw accountError
+    }
+
+    if (instanceError) {
+      throw instanceError
+    }
+
+    const initialBalance = ((accountRows ?? []) as AccountBalanceRecord[])
+      .reduce((sum, account) => sum + toNumber(account.initial_balance), 0)
+
+    const monthBalanceMap = new Map<string, number>()
+    const records = (instanceRows ?? []) as Array<{
+      instance_date: string
+      expected_value: number
+      real_value: number | null
+      status: TransactionStatus
+      source_transaction: { type: TransactionType } | null
+    }>
+
+    for (const record of records) {
+      if (record.status === 'canceled') {
+        continue
+      }
+
+      const type = record.source_transaction?.type || 'expense'
+      const value = resolveInstanceValue(toNumber(record.expected_value), record.real_value == null ? null : Number(record.real_value))
+      const signedValue = type === 'income' ? value : -value
+      const key = toMonthKeyFromDate(record.instance_date)
+
+      monthBalanceMap.set(key, (monthBalanceMap.get(key) ?? 0) + signedValue)
+    }
+
+    let runningBalance = initialBalance
+    const months: AccumulatedBalanceMonth[] = []
+
+    for (let index = 0; index < projectionMonths; index += 1) {
+      const position = addMonths(startYear, startMonth, index)
+      const monthKey = toMonthKey(position.year, position.month)
+      const monthBalance = monthBalanceMap.get(monthKey) ?? 0
+      runningBalance += monthBalance
+
+      months.push({
+        month: position.month,
+        year: position.year,
+        monthKey,
+        monthLabel: toMonthLabel(position.year, position.month),
+        monthBalance,
+        accumulatedBalance: runningBalance
+      })
+    }
+
+    return {
+      initialBalance,
+      firstMonthBalance: months[0]?.monthBalance ?? 0,
+      firstMonthAccumulatedBalance: months[0]?.accumulatedBalance ?? initialBalance,
+      months
+    }
+  }
+
   return {
+    getAccumulatedBalanceProjection,
     getMonthlySummary
   }
 }
