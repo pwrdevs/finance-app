@@ -40,8 +40,17 @@
   color-scheme: dark;
 }
 
+html,
+body,
+#__nuxt {
+  width: 100%;
+  min-height: 100vh;
+  height: 100vh;
+}
+
 body {
   @apply bg-background text-foreground antialiased;
+  overflow-x: hidden;
   background-image: radial-gradient(circle at 12% 20%, rgb(var(--color-primary) / 0.18), transparent 35%),
     radial-gradient(circle at 88% 10%, rgb(var(--color-primary-dark) / 0.16), transparent 28%),
     linear-gradient(180deg, rgb(var(--color-background)) 0%, rgb(var(--color-background) / 0.94) 100%);

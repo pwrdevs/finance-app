@@ -181,3 +181,7 @@
 - 2026-06-08: O travamento de rolagem foi causado por shell sem `min-h-0` e alturas fixas conflitantes; o layout agora deixa header e sidebar fixos e permite scroll apenas no `main`.
 - 2026-06-08: A sidebar passou a consumir estado compartilhado de perfil via `useProfile`, refletindo nome/foto atualizados em Configuracoes sem exigir logout/login.
 - 2026-06-08: O logo do header foi ampliado para destacar a marca sem comprometer o alinhamento do topo.
+- 2026-06-08: Ajuste visual urgente do shell aplicado com header fixo e mais limpo, sidebar redesenhada (280px, perfil mais leve e menu com contraste moderno) e area principal com rolagem isolada.
+- 2026-06-08: Causa raiz da sensacao de conteudo preso: combinacao de alturas absolutas no container principal e limites de overflow sem hierarquia clara entre shell e `main`; correcao feita com estrutura `h-screen` no app + `pt` do header + `main` com `overflow-y-auto` e `min-w-0`.
+- 2026-06-08: CSS global reforcado para `html/body/#__nuxt` em 100vh e `overflow-x: hidden`, evitando corte e scroll horizontal em mobile.
+- 2026-06-08: Validacao tecnica concluida com `npm run build` (sucesso); validacao visual autenticada de Dashboard/Lancamentos/Configuracoes/Administracao ficou pendente nesta sessao por redirecionamento para `/login`.
