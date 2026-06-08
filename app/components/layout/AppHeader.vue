@@ -9,8 +9,8 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <header class="sticky top-0 z-30 border-b border-border/90 bg-background/90 backdrop-blur-md">
-    <div class="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+  <header class="sticky top-0 z-50 border-b border-border/90 bg-background/90 backdrop-blur-md">
+    <div class="mx-auto flex h-20 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
       <div class="flex items-center gap-3">
         <button
           type="button"
@@ -22,7 +22,7 @@ const emit = defineEmits<{
         </button>
 
         <div class="flex items-center gap-3">
-          <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-[72px] w-[72px] rounded-xl object-contain shadow-soft" />
+          <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-16 w-16 rounded-xl object-contain shadow-soft" />
           <h1 class="text-base font-semibold text-foreground">{{ appName }}</h1>
         </div>
       </div>

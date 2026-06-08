@@ -6,10 +6,11 @@ import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import { ACCOUNT_TYPES } from '~/composables/useMasterData'
 import type { AccountItem, AccountType } from '~/composables/useMasterData'
+import { formatBRL } from '~/utils/currency'
 
 definePageMeta({ middleware: 'auth' })
 
-const { deactivateAccount, listAccounts, upsertAccount } = useMasterData()
+const { deactivateAccount, deleteAccount, listAccounts, upsertAccount } = useMasterData()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -52,7 +53,7 @@ const filteredRows = computed(() => {
     .map((row) => ({
       ...row,
       status: row.is_active ? 'Ativo' : 'Inativo',
-      initial_balance: Number(row.initial_balance).toFixed(2)
+      initial_balance: formatBRL(Number(row.initial_balance))
     }))
 })
 
@@ -136,6 +137,23 @@ async function deactivate(row: AccountItem) {
   }
 }
 
+async function remove(row: AccountItem) {
+  const confirmed = window.confirm(`Deseja deletar a conta "${row.name}"? Esta acao nao pode ser desfeita.`)
+
+  if (!confirmed) {
+    return
+  }
+
+  pageError.value = ''
+
+  try {
+    await deleteAccount(row.id)
+    await fetchRows()
+  } catch (err) {
+    pageError.value = err instanceof Error ? err.message : 'Falha ao deletar conta.'
+  }
+}
+
 onMounted(fetchRows)
 </script>
 
@@ -185,6 +203,7 @@ onMounted(fetchRows)
           <div class="flex justify-end gap-2">
             <AppButton size="sm" variant="ghost" label="Editar" @click="openEditModal(row as AccountItem)" />
             <AppButton v-if="(row as AccountItem).is_active" size="sm" variant="danger" label="Desativar" @click="deactivate(row as AccountItem)" />
+            <AppButton size="sm" variant="danger" label="Deletar" @click="remove(row as AccountItem)" />
           </div>
         </template>
       </AppTable>

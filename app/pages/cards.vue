@@ -5,10 +5,11 @@ import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import type { CardItem, PersonItem } from '~/composables/useMasterData'
+import { formatBRL } from '~/utils/currency'
 
 definePageMeta({ middleware: 'auth' })
 
-const { deactivateCard, listCards, listPeople, upsertCard } = useMasterData()
+const { deactivateCard, deleteCard, listCards, listPeople, upsertCard } = useMasterData()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -77,7 +78,7 @@ const filteredRows = computed(() => {
             : 'Nao configurado',
       closing_day: row.closing_day ?? '-',
       due_day: row.due_day ?? '-',
-      credit_limit: row.credit_limit == null ? '-' : Number(row.credit_limit).toFixed(2)
+      credit_limit: row.credit_limit == null ? '-' : formatBRL(Number(row.credit_limit))
     }))
 })
 
@@ -209,6 +210,23 @@ async function deactivate(row: CardItem) {
   }
 }
 
+async function remove(row: CardItem) {
+  const confirmed = window.confirm(`Deseja deletar o cartao "${row.name}"? Esta acao nao pode ser desfeita.`)
+
+  if (!confirmed) {
+    return
+  }
+
+  pageError.value = ''
+
+  try {
+    await deleteCard(row.id)
+    await fetchRows()
+  } catch (err) {
+    pageError.value = err instanceof Error ? err.message : 'Falha ao deletar cartao.'
+  }
+}
+
 onMounted(fetchRows)
 </script>
 
@@ -258,6 +276,7 @@ onMounted(fetchRows)
             <div class="flex justify-end gap-2">
               <AppButton size="sm" variant="ghost" label="Editar" @click="openEditModal(row as CardItem)" />
               <AppButton v-if="(row as CardItem).is_active" size="sm" variant="danger" label="Desativar" @click="deactivate(row as CardItem)" />
+              <AppButton size="sm" variant="danger" label="Deletar" @click="remove(row as CardItem)" />
             </div>
           </template>
         </AppTable>

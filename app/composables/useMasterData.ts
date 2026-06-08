@@ -201,6 +201,20 @@ export function useMasterData() {
     }
   }
 
+  async function deletePerson(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
+    const { error } = await supabase
+      .from('people')
+      .delete()
+      .eq('user_id', userId)
+      .eq('id', id)
+
+    if (error) {
+      throw normalizeSupabaseError(error)
+    }
+  }
+
   async function listAccounts() {
     await ensureAuthenticatedUserId()
 
@@ -259,6 +273,20 @@ export function useMasterData() {
     const { error } = await supabase
       .from('accounts')
       .update({ is_active: false })
+      .eq('user_id', userId)
+      .eq('id', id)
+
+    if (error) {
+      throw normalizeSupabaseError(error)
+    }
+  }
+
+  async function deleteAccount(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
+    const { error } = await supabase
+      .from('accounts')
+      .delete()
       .eq('user_id', userId)
       .eq('id', id)
 
@@ -327,6 +355,20 @@ export function useMasterData() {
     const { error } = await supabase
       .from('categories')
       .update({ is_active: false })
+      .eq('user_id', userId)
+      .eq('id', id)
+
+    if (error) {
+      throw normalizeSupabaseError(error)
+    }
+  }
+
+  async function deleteCategory(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
+    const { error } = await supabase
+      .from('categories')
+      .delete()
       .eq('user_id', userId)
       .eq('id', id)
 
@@ -407,11 +449,29 @@ export function useMasterData() {
     }
   }
 
+  async function deleteCard(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
+    const { error } = await supabase
+      .from('cards')
+      .delete()
+      .eq('user_id', userId)
+      .eq('id', id)
+
+    if (error) {
+      throw normalizeSupabaseError(error)
+    }
+  }
+
   return {
     deactivateAccount,
     deactivateCard,
     deactivateCategory,
     deactivatePerson,
+    deleteAccount,
+    deleteCard,
+    deleteCategory,
+    deletePerson,
     listAccounts,
     listCards,
     listCategories,

@@ -27,7 +27,7 @@ function closeSidebar() {
   <div class="min-h-screen bg-background text-foreground">
     <AppHeader app-name="Financeiro Pessoal" @menu="toggleSidebar" />
 
-    <div class="mx-auto flex w-full max-w-[1440px] lg:items-start">
+    <div class="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-[1440px] lg:items-start">
       <AppSidebar :open="isSidebarOpen" :links="sidebarLinks" @close="closeSidebar" />
 
       <main class="w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">

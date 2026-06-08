@@ -4,6 +4,12 @@ interface SidebarLink {
   to: string
 }
 
+const supabase = useSupabaseClient()
+const user = useSupabaseUser()
+
+const fullName = ref('')
+const avatarUrl = ref('')
+
 const props = defineProps<{
   open: boolean
   links: SidebarLink[]
@@ -15,6 +21,77 @@ const emit = defineEmits<{
 
 function closeSidebar() {
   emit('close')
+}
+
+const profileName = computed(() => {
+  const dbName = fullName.value.trim()
+
+  if (dbName) {
+    return dbName
+  }
+
+  const metadata = user.value?.user_metadata as { full_name?: string, name?: string } | undefined
+  const metadataName = String(metadata?.full_name || metadata?.name || '').trim()
+
+  if (metadataName) {
+    return metadataName
+  }
+
+  const email = String(user.value?.email || '').trim()
+
+  if (email) {
+    return email.split('@')[0]
+  }
+
+  return 'Usuario'
+})
+
+const profileAvatar = computed(() => {
+  const dbAvatar = avatarUrl.value.trim()
+
+  if (dbAvatar) {
+    return dbAvatar
+  }
+
+  const metadata = user.value?.user_metadata as { avatar_url?: string } | undefined
+  return String(metadata?.avatar_url || '').trim()
+})
+
+const profileInitials = computed(() => {
+  const tokens = profileName.value
+    .split(' ')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+
+  if (!tokens.length) {
+    return 'U'
+  }
+
+  return tokens.map(token => token[0]?.toUpperCase() || '').join('')
+})
+
+async function loadProfile() {
+  const userId = user.value?.id
+
+  if (!userId) {
+    fullName.value = ''
+    avatarUrl.value = ''
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error && error.code !== 'PGRST116') {
+    return
+  }
+
+  fullName.value = String(data?.full_name || '')
+  avatarUrl.value = String(data?.avatar_url || '')
 }
 
 watch(
@@ -31,6 +108,17 @@ onBeforeUnmount(() => {
     document.body.style.overflow = ''
   }
 })
+
+onMounted(async () => {
+  await loadProfile()
+})
+
+watch(
+  () => user.value?.id,
+  async () => {
+    await loadProfile()
+  }
+)
 </script>
 
 <template>
@@ -39,19 +127,29 @@ onBeforeUnmount(() => {
       <button
         v-if="open"
         type="button"
-        class="fixed inset-0 z-20 bg-foreground/40 backdrop-blur-[1px] lg:hidden"
+        class="fixed inset-x-0 bottom-0 top-20 z-20 bg-foreground/40 backdrop-blur-[1px] lg:hidden"
         aria-label="Fechar menu de navegacao"
         @click="closeSidebar"
       />
     </Transition>
 
     <aside
-      class="fixed inset-y-0 left-0 z-30 w-72 border-r border-border bg-surface shadow-panel transition-transform duration-300 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:translate-x-0"
+      class="fixed bottom-0 left-0 top-20 z-30 w-72 border-r border-border bg-surface shadow-panel transition-transform duration-300 lg:sticky lg:top-20 lg:z-10 lg:h-[calc(100vh-5rem)] lg:translate-x-0"
       :class="open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
     >
-      <div class="flex h-full flex-col p-4">
-        <div class="mb-5 flex justify-center">
-          <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-24 w-24 rounded-2xl object-contain shadow-soft" />
+      <div class="flex h-full flex-col overflow-y-auto p-4">
+        <div class="mb-5 rounded-2xl border border-border bg-background p-3">
+          <div class="flex items-center gap-3">
+            <div class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-primary-light/35 text-sm font-semibold text-foreground">
+              <img v-if="profileAvatar" :src="profileAvatar" alt="Foto do usuario" class="h-full w-full object-cover" />
+              <span v-else>{{ profileInitials }}</span>
+            </div>
+
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-foreground">{{ profileName }}</p>
+              <p class="text-xs text-muted">Usuario logado</p>
+            </div>
+          </div>
         </div>
 
         <nav class="space-y-1">

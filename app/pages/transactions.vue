@@ -5,6 +5,7 @@ import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import {
+  type DeleteRecurringScope,
   TRANSACTION_STATUS,
   type RecurringScope,
   type TransactionOriginType,
@@ -13,12 +14,14 @@ import {
   type TransactionType
 } from '~/composables/useTransactions'
 import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composables/useMasterData'
+import { formatBRLOrDash } from '~/utils/currency'
 
 definePageMeta({ middleware: 'auth' })
 
 const {
   cancelRecurringTransaction,
   createTransaction,
+  deleteTransactionInstance: removeTransactionInstance,
   listFilterOptions,
   listManualInstances,
   setChecked,
@@ -30,9 +33,11 @@ const {
 const loading = ref(false)
 const saving = ref(false)
 const cancelSaving = ref(false)
+const deleteSaving = ref(false)
 const pageError = ref('')
 const modalError = ref('')
 const cancelError = ref('')
+const deleteError = ref('')
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
 const cardFilter = ref('all')
@@ -52,8 +57,10 @@ const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
 const isCancelModalOpen = ref(false)
+const isDeleteModalOpen = ref(false)
 const editingRow = ref<TransactionInstanceItem | null>(null)
 const cancelTargetRow = ref<TransactionInstanceItem | null>(null)
+const deleteTargetRow = ref<TransactionInstanceItem | null>(null)
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
@@ -69,6 +76,7 @@ const formRecurringEndDate = ref('')
 const formRecurringNoEndDate = ref(true)
 const formRecurringScope = ref<RecurringScope>('single')
 const cancelRecurringScope = ref<RecurringScope>('single')
+const deleteRecurringScope = ref<DeleteRecurringScope>('single')
 const formPersonId = ref('')
 const formAccountId = ref('')
 const formCardId = ref('')
@@ -98,6 +106,11 @@ const recurringScopeOptions = [
   { value: 'single', label: 'Somente esta instancia' },
   { value: 'future', label: 'Esta e futuras instancias' },
   { value: 'series', label: 'Serie completa (futuras)' }
+] as const
+
+const deleteRecurringScopeOptions = [
+  { value: 'single', label: 'Somente este lancamento selecionado' },
+  { value: 'future', label: 'Este lancamento e todos os futuros' }
 ] as const
 
 const transactionStatusLabelMap: Record<TransactionStatus, string> = {
@@ -140,8 +153,7 @@ const filteredRows = computed(() => {
 })
 
 function formatCurrency(value: number | null) {
-  if (value == null) return '-'
-  return Number(value).toFixed(2)
+  return formatBRLOrDash(value)
 }
 
 function resetForm() {
@@ -207,6 +219,13 @@ function openRecurringCancelModal(row: TransactionInstanceItem) {
   cancelRecurringScope.value = 'single'
   cancelError.value = ''
   isCancelModalOpen.value = true
+}
+
+function openDeleteModal(row: TransactionInstanceItem) {
+  deleteTargetRow.value = row
+  deleteRecurringScope.value = 'single'
+  deleteError.value = ''
+  isDeleteModalOpen.value = true
 }
 
 function parseOptionalNumber(value: string) {
@@ -505,6 +524,31 @@ async function confirmRecurringCancel() {
   }
 }
 
+async function confirmDeleteTransaction() {
+  deleteError.value = ''
+
+  if (!deleteTargetRow.value) {
+    deleteError.value = 'Nenhum lancamento selecionado para exclusao.'
+    return
+  }
+
+  deleteSaving.value = true
+
+  try {
+    const scope = deleteTargetRow.value.origin_type === 'recurring'
+      ? deleteRecurringScope.value
+      : 'single'
+
+    await removeTransactionInstance(deleteTargetRow.value, scope)
+    isDeleteModalOpen.value = false
+    await fetchRows()
+  } catch (err) {
+    deleteError.value = err instanceof Error ? err.message : 'Nao foi possivel deletar o lancamento.'
+  } finally {
+    deleteSaving.value = false
+  }
+}
+
 onMounted(async () => {
   await Promise.all([fetchOptions(), fetchRows()])
 })
@@ -612,6 +656,12 @@ watch(monthYear, fetchRows)
                 variant="danger"
                 label="Cancelar"
                 @click="changeStatus(row as TransactionInstanceItem, 'canceled')"
+              />
+              <AppButton
+                size="sm"
+                variant="danger"
+                label="Deletar"
+                @click="openDeleteModal(row as TransactionInstanceItem)"
               />
             </div>
           </template>
@@ -767,6 +817,33 @@ watch(monthYear, fetchRows)
         <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
           <AppButton label="Voltar" variant="ghost" block @click="isCancelModalOpen = false" />
           <AppButton :label="cancelSaving ? 'Cancelando...' : 'Confirmar cancelamento'" variant="danger" :disabled="cancelSaving" block @click="confirmRecurringCancel" />
+        </div>
+      </template>
+    </AppModal>
+
+    <AppModal
+      v-model="isDeleteModalOpen"
+      title="Deletar lancamento"
+      description="Confirme a exclusao do lancamento selecionado."
+      max-width-class="max-w-lg"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-foreground">Esta acao nao pode ser desfeita.</p>
+
+        <div v-if="deleteTargetRow?.origin_type === 'recurring'" class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Escopo da exclusao</label>
+          <select v-model="deleteRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option v-for="option in deleteRecurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+        </div>
+
+        <p v-if="deleteError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ deleteError }}</p>
+      </div>
+
+      <template #footer>
+        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          <AppButton label="Voltar" variant="ghost" block @click="isDeleteModalOpen = false" />
+          <AppButton :label="deleteSaving ? 'Deletando...' : 'Confirmar exclusao'" variant="danger" :disabled="deleteSaving" block @click="confirmDeleteTransaction" />
         </div>
       </template>
     </AppModal>

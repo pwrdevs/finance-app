@@ -9,7 +9,7 @@ import type { CategoryItem, CategoryType } from '~/composables/useMasterData'
 
 definePageMeta({ middleware: 'auth' })
 
-const { deactivateCategory, listCategories, upsertCategory } = useMasterData()
+const { deactivateCategory, deleteCategory, listCategories, upsertCategory } = useMasterData()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -29,6 +29,34 @@ const type = ref<CategoryType>('expense')
 const color = ref('')
 const icon = ref('')
 const isActive = ref(true)
+
+const COLOR_OPTIONS = [
+  '#8F9B7A',
+  '#4E79A7',
+  '#59A14F',
+  '#F28E2B',
+  '#E15759',
+  '#B07AA1',
+  '#76B7B2',
+  '#EDC948',
+  '#1F2937',
+  '#6B7280'
+] as const
+
+const ICON_OPTIONS = [
+  '💰',
+  '🛒',
+  '🏠',
+  '🚗',
+  '🍽️',
+  '💳',
+  '🎓',
+  '🏥',
+  '🎉',
+  '📦',
+  '📈',
+  '🧾'
+] as const
 
 const columns = [
   { key: 'name', label: 'Nome' },
@@ -62,8 +90,8 @@ function resetForm() {
   editingId.value = null
   name.value = ''
   type.value = 'expense'
-  color.value = ''
-  icon.value = ''
+  color.value = COLOR_OPTIONS[0]
+  icon.value = ICON_OPTIONS[0]
   isActive.value = true
   modalError.value = ''
 }
@@ -77,11 +105,19 @@ function openEditModal(row: CategoryItem) {
   editingId.value = row.id
   name.value = row.name
   type.value = row.type
-  color.value = row.color ?? ''
-  icon.value = row.icon ?? ''
+  color.value = row.color && COLOR_OPTIONS.includes(row.color as (typeof COLOR_OPTIONS)[number]) ? row.color : COLOR_OPTIONS[0]
+  icon.value = row.icon && ICON_OPTIONS.includes(row.icon as (typeof ICON_OPTIONS)[number]) ? row.icon : ICON_OPTIONS[0]
   isActive.value = row.is_active
   modalError.value = ''
   isModalOpen.value = true
+}
+
+function selectColor(selected: string) {
+  color.value = selected
+}
+
+function selectIcon(selected: string) {
+  icon.value = selected
 }
 
 async function fetchRows() {
@@ -122,6 +158,23 @@ async function deactivate(row: CategoryItem) {
     await fetchRows()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Falha ao desativar categoria.'
+  }
+}
+
+async function remove(row: CategoryItem) {
+  const confirmed = window.confirm(`Deseja deletar a categoria "${row.name}"? Esta acao nao pode ser desfeita.`)
+
+  if (!confirmed) {
+    return
+  }
+
+  pageError.value = ''
+
+  try {
+    await deleteCategory(row.id)
+    await fetchRows()
+  } catch (err) {
+    pageError.value = err instanceof Error ? err.message : 'Falha ao deletar categoria.'
   }
 }
 
@@ -166,8 +219,13 @@ onMounted(fetchRows)
     <AppCard title="Lista de categorias" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
       <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhuma categoria encontrada.">
         <template #cell-type="{ value }"><span class="capitalize">{{ value }}</span></template>
-        <template #cell-color="{ value }"><span class="text-sm text-muted">{{ value || '-' }}</span></template>
-        <template #cell-icon="{ value }"><span class="text-sm text-muted">{{ value || '-' }}</span></template>
+        <template #cell-color="{ value }">
+          <div class="flex items-center gap-2">
+            <span class="inline-block h-4 w-4 rounded-full border border-border" :style="{ backgroundColor: String(value || '#e5e7eb') }" />
+            <span class="text-sm text-muted">{{ value || '-' }}</span>
+          </div>
+        </template>
+        <template #cell-icon="{ value }"><span class="text-lg">{{ value || '-' }}</span></template>
         <template #cell-status="{ value }">
           <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">{{ value }}</span>
         </template>
@@ -176,6 +234,7 @@ onMounted(fetchRows)
           <div class="flex justify-end gap-2">
             <AppButton size="sm" variant="ghost" label="Editar" @click="openEditModal(row as CategoryItem)" />
             <AppButton v-if="(row as CategoryItem).is_active" size="sm" variant="danger" label="Desativar" @click="deactivate(row as CategoryItem)" />
+            <AppButton size="sm" variant="danger" label="Deletar" @click="remove(row as CategoryItem)" />
           </div>
         </template>
       </AppTable>
@@ -190,8 +249,42 @@ onMounted(fetchRows)
             <option v-for="entry in CATEGORY_TYPES" :key="entry" :value="entry">{{ entry }}</option>
           </select>
         </div>
-        <AppInput v-model="color" label="Cor" placeholder="#8F9B7A" />
-        <AppInput v-model="icon" label="Icone" placeholder="wallet" />
+
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Cor padrao</label>
+          <div class="grid grid-cols-5 gap-2">
+            <button
+              v-for="option in COLOR_OPTIONS"
+              :key="option"
+              type="button"
+              class="h-10 rounded-xl border-2 transition"
+              :class="color === option ? 'border-foreground' : 'border-border'"
+              :style="{ backgroundColor: option }"
+              :aria-label="`Selecionar cor ${option}`"
+              @click="selectColor(option)"
+            />
+          </div>
+          <p class="text-xs text-muted">Cor selecionada: {{ color }}</p>
+        </div>
+
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Icone (emoji)</label>
+          <div class="grid grid-cols-6 gap-2">
+            <button
+              v-for="option in ICON_OPTIONS"
+              :key="option"
+              type="button"
+              class="h-10 rounded-xl border text-xl transition"
+              :class="icon === option ? 'border-primary-dark bg-primary-light/40' : 'border-border bg-surface'"
+              :aria-label="`Selecionar icone ${option}`"
+              @click="selectIcon(option)"
+            >
+              {{ option }}
+            </button>
+          </div>
+          <p class="text-xs text-muted">Icone selecionado: {{ icon }}</p>
+        </div>
+
         <label class="flex items-center gap-2 text-sm text-foreground"><input v-model="isActive" type="checkbox" class="h-4 w-4 rounded border-border" />Ativo</label>
         <p v-if="modalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ modalError }}</p>
       </div>

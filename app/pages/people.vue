@@ -10,7 +10,7 @@ definePageMeta({
   middleware: 'auth'
 })
 
-const { deactivatePerson, listPeople, upsertPerson } = useMasterData()
+const { deactivatePerson, deletePerson, listPeople, upsertPerson } = useMasterData()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -163,6 +163,23 @@ async function deactivate(row: PersonItem) {
   }
 }
 
+async function remove(row: PersonItem) {
+  const confirmed = window.confirm(`Deseja deletar a pessoa "${row.name}"? Esta acao nao pode ser desfeita.`)
+
+  if (!confirmed) {
+    return
+  }
+
+  pageError.value = ''
+
+  try {
+    await deletePerson(row.id)
+    await fetchRows()
+  } catch (err) {
+    pageError.value = extractErrorMessage(err, 'Nao foi possivel deletar a pessoa.')
+  }
+}
+
 onMounted(async () => {
   await fetchRows()
 })
@@ -220,6 +237,12 @@ onMounted(async () => {
               variant="danger"
               label="Desativar"
               @click="deactivate(row as PersonItem)"
+            />
+            <AppButton
+              size="sm"
+              variant="danger"
+              label="Deletar"
+              @click="remove(row as PersonItem)"
             />
           </div>
         </template>

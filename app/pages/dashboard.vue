@@ -3,6 +3,7 @@ import AppCard from '~/components/common/AppCard.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import type { CardItem } from '~/composables/useMasterData'
 import type { TransactionType } from '~/composables/useTransactions'
+import { formatBRL } from '~/utils/currency'
 
 definePageMeta({
   middleware: 'auth'
@@ -125,7 +126,7 @@ const cardStatementRows = computed(() => {
 const projectionRows = computed(() => accumulatedProjection.value.months)
 
 function formatCurrency(value: number) {
-  return value.toFixed(2)
+  return formatBRL(value)
 }
 
 async function fetchSummary() {

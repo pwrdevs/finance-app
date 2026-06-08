@@ -9,6 +9,9 @@ export type TransactionOriginType = (typeof TRANSACTION_ORIGIN_TYPES)[number]
 export const RECURRING_SCOPE = ['single', 'future', 'series'] as const
 export type RecurringScope = (typeof RECURRING_SCOPE)[number]
 
+export const DELETE_RECURRING_SCOPE = ['single', 'future'] as const
+export type DeleteRecurringScope = (typeof DELETE_RECURRING_SCOPE)[number]
+
 export const TRANSACTION_STATUS = ['pending', 'paid', 'skipped', 'canceled'] as const
 export type TransactionStatus = (typeof TRANSACTION_STATUS)[number]
 
@@ -978,10 +981,127 @@ export function useTransactions() {
     }
   }
 
+  async function cleanupSourceTransactionIfNoInstances(sourceTransactionId: string | null | undefined) {
+    if (!sourceTransactionId) {
+      return
+    }
+
+    const { count, error: remainingCountError } = await supabase
+      .from('transaction_instances')
+      .select('id', { head: true, count: 'exact' })
+      .eq('source_transaction_id', sourceTransactionId)
+
+    if (remainingCountError) {
+      throw remainingCountError
+    }
+
+    if ((count ?? 0) > 0) {
+      return
+    }
+
+    const { data: sourceTransaction, error: sourceTransactionError } = await supabase
+      .from('transactions')
+      .select('id, recurrence_rule_id')
+      .eq('id', sourceTransactionId)
+      .maybeSingle<{ id: string, recurrence_rule_id: string | null }>()
+
+    if (sourceTransactionError) {
+      throw sourceTransactionError
+    }
+
+    if (!sourceTransaction) {
+      return
+    }
+
+    const { error: deleteSourceError } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', sourceTransaction.id)
+
+    if (deleteSourceError) {
+      throw deleteSourceError
+    }
+
+    if (!sourceTransaction.recurrence_rule_id) {
+      return
+    }
+
+    const { count: remainingRecurringSources, error: remainingRecurringSourcesError } = await supabase
+      .from('transactions')
+      .select('id', { head: true, count: 'exact' })
+      .eq('recurrence_rule_id', sourceTransaction.recurrence_rule_id)
+
+    if (remainingRecurringSourcesError) {
+      throw remainingRecurringSourcesError
+    }
+
+    if ((remainingRecurringSources ?? 0) > 0) {
+      return
+    }
+
+    const { count: remainingRecurringInstances, error: remainingRecurringInstancesError } = await supabase
+      .from('transaction_instances')
+      .select('id', { head: true, count: 'exact' })
+      .eq('recurrence_rule_id', sourceTransaction.recurrence_rule_id)
+
+    if (remainingRecurringInstancesError) {
+      throw remainingRecurringInstancesError
+    }
+
+    if ((remainingRecurringInstances ?? 0) > 0) {
+      return
+    }
+
+    const { error: deleteRuleError } = await supabase
+      .from('recurrence_rules')
+      .delete()
+      .eq('id', sourceTransaction.recurrence_rule_id)
+
+    if (deleteRuleError) {
+      throw deleteRuleError
+    }
+  }
+
+  async function deleteTransactionInstance(item: TransactionInstanceItem, scope: DeleteRecurringScope = 'single') {
+    if (item.origin_type === 'recurring' && scope === 'future') {
+      if (!item.source_transaction_id) {
+        throw new Error('Lancamento de origem recorrente obrigatorio para deletar futuras instancias.')
+      }
+
+      const { recurrenceRule } = await getRecurringContext(item.source_transaction_id)
+      const fromDate = item.instance_date
+
+      const { error: deleteFutureError } = await supabase
+        .from('transaction_instances')
+        .delete()
+        .eq('recurrence_rule_id', recurrenceRule.id)
+        .gte('instance_date', fromDate)
+
+      if (deleteFutureError) {
+        throw deleteFutureError
+      }
+
+      await cleanupSourceTransactionIfNoInstances(item.source_transaction_id)
+      return
+    }
+
+    const { error: deleteInstanceError } = await supabase
+      .from('transaction_instances')
+      .delete()
+      .eq('id', item.id)
+
+    if (deleteInstanceError) {
+      throw deleteInstanceError
+    }
+
+    await cleanupSourceTransactionIfNoInstances(item.source_transaction_id)
+  }
+
   return {
     cancelRecurringTransaction,
     createSingleTransaction,
     createTransaction: createSingleTransaction,
+    deleteTransactionInstance,
     listFilterOptions,
     listManualInstances,
     updateRecurringTransaction,
