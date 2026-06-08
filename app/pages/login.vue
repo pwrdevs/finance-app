@@ -77,10 +77,17 @@ async function onRecoverPassword() {
 
 <template>
   <section class="mx-auto w-full max-w-xl space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
+    <div class="rounded-2xl border border-border bg-surface p-6 text-center shadow-panel">
+      <div class="mx-auto mb-4 h-28 w-full max-w-[560px] overflow-hidden">
+        <img
+          src="/pwrdevs-escrito.png"
+          alt="PWRDEVS"
+          class="w-full h-auto -translate-y-24"
+        >
+      </div>
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Acesso</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Entrar</h2>
-      <p class="mt-2 text-sm text-muted">Acesse com seu e-mail e senha para continuar.</p>
+      <p class="mx-auto mt-2 max-w-md text-sm text-muted">Acesse com seu e-mail e senha para continuar.</p>
     </div>
 
     <AppCard title="Login" subtitle="Autenticação por e-mail e senha">

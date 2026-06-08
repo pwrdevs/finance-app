@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody } from 'h3'
-import { requireAdmin, supabaseAdminRequest } from '~~/server/utils/adminAuth'
+import { requireAdmin, supabaseAdminRequest } from '../../../utils/adminAuth'
 
 interface ResetPasswordBody {
   email?: string

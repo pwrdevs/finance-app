@@ -50,16 +50,6 @@ onBeforeUnmount(() => {
       :class="open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
     >
       <div class="flex h-full flex-col p-4">
-        <div class="mb-4 rounded-xl border border-border bg-primary-light/35 px-4 py-3">
-          <div class="flex items-center gap-3">
-            <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-10 w-10 rounded-lg object-contain" />
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-muted">PWRDEVS</p>
-              <p class="mt-1 text-sm text-foreground">Finance App</p>
-            </div>
-          </div>
-        </div>
-
         <nav class="space-y-1">
           <NuxtLink
             v-for="link in links"

@@ -123,8 +123,33 @@ function resolveInstanceValue(expectedValue: number, realValue: number | null) {
 
 export function useFinancialSummary() {
   const supabase = useSupabaseClient()
+  const session = useSupabaseSession()
+
+  async function ensureAuthenticatedContext() {
+    if (session.value?.user?.id) {
+      return
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError) {
+      throw sessionError
+    }
+
+    if (sessionData.session?.user?.id) {
+      return
+    }
+
+    const { data, error } = await supabase.auth.getUser()
+
+    if (error || !data.user?.id) {
+      throw error || new Error('Authenticated user is required to load financial summary.')
+    }
+  }
 
   async function getMonthlySummary(filters: FinancialSummaryFilters): Promise<MonthlyFinancialSummary> {
+    await ensureAuthenticatedContext()
+
     const { from, to } = getMonthRange(filters)
 
     const { data, error } = await supabase
@@ -230,6 +255,8 @@ export function useFinancialSummary() {
   }
 
   async function getAccumulatedBalanceProjection(filters: FinancialSummaryFilters): Promise<AccumulatedBalanceProjection> {
+    await ensureAuthenticatedContext()
+
     const projectionMonths = 12
     const { year: startYear, month: startMonth } = { year: filters.year, month: filters.month }
     const endMonthPosition = addMonths(startYear, startMonth, projectionMonths)

@@ -21,11 +21,11 @@ const emit = defineEmits<{
           <span aria-hidden="true" class="text-lg">=</span>
         </button>
 
-        <div class="flex items-center gap-2">
-          <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-8 w-8 rounded-lg object-contain shadow-soft" />
+        <div class="flex items-center gap-3">
+          <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-12 w-12 rounded-xl object-contain shadow-soft" />
           <div>
-            <p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">PWRDEVS</p>
-            <h1 class="text-sm font-semibold text-foreground">{{ appName }}</h1>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted">PWRDEVS</p>
+            <h1 class="text-base font-semibold text-foreground">{{ appName }}</h1>
           </div>
         </div>
       </div>

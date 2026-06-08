@@ -5,14 +5,46 @@
 @tailwind utilities;
 
 :root {
+  --color-primary: 143 155 122;
+  --color-primary-dark: 96 107 80;
+  --color-primary-light: 196 204 182;
+  --color-background: 247 248 245;
+  --color-surface: 255 255 255;
+  --color-foreground: 31 36 28;
+  --color-muted: 111 118 104;
+  --color-border: 221 226 212;
   color-scheme: light;
+}
+
+.theme-light {
+  --color-primary: 143 155 122;
+  --color-primary-dark: 96 107 80;
+  --color-primary-light: 196 204 182;
+  --color-background: 247 248 245;
+  --color-surface: 255 255 255;
+  --color-foreground: 31 36 28;
+  --color-muted: 111 118 104;
+  --color-border: 221 226 212;
+  color-scheme: light;
+}
+
+.theme-dark {
+  --color-primary: 145 170 117;
+  --color-primary-dark: 183 205 156;
+  --color-primary-light: 72 83 61;
+  --color-background: 18 22 18;
+  --color-surface: 30 36 30;
+  --color-foreground: 235 240 229;
+  --color-muted: 168 177 160;
+  --color-border: 67 76 63;
+  color-scheme: dark;
 }
 
 body {
   @apply bg-background text-foreground antialiased;
-  background-image: radial-gradient(circle at 12% 20%, rgba(143, 155, 122, 0.12), transparent 35%),
-    radial-gradient(circle at 88% 10%, rgba(96, 107, 80, 0.1), transparent 28%),
-    linear-gradient(180deg, #f7f8f5 0%, #f2f4ee 100%);
+  background-image: radial-gradient(circle at 12% 20%, rgb(var(--color-primary) / 0.18), transparent 35%),
+    radial-gradient(circle at 88% 10%, rgb(var(--color-primary-dark) / 0.16), transparent 28%),
+    linear-gradient(180deg, rgb(var(--color-background)) 0%, rgb(var(--color-background) / 0.94) 100%);
 }
 
 ::selection {

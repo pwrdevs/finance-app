@@ -88,11 +88,36 @@ export function useMasterData() {
   const supabase = useSupabaseClient()
   const session = useSupabaseSession()
 
-  async function getUserId() {
-    const userId = session.value?.user?.id
+  function normalizeSupabaseError(error: unknown) {
+    if (!error || typeof error !== 'object') {
+      return error
+    }
 
-    if (userId) {
-      return userId
+    const code = 'code' in error ? String((error as { code?: unknown }).code ?? '') : ''
+    const message = 'message' in error ? String((error as { message?: unknown }).message ?? '') : ''
+
+    if (code === '42501' && /permission denied/i.test(message)) {
+      return new Error('Sessao invalida para acessar People. Faca login novamente.')
+    }
+
+    return error
+  }
+
+  async function ensureAuthenticatedUserId() {
+    const fromSession = session.value?.user?.id
+
+    if (fromSession) {
+      return fromSession
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError) {
+      throw new Error(sessionError.message || 'Authenticated user is required for master data operations.')
+    }
+
+    if (sessionData.session?.user?.id) {
+      return sessionData.session.user.id
     }
 
     const { data, error } = await supabase.auth.getUser()
@@ -108,20 +133,28 @@ export function useMasterData() {
     return data.user.id
   }
 
+  async function getUserId() {
+    return ensureAuthenticatedUserId()
+  }
+
   async function listPeople() {
+    await ensureAuthenticatedUserId()
+
     const { data, error } = await supabase
       .from('people')
       .select('id, name, notes, is_active, created_at')
       .order('created_at', { ascending: false })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
 
     return (data ?? []) as PersonRecord[]
   }
 
   async function savePerson(payload: PersonPayload, id?: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     if (id) {
       const { error } = await supabase
         .from('people')
@@ -130,10 +163,11 @@ export function useMasterData() {
           notes: normalizeOptionalText(payload.notes),
           is_active: payload.is_active ?? true
         })
+        .eq('user_id', userId)
         .eq('id', id)
 
       if (error) {
-        throw error
+        throw normalizeSupabaseError(error)
       }
 
       return
@@ -142,29 +176,34 @@ export function useMasterData() {
     const { error } = await supabase
       .from('people')
       .insert({
-        user_id: await getUserId(),
+        user_id: userId,
         name: payload.name.trim(),
         notes: normalizeOptionalText(payload.notes),
         is_active: payload.is_active ?? true
       })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 
   async function deactivatePerson(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     const { error } = await supabase
       .from('people')
       .update({ is_active: false })
+      .eq('user_id', userId)
       .eq('id', id)
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 
   async function listAccounts() {
+    await ensureAuthenticatedUserId()
+
     const { data, error } = await supabase
       .from('accounts')
       .select('id, name, type, initial_balance, is_active, created_at')
@@ -178,6 +217,8 @@ export function useMasterData() {
   }
 
   async function saveAccount(payload: AccountPayload, id?: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     if (id) {
       const { error } = await supabase
         .from('accounts')
@@ -187,6 +228,7 @@ export function useMasterData() {
           initial_balance: payload.initial_balance,
           is_active: payload.is_active ?? true
         })
+        .eq('user_id', userId)
         .eq('id', id)
 
       if (error) {
@@ -199,7 +241,7 @@ export function useMasterData() {
     const { error } = await supabase
       .from('accounts')
       .insert({
-        user_id: await getUserId(),
+        user_id: userId,
         name: payload.name.trim(),
         type: payload.type,
         initial_balance: payload.initial_balance,
@@ -212,9 +254,12 @@ export function useMasterData() {
   }
 
   async function deactivateAccount(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     const { error } = await supabase
       .from('accounts')
       .update({ is_active: false })
+      .eq('user_id', userId)
       .eq('id', id)
 
     if (error) {
@@ -223,6 +268,8 @@ export function useMasterData() {
   }
 
   async function listCategories() {
+    await ensureAuthenticatedUserId()
+
     const { data, error } = await supabase
       .from('categories')
       .select('id, name, type, color, icon, is_active, created_at')
@@ -236,6 +283,8 @@ export function useMasterData() {
   }
 
   async function saveCategory(payload: CategoryPayload, id?: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     if (id) {
       const { error } = await supabase
         .from('categories')
@@ -246,6 +295,7 @@ export function useMasterData() {
           icon: normalizeOptionalText(payload.icon),
           is_active: payload.is_active ?? true
         })
+        .eq('user_id', userId)
         .eq('id', id)
 
       if (error) {
@@ -258,7 +308,7 @@ export function useMasterData() {
     const { error } = await supabase
       .from('categories')
       .insert({
-        user_id: await getUserId(),
+        user_id: userId,
         name: payload.name.trim(),
         type: payload.type,
         color: normalizeOptionalText(payload.color),
@@ -272,9 +322,12 @@ export function useMasterData() {
   }
 
   async function deactivateCategory(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     const { error } = await supabase
       .from('categories')
       .update({ is_active: false })
+      .eq('user_id', userId)
       .eq('id', id)
 
     if (error) {
@@ -283,6 +336,8 @@ export function useMasterData() {
   }
 
   async function listCards() {
+    await ensureAuthenticatedUserId()
+
     const { data, error } = await supabase
       .from('cards')
       .select('id, name, person_id, brand, closing_day, due_day, credit_limit, is_active, created_at')
@@ -296,6 +351,8 @@ export function useMasterData() {
   }
 
   async function saveCard(payload: CardPayload, id?: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     if (id) {
       const { error } = await supabase
         .from('cards')
@@ -308,6 +365,7 @@ export function useMasterData() {
           credit_limit: payload.credit_limit ?? null,
           is_active: payload.is_active ?? true
         })
+        .eq('user_id', userId)
         .eq('id', id)
 
       if (error) {
@@ -320,7 +378,7 @@ export function useMasterData() {
     const { error } = await supabase
       .from('cards')
       .insert({
-        user_id: await getUserId(),
+        user_id: userId,
         name: payload.name.trim(),
         person_id: payload.person_id,
         brand: normalizeOptionalText(payload.brand),
@@ -336,9 +394,12 @@ export function useMasterData() {
   }
 
   async function deactivateCard(id: string) {
+    const userId = await ensureAuthenticatedUserId()
+
     const { error } = await supabase
       .from('cards')
       .update({ is_active: false })
+      .eq('user_id', userId)
       .eq('id', id)
 
     if (error) {

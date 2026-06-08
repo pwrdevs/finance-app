@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
-import { requireAdmin, supabaseAdminRequest } from '~~/server/utils/adminAuth'
+import { requireAdmin, supabaseAdminRequest } from '../../../utils/adminAuth'
 
 interface UpdateUserBody {
   ativo?: boolean

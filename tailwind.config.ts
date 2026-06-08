@@ -4,14 +4,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#8F9B7A',
-        'primary-dark': '#606B50',
-        'primary-light': '#C4CCB6',
-        background: '#F7F8F5',
-        surface: '#FFFFFF',
-        foreground: '#1F241C',
-        muted: '#6F7668',
-        border: '#DDE2D4'
+        primary: 'rgb(var(--color-primary) / <alpha-value>)',
+        'primary-dark': 'rgb(var(--color-primary-dark) / <alpha-value>)',
+        'primary-light': 'rgb(var(--color-primary-light) / <alpha-value>)',
+        background: 'rgb(var(--color-background) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        foreground: 'rgb(var(--color-foreground) / <alpha-value>)',
+        muted: 'rgb(var(--color-muted) / <alpha-value>)',
+        border: 'rgb(var(--color-border) / <alpha-value>)'
       },
       fontFamily: {
         sans: ['"Space Grotesk"', '"IBM Plex Sans"', 'sans-serif']
