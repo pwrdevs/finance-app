@@ -154,3 +154,16 @@
 - 2026-06-08: Release prep started for Vercel: runtime now ignores local source-assets folder `LOGO/` via `.gitignore` since production logo assets are served from `public/`.
 - 2026-06-08: Temporary QA test records were removed safely from Supabase (`people`, `transaction_instances`, `transactions`) for user `qa.finance.validation@example.com`; user deletion in Auth is pending manual execution with service-role credentials.
 - 2026-06-08: README replaced with project-specific operational and Vercel deployment instructions (stack, env vars, scripts, deploy checklist).
+- 2026-06-08: UX e traducao PT-BR reforcadas nas areas principais (layout/header/sidebar/modal, dashboard, lancamentos, contas, categorias e cartoes) com padronizacao de mensagens e labels.
+- 2026-06-08: Corrigida a causa da mensagem falsa de sessao invalida em fluxos de filtros/people: havia corrida de hidratacao entre sessao do cliente e consultas em `useTransactions`; ajuste aplicado com hidratacao assincrona de sessao (`getSession`/`getUser`) antes das consultas.
+- 2026-06-08: `useMasterData` recebeu normalizacao de erro 42501 generica por modulo e mensagens de sessao expirada para reduzir diagnostico enganoso.
+- 2026-06-08: Logica financeira consolidada em valor efetivo (`real_value ?? expected_value`) para dashboard/resumos/projecao, mantendo cancelados fora dos totais principais.
+- 2026-06-08: Tela de lancamentos recebeu tabela de conciliacao com edicao inline de valor real, filtros principais + avancados recolhiveis, periodo customizado opcional e botao de limpar filtros.
+- 2026-06-08: Modal de lancamentos reorganizado em secoes (Dados principais, Valores, Classificacao, Repeticao/Parcelamento, Observacoes) com melhor usabilidade mobile.
+- 2026-06-08: Build de producao validado com sucesso em espelho `/tmp/finance-app-release-build` (npm ci + npm run build); avisos `EBADENGINE` nao bloquearam geracao dos artefatos.
+- 2026-06-08: Revisao final de UX em `/transactions` concluida com tabela unica em todos os breakpoints (sem cards mobile), scroll horizontal controlado e colunas de conciliacao priorizadas (Conferido, Data, Descricao, Responsavel, Categoria, Cartao, Previsto, Realizado).
+- 2026-06-08: Layout de filtros de lancamentos padronizado conforme regra final: linha 1 (Periodo, Cartao, Responsavel), linha 2 (Categoria, Conta, Status) e campo dedicado para pesquisar descricao.
+- 2026-06-08: Regra de criacao financeira reforcada em `useTransactions`: novos lancamentos agora nascem com `real_value = expected_value` e `is_checked = false` em fluxos single, installment e recurring (incluindo `transaction_instances`).
+- 2026-06-08: Ajuste final de shell aplicado para simplificacao visual: sidebar com logo PWRDEVS em destaque e menu, mantendo o nome do sistema apenas no header.
+- 2026-06-08: Tela tecnica `/developer/setup` convertida para PT-BR para reduzir residuos de texto em ingles na aplicacao.
+- 2026-06-08: Build local final (`npm run build`) executado com sucesso apos os ajustes de UX e regras financeiras, sem erros de compilacao.

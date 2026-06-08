@@ -97,7 +97,7 @@ export function useMasterData() {
     const message = 'message' in error ? String((error as { message?: unknown }).message ?? '') : ''
 
     if (code === '42501' && /permission denied/i.test(message)) {
-      return new Error('Sessao invalida para acessar People. Faca login novamente.')
+      return new Error('Sessao invalida para acessar dados. Faca login novamente.')
     }
 
     return error
@@ -113,7 +113,7 @@ export function useMasterData() {
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
 
     if (sessionError) {
-      throw new Error(sessionError.message || 'Authenticated user is required for master data operations.')
+      throw new Error(sessionError.message || 'Usuario autenticado obrigatorio para operacoes de dados mestres.')
     }
 
     if (sessionData.session?.user?.id) {
@@ -123,11 +123,11 @@ export function useMasterData() {
     const { data, error } = await supabase.auth.getUser()
 
     if (error) {
-      throw new Error(error.message || 'Authenticated user is required for master data operations.')
+      throw new Error(error.message || 'Usuario autenticado obrigatorio para operacoes de dados mestres.')
     }
 
     if (!data.user?.id) {
-      throw new Error('Authenticated user is required for master data operations.')
+      throw new Error('Sessao expirada. Faca login novamente.')
     }
 
     return data.user.id
@@ -210,7 +210,7 @@ export function useMasterData() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
 
     return (data ?? []) as AccountRecord[]
@@ -232,7 +232,7 @@ export function useMasterData() {
         .eq('id', id)
 
       if (error) {
-        throw error
+        throw normalizeSupabaseError(error)
       }
 
       return
@@ -249,7 +249,7 @@ export function useMasterData() {
       })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 
@@ -263,7 +263,7 @@ export function useMasterData() {
       .eq('id', id)
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 
@@ -276,7 +276,7 @@ export function useMasterData() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
 
     return (data ?? []) as CategoryRecord[]
@@ -299,7 +299,7 @@ export function useMasterData() {
         .eq('id', id)
 
       if (error) {
-        throw error
+        throw normalizeSupabaseError(error)
       }
 
       return
@@ -317,7 +317,7 @@ export function useMasterData() {
       })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 
@@ -331,7 +331,7 @@ export function useMasterData() {
       .eq('id', id)
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 
@@ -344,7 +344,7 @@ export function useMasterData() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
 
     return (data ?? []) as CardRecord[]
@@ -369,7 +369,7 @@ export function useMasterData() {
         .eq('id', id)
 
       if (error) {
-        throw error
+        throw normalizeSupabaseError(error)
       }
 
       return
@@ -389,7 +389,7 @@ export function useMasterData() {
       })
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 
@@ -403,7 +403,7 @@ export function useMasterData() {
       .eq('id', id)
 
     if (error) {
-      throw error
+      throw normalizeSupabaseError(error)
     }
   }
 

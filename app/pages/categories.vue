@@ -7,9 +7,7 @@ import AppTable from '~/components/common/AppTable.vue'
 import { CATEGORY_TYPES } from '~/composables/useMasterData'
 import type { CategoryItem, CategoryType } from '~/composables/useMasterData'
 
-definePageMeta({
-  middleware: 'auth'
-})
+definePageMeta({ middleware: 'auth' })
 
 const { deactivateCategory, listCategories, upsertCategory } = useMasterData()
 
@@ -33,13 +31,13 @@ const icon = ref('')
 const isActive = ref(true)
 
 const columns = [
-  { key: 'name', label: 'Name' },
-  { key: 'type', label: 'Type' },
-  { key: 'color', label: 'Color' },
-  { key: 'icon', label: 'Icon' },
+  { key: 'name', label: 'Nome' },
+  { key: 'type', label: 'Tipo' },
+  { key: 'color', label: 'Cor' },
+  { key: 'icon', label: 'Icone' },
   { key: 'status', label: 'Status' },
-  { key: 'created_at', label: 'Created' },
-  { key: 'actions', label: 'Actions', align: 'right' as const }
+  { key: 'created_at', label: 'Criado em' },
+  { key: 'actions', label: 'Acoes', align: 'right' as const }
 ]
 
 const filteredRows = computed(() => {
@@ -47,40 +45,17 @@ const filteredRows = computed(() => {
 
   return rows.value
     .filter((row) => {
-      if (statusFilter.value === 'active') {
-        return row.is_active
-      }
-
-      if (statusFilter.value === 'inactive') {
-        return !row.is_active
-      }
-
+      if (statusFilter.value === 'active') return row.is_active
+      if (statusFilter.value === 'inactive') return !row.is_active
       return true
     })
-    .filter((row) => {
-      if (typeFilter.value === 'all') {
-        return true
-      }
-
-      return row.type === typeFilter.value
-    })
-    .filter((row) => {
-      if (!normalizedSearch) {
-        return true
-      }
-
-      return row.name.toLowerCase().includes(normalizedSearch)
-        || (row.icon || '').toLowerCase().includes(normalizedSearch)
-        || (row.color || '').toLowerCase().includes(normalizedSearch)
-    })
-    .map((row) => ({
-      ...row,
-      status: row.is_active ? 'Active' : 'Inactive'
-    }))
+    .filter((row) => typeFilter.value === 'all' || row.type === typeFilter.value)
+    .filter((row) => !normalizedSearch || row.name.toLowerCase().includes(normalizedSearch) || (row.icon || '').toLowerCase().includes(normalizedSearch) || (row.color || '').toLowerCase().includes(normalizedSearch))
+    .map((row) => ({ ...row, status: row.is_active ? 'Ativo' : 'Inativo' }))
 })
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-CA')
+  return new Date(value).toLocaleDateString('pt-BR')
 }
 
 function resetForm() {
@@ -112,11 +87,10 @@ function openEditModal(row: CategoryItem) {
 async function fetchRows() {
   loading.value = true
   pageError.value = ''
-
   try {
     rows.value = await listCategories()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to load categories.'
+    pageError.value = err instanceof Error ? err.message : 'Falha ao carregar categorias.'
   } finally {
     loading.value = false
   }
@@ -124,30 +98,18 @@ async function fetchRows() {
 
 async function submitForm() {
   modalError.value = ''
-
   if (!name.value.trim()) {
-    modalError.value = 'Name is required.'
+    modalError.value = 'Nome obrigatorio.'
     return
   }
 
   saving.value = true
-
   try {
-    await upsertCategory(
-      {
-        name: name.value,
-        type: type.value,
-        color: color.value,
-        icon: icon.value,
-        is_active: isActive.value
-      },
-      editingId.value || undefined
-    )
-
+    await upsertCategory({ name: name.value, type: type.value, color: color.value, icon: icon.value, is_active: isActive.value }, editingId.value || undefined)
     isModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    modalError.value = err instanceof Error ? err.message : 'Failed to save category.'
+    modalError.value = err instanceof Error ? err.message : 'Falha ao salvar categoria.'
   } finally {
     saving.value = false
   }
@@ -155,36 +117,33 @@ async function submitForm() {
 
 async function deactivate(row: CategoryItem) {
   pageError.value = ''
-
   try {
     await deactivateCategory(row.id)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Failed to deactivate category.'
+    pageError.value = err instanceof Error ? err.message : 'Falha ao desativar categoria.'
   }
 }
 
-onMounted(async () => {
-  await fetchRows()
-})
+onMounted(fetchRows)
 </script>
 
 <template>
   <section class="space-y-6">
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Master Data</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Categories</h2>
-      <p class="mt-2 text-sm text-muted">Manage categories for income and expense classifications.</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dados mestres</p>
+      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Categorias</h2>
+      <p class="mt-2 text-sm text-muted">Gerencie categorias para classificacao de receitas e despesas.</p>
     </div>
 
-    <AppCard title="Filters">
+    <AppCard title="Filtros">
       <div class="grid gap-4 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
-        <AppInput v-model="search" label="Search" placeholder="Search by name, icon or color" />
+        <AppInput v-model="search" label="Buscar" placeholder="Buscar por nome, icone ou cor" />
 
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Type</label>
+          <label class="block text-sm font-medium text-foreground">Tipo</label>
           <select v-model="typeFilter" class="h-11 rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
+            <option value="all">Todos</option>
             <option v-for="entry in CATEGORY_TYPES" :key="entry" :value="entry">{{ entry }}</option>
           </select>
         </div>
@@ -192,83 +151,55 @@ onMounted(async () => {
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Status</label>
           <select v-model="statusFilter" class="h-11 rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="all">All</option>
+            <option value="active">Ativo</option>
+            <option value="inactive">Inativo</option>
+            <option value="all">Todos</option>
           </select>
         </div>
 
-        <AppButton label="New category" @click="openCreateModal" />
+        <AppButton label="Nova categoria" @click="openCreateModal" />
       </div>
     </AppCard>
 
     <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
 
-    <AppCard title="Categories list" :subtitle="loading ? 'Loading data...' : `${filteredRows.length} record(s)`">
-      <AppTable :columns="columns" :rows="filteredRows" empty-message="No categories found.">
-        <template #cell-type="{ value }">
-          <span class="capitalize">{{ value }}</span>
-        </template>
-
-        <template #cell-color="{ value }">
-          <span class="text-sm text-muted">{{ value || '—' }}</span>
-        </template>
-
-        <template #cell-icon="{ value }">
-          <span class="text-sm text-muted">{{ value || '—' }}</span>
-        </template>
-
+    <AppCard title="Lista de categorias" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
+      <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhuma categoria encontrada.">
+        <template #cell-type="{ value }"><span class="capitalize">{{ value }}</span></template>
+        <template #cell-color="{ value }"><span class="text-sm text-muted">{{ value || '-' }}</span></template>
+        <template #cell-icon="{ value }"><span class="text-sm text-muted">{{ value || '-' }}</span></template>
         <template #cell-status="{ value }">
-          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
-            {{ value }}
-          </span>
+          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">{{ value }}</span>
         </template>
-
-        <template #cell-created_at="{ value }">
-          {{ formatDate(String(value)) }}
-        </template>
-
+        <template #cell-created_at="{ value }">{{ formatDate(String(value)) }}</template>
         <template #cell-actions="{ row }">
           <div class="flex justify-end gap-2">
-            <AppButton size="sm" variant="ghost" label="Edit" @click="openEditModal(row as CategoryItem)" />
-            <AppButton
-              v-if="(row as CategoryItem).is_active"
-              size="sm"
-              variant="danger"
-              label="Disable"
-              @click="deactivate(row as CategoryItem)"
-            />
+            <AppButton size="sm" variant="ghost" label="Editar" @click="openEditModal(row as CategoryItem)" />
+            <AppButton v-if="(row as CategoryItem).is_active" size="sm" variant="danger" label="Desativar" @click="deactivate(row as CategoryItem)" />
           </div>
         </template>
       </AppTable>
     </AppCard>
 
-    <AppModal v-model="isModalOpen" :title="editingId ? 'Edit category' : 'New category'" description="Create or update a category.">
+    <AppModal v-model="isModalOpen" :title="editingId ? 'Editar categoria' : 'Nova categoria'" description="Crie ou atualize uma categoria.">
       <div class="space-y-4">
-        <AppInput v-model="name" label="Name" placeholder="Category name" required />
-
+        <AppInput v-model="name" label="Nome" placeholder="Nome da categoria" required />
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Type</label>
+          <label class="block text-sm font-medium text-foreground">Tipo</label>
           <select v-model="type" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
             <option v-for="entry in CATEGORY_TYPES" :key="entry" :value="entry">{{ entry }}</option>
           </select>
         </div>
-
-        <AppInput v-model="color" label="Color" placeholder="#8F9B7A" />
-        <AppInput v-model="icon" label="Icon" placeholder="wallet" />
-
-        <label class="flex items-center gap-2 text-sm text-foreground">
-          <input v-model="isActive" type="checkbox" class="h-4 w-4 rounded border-border" />
-          Active
-        </label>
-
+        <AppInput v-model="color" label="Cor" placeholder="#8F9B7A" />
+        <AppInput v-model="icon" label="Icone" placeholder="wallet" />
+        <label class="flex items-center gap-2 text-sm text-foreground"><input v-model="isActive" type="checkbox" class="h-4 w-4 rounded border-border" />Ativo</label>
         <p v-if="modalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ modalError }}</p>
       </div>
 
       <template #footer>
         <div class="flex justify-end gap-2">
-          <AppButton label="Cancel" variant="ghost" @click="isModalOpen = false" />
-          <AppButton :label="saving ? 'Saving...' : 'Save'" :disabled="saving" @click="submitForm" />
+          <AppButton label="Cancelar" variant="ghost" @click="isModalOpen = false" />
+          <AppButton :label="saving ? 'Salvando...' : 'Salvar'" :disabled="saving" @click="submitForm" />
         </div>
       </template>
     </AppModal>

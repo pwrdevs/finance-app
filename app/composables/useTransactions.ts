@@ -70,6 +70,8 @@ export interface TransactionInstanceItem {
 export interface TransactionFilters {
   month: number
   year: number
+  from_date?: string
+  to_date?: string
 }
 
 export interface CreateSingleTransactionPayload {
@@ -136,6 +138,13 @@ function normalizeOptionalId(value: string | null | undefined) {
 }
 
 function getMonthRange(filters: TransactionFilters) {
+  if (filters.from_date && filters.to_date) {
+    return {
+      from: filters.from_date,
+      to: shiftDays(filters.to_date, 1)
+    }
+  }
+
   const firstDay = new Date(Date.UTC(filters.year, filters.month - 1, 1))
   const nextMonth = new Date(Date.UTC(filters.year, filters.month, 1))
 
@@ -249,7 +258,7 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     source_transaction_id: record.source_transaction_id,
     transaction_id: source?.id ?? null,
     recurrence_rule_id: source?.recurrence_rule_id ?? null,
-    title: source?.title ?? 'Untitled transaction',
+    title: source?.title ?? 'Lancamento sem titulo',
     type: source?.type ?? 'expense',
     origin_type: source?.origin_type ?? 'single',
     description: source?.description ?? null,
@@ -276,17 +285,48 @@ export function useTransactions() {
   const session = useSupabaseSession()
   const masterData = useMasterData()
 
-  function getUserId() {
-    const userId = session.value?.user?.id
+  async function ensureAuthenticatedUserId() {
+    const fromSession = session.value?.user?.id
+
+    if (fromSession) {
+      return fromSession
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError) {
+      throw new Error(sessionError.message || 'Sessao invalida para operacoes de lancamentos. Faca login novamente.')
+    }
+
+    if (sessionData.session?.user?.id) {
+      return sessionData.session.user.id
+    }
+
+    const { data, error } = await supabase.auth.getUser()
+
+    if (error) {
+      throw new Error(error.message || 'Sessao invalida para operacoes de lancamentos. Faca login novamente.')
+    }
+
+    if (!data.user?.id) {
+      throw new Error('Sessao expirada. Faca login novamente.')
+    }
+
+    return data.user.id
+  }
+
+  async function getUserId() {
+    const userId = await ensureAuthenticatedUserId()
 
     if (!userId) {
-      throw new Error('Authenticated user is required for transaction operations.')
+      throw new Error('Sessao expirada. Faca login novamente.')
     }
 
     return userId
   }
 
   async function listManualInstances(filters: TransactionFilters) {
+    await ensureAuthenticatedUserId()
     const { from, to } = getMonthRange(filters)
 
     const { data, error } = await supabase
@@ -333,27 +373,27 @@ export function useTransactions() {
   }
 
   async function createRecurringTransaction(payload: CreateSingleTransactionPayload) {
-    const userId = getUserId()
+    const userId = await getUserId()
     const startDate = payload.recurring_start_date
 
     if (!startDate) {
-      throw new Error('Recurring start date is required.')
+      throw new Error('A data inicial da recorrencia e obrigatoria.')
     }
 
     const noEndDate = payload.recurring_no_end_date ?? true
     const endDate = noEndDate ? null : (payload.recurring_end_date ?? null)
 
     if (!noEndDate && !endDate) {
-      throw new Error('Recurring end date is required when no end date is disabled.')
+      throw new Error('A data final da recorrencia e obrigatoria quando a opcao sem data final estiver desativada.')
     }
 
     if (endDate && endDate < startDate) {
-      throw new Error('Recurring end date must be greater than or equal to start date.')
+      throw new Error('A data final da recorrencia deve ser maior ou igual a data inicial.')
     }
 
     const recurringDates = buildRecurringDates(startDate, endDate)
     if (!recurringDates.length) {
-      throw new Error('No recurring instances generated with the selected date range.')
+      throw new Error('Nenhuma instancia recorrente foi gerada para o periodo informado.')
     }
 
     const { data: recurrenceRule, error: recurrenceRuleError } = await supabase
@@ -383,7 +423,7 @@ export function useTransactions() {
         title: payload.title.trim(),
         description: normalizeOptionalText(payload.description),
         expected_value: payload.expected_value,
-        real_value: null,
+        real_value: payload.expected_value,
         due_date: startDate,
         is_checked: false,
         checked_at: null,
@@ -406,7 +446,7 @@ export function useTransactions() {
       source_transaction_id: transactionData.id,
       instance_date: instanceDate,
       expected_value: payload.expected_value,
-      real_value: index === 0 ? (payload.real_value ?? null) : null,
+      real_value: payload.expected_value,
       is_checked: false,
       checked_at: null,
       status: payload.status ?? 'pending',
@@ -436,12 +476,12 @@ export function useTransactions() {
       return
     }
 
-    const userId = getUserId()
-    const isChecked = payload.is_checked ?? false
-    const checkedAt = deriveCheckedAt(isChecked)
+    const userId = await getUserId()
+    const isChecked = false
+    const checkedAt = null
 
     if (!payload.due_date || !payload.instance_date) {
-      throw new Error('Due date and instance date are required for single transactions.')
+      throw new Error('Vencimento e data do lancamento sao obrigatorios para lancamentos unicos.')
     }
 
     const { data: transactionData, error: transactionError } = await supabase
@@ -453,7 +493,7 @@ export function useTransactions() {
         title: payload.title.trim(),
         description: normalizeOptionalText(payload.description),
         expected_value: payload.expected_value,
-        real_value: payload.real_value ?? null,
+        real_value: payload.expected_value,
         due_date: payload.due_date,
         is_checked: isChecked,
         checked_at: checkedAt,
@@ -476,7 +516,7 @@ export function useTransactions() {
         source_transaction_id: transactionData.id,
         instance_date: payload.instance_date,
         expected_value: payload.expected_value,
-        real_value: payload.real_value ?? null,
+        real_value: payload.expected_value,
         is_checked: isChecked,
         checked_at: checkedAt,
         status: payload.status ?? 'pending',
@@ -492,20 +532,20 @@ export function useTransactions() {
   }
 
   async function createInstallmentTransaction(payload: CreateSingleTransactionPayload) {
-    const userId = getUserId()
+    const userId = await getUserId()
     const installmentTotal = payload.installment_total ?? 0
     const startDate = payload.installment_start_date
 
     if (!startDate) {
-      throw new Error('Installment start date is required.')
+      throw new Error('A data inicial do parcelamento e obrigatoria.')
     }
 
     if (installmentTotal < 2) {
-      throw new Error('Installment total must be at least 2.')
+      throw new Error('A quantidade de parcelas deve ser no minimo 2.')
     }
 
     if (!normalizeOptionalId(payload.card_id)) {
-      throw new Error('Card is required for installment transactions.')
+      throw new Error('Cartao e obrigatorio para lancamentos parcelados.')
     }
 
     const groupId = generateGroupId()
@@ -520,7 +560,7 @@ export function useTransactions() {
         title: payload.title.trim(),
         description: normalizeOptionalText(payload.description),
         expected_value: payload.expected_value,
-        real_value: null,
+        real_value: payload.expected_value,
         due_date: startDate,
         is_checked: false,
         checked_at: null,
@@ -544,7 +584,7 @@ export function useTransactions() {
       source_transaction_id: transactionData.id,
       instance_date: addMonthsKeepingDay(startDate, index),
       expected_value: parcelValue,
-      real_value: null,
+      real_value: parcelValue,
       is_checked: false,
       checked_at: null,
       status: 'pending' as const,
@@ -635,7 +675,7 @@ export function useTransactions() {
     }
 
     if (!sourceTransaction.recurrence_rule_id) {
-      throw new Error('Recurring source transaction is not linked to a recurrence rule.')
+      throw new Error('O lancamento recorrente nao possui regra de recorrencia vinculada.')
     }
 
     const { data: recurrenceRule, error: recurrenceRuleError } = await supabase
@@ -665,7 +705,7 @@ export function useTransactions() {
     }
 
     if (!item.source_transaction_id) {
-      throw new Error('Recurring source transaction is required.')
+      throw new Error('Lancamento de origem recorrente obrigatorio.')
     }
 
     const { sourceTransaction, recurrenceRule } = await getRecurringContext(item.source_transaction_id)
@@ -685,7 +725,7 @@ export function useTransactions() {
           : (payload.recurring_end_date ?? recurrenceRule.end_date)
 
       if (nextEndDate && nextEndDate < splitDate) {
-        throw new Error('Recurring end date must be greater than or equal to split date.')
+        throw new Error('A data final da recorrencia deve ser maior ou igual a data de corte.')
       }
 
       const { data: newRule, error: newRuleError } = await supabase
@@ -780,7 +820,7 @@ export function useTransactions() {
         : (payload.recurring_end_date ?? recurrenceRule.end_date)
 
     if (nextEndDate && nextEndDate < recurrenceRule.start_date) {
-      throw new Error('Recurring end date must be greater than or equal to rule start date.')
+      throw new Error('A data final da recorrencia deve ser maior ou igual a data inicial da regra.')
     }
 
     const { error: recurrenceRuleError } = await supabase
@@ -841,7 +881,7 @@ export function useTransactions() {
     }
 
     if (!item.source_transaction_id) {
-      throw new Error('Recurring source transaction is required.')
+      throw new Error('Lancamento de origem recorrente obrigatorio.')
     }
 
     const { recurrenceRule } = await getRecurringContext(item.source_transaction_id)

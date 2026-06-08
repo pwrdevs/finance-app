@@ -111,7 +111,7 @@ function addMonths(year: number, month: number, offset: number) {
 }
 
 function toMonthLabel(year: number, month: number) {
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-CA', {
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('pt-BR', {
     month: 'short',
     year: 'numeric'
   })
@@ -143,7 +143,7 @@ export function useFinancialSummary() {
     const { data, error } = await supabase.auth.getUser()
 
     if (error || !data.user?.id) {
-      throw error || new Error('Authenticated user is required to load financial summary.')
+      throw error || new Error('Sessao invalida para carregar o resumo financeiro. Faca login novamente.')
     }
   }
 
@@ -182,7 +182,7 @@ export function useFinancialSummary() {
     const rows = (data ?? []) as TransactionInstanceSummaryRecord[]
     const launches: MonthlyLaunchItem[] = rows.map((row) => ({
       id: row.id,
-      title: row.source_transaction?.title || 'Untitled transaction',
+      title: row.source_transaction?.title || 'Lancamento sem titulo',
       type: row.source_transaction?.type || 'expense',
       description: row.source_transaction?.description ?? null,
       instance_date: row.instance_date,
@@ -197,23 +197,23 @@ export function useFinancialSummary() {
 
     const totalIncome = activeLaunches
       .filter(item => item.type === 'income')
-      .reduce((sum, item) => sum + item.expected_value, 0)
+      .reduce((sum, item) => sum + resolveInstanceValue(item.expected_value, item.real_value), 0)
 
     const totalExpense = activeLaunches
       .filter(item => item.type === 'expense')
-      .reduce((sum, item) => sum + item.expected_value, 0)
+      .reduce((sum, item) => sum + resolveInstanceValue(item.expected_value, item.real_value), 0)
 
     const checkedTotal = activeLaunches
       .filter(item => item.is_checked)
-      .reduce((sum, item) => sum + item.expected_value, 0)
+      .reduce((sum, item) => sum + resolveInstanceValue(item.expected_value, item.real_value), 0)
 
     const pendingTotal = activeLaunches
       .filter(item => item.status === 'pending')
-      .reduce((sum, item) => sum + item.expected_value, 0)
+      .reduce((sum, item) => sum + resolveInstanceValue(item.expected_value, item.real_value), 0)
 
     const canceledTotal = launches
       .filter(item => item.status === 'canceled')
-      .reduce((sum, item) => sum + item.expected_value, 0)
+      .reduce((sum, item) => sum + resolveInstanceValue(item.expected_value, item.real_value), 0)
 
     const cardStatementsMap = new Map<string, { totalExpense: number; transactionCount: number }>()
 
@@ -228,7 +228,7 @@ export function useFinancialSummary() {
 
       const current = cardStatementsMap.get(row.card_id) || { totalExpense: 0, transactionCount: 0 }
       cardStatementsMap.set(row.card_id, {
-        totalExpense: current.totalExpense + toNumber(row.expected_value),
+        totalExpense: current.totalExpense + resolveInstanceValue(toNumber(row.expected_value), row.real_value == null ? null : Number(row.real_value)),
         transactionCount: current.transactionCount + 1
       })
     }

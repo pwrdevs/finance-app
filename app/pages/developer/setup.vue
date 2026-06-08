@@ -20,38 +20,38 @@ const user = useSupabaseUser()
 const session = useSupabaseSession()
 
 const connectionState = ref<'idle' | 'connected' | 'error'>('idle')
-const connectionMessage = ref('Checking public Supabase endpoint…')
+const connectionMessage = ref('Verificando endpoint publico do Supabase...')
 
 const authState = ref<'idle' | 'authenticated' | 'anonymous' | 'error'>('idle')
-const authMessage = ref('Checking current session…')
+const authMessage = ref('Verificando sessao atual...')
 
 const tableAccessState = ref<'idle' | 'ok' | 'auth-required' | 'error'>('idle')
-const tableAccessMessage = ref('Checking table access…')
+const tableAccessMessage = ref('Verificando acesso as tabelas...')
 const isRefreshing = ref(false)
 
 const authUid = computed(() => user.value?.id ?? null)
 const authEmail = computed(() => user.value?.email ?? null)
 const sessionSummary = computed(() => {
   if (!session.value) {
-    return 'No active session'
+    return 'Nenhuma sessao ativa'
   }
 
   const expiresAt = session.value.expires_at
 
   if (!expiresAt) {
-    return 'Session active (no expiration info)'
+    return 'Sessao ativa (sem informacao de expiracao)'
   }
 
   const expiryIso = new Date(expiresAt * 1000).toISOString()
 
-  return `Session active until ${expiryIso}`
+  return `Sessao ativa ate ${expiryIso}`
 })
 
 const tableCounts = ref<TableCount[]>([
-  { label: 'People', table: 'people', count: null, error: null, accessState: 'idle' },
-  { label: 'Accounts', table: 'accounts', count: null, error: null, accessState: 'idle' },
-  { label: 'Categories', table: 'categories', count: null, error: null, accessState: 'idle' },
-  { label: 'Cards', table: 'cards', count: null, error: null, accessState: 'idle' }
+  { label: 'Pessoas', table: 'people', count: null, error: null, accessState: 'idle' },
+  { label: 'Contas', table: 'accounts', count: null, error: null, accessState: 'idle' },
+  { label: 'Categorias', table: 'categories', count: null, error: null, accessState: 'idle' },
+  { label: 'Cartoes', table: 'cards', count: null, error: null, accessState: 'idle' }
 ])
 
 function getPublicSupabaseConfig() {
@@ -94,12 +94,12 @@ async function checkConnection() {
 
   if (!url || !key) {
     connectionState.value = 'error'
-    connectionMessage.value = 'Supabase URL or publishable key is missing from runtime config.'
+    connectionMessage.value = 'URL ou chave publica do Supabase ausente na configuracao de runtime.'
     return
   }
 
   connectionState.value = 'connected'
-  connectionMessage.value = 'Supabase connected'
+  connectionMessage.value = 'Supabase conectado'
 }
 
 async function checkAuthStatus() {
@@ -114,15 +114,15 @@ async function checkAuthStatus() {
 
     if (data.user) {
       authState.value = 'authenticated'
-      authMessage.value = `Authenticated as ${data.user.email || data.user.id}`
+      authMessage.value = `Autenticado como ${data.user.email || data.user.id}`
       return
     }
 
     authState.value = 'anonymous'
-    authMessage.value = 'No authenticated user'
+    authMessage.value = 'Nenhum usuario autenticado'
   } catch (err) {
     authState.value = 'error'
-    authMessage.value = err instanceof Error ? err.message : 'Unknown error'
+    authMessage.value = err instanceof Error ? err.message : 'Erro desconhecido'
   }
 }
 
@@ -143,17 +143,17 @@ async function fetchCounts() {
 
         if (status === 401 || status === 403 || isAuthRequiredError(error)) {
           entry.count = null
-          entry.error = 'Database access requires authenticated user or table grants'
+          entry.error = 'O acesso ao banco exige usuario autenticado ou grants nas tabelas'
           entry.accessState = 'auth-required'
           return
         }
 
         entry.count = null
-        entry.error = 'message' in error ? String(error.message ?? 'Unexpected table access error') : 'Unexpected table access error'
+        entry.error = 'message' in error ? String(error.message ?? 'Erro inesperado ao acessar tabela') : 'Erro inesperado ao acessar tabela'
         entry.accessState = 'error'
       } catch (err) {
         entry.count = null
-        entry.error = err instanceof Error ? err.message : 'Unknown error'
+        entry.error = err instanceof Error ? err.message : 'Erro desconhecido'
         entry.accessState = 'error'
       }
     })
@@ -163,29 +163,29 @@ async function fetchCounts() {
 
   if (states.every(state => state === 'ok')) {
     tableAccessState.value = 'ok'
-    tableAccessMessage.value = 'Database tables are reachable with the current client session.'
+    tableAccessMessage.value = 'As tabelas do banco estao acessiveis com a sessao atual.'
     return
   }
 
   if (states.some(state => state === 'auth-required') && !states.some(state => state === 'error')) {
     tableAccessState.value = 'auth-required'
-    tableAccessMessage.value = 'Database access requires authenticated user or table grants'
+    tableAccessMessage.value = 'O acesso ao banco exige usuario autenticado ou grants nas tabelas'
     return
   }
 
   tableAccessState.value = 'error'
-  tableAccessMessage.value = 'Unexpected database table access error'
+  tableAccessMessage.value = 'Erro inesperado ao acessar tabelas do banco'
 }
 
 function resetSetupState() {
   connectionState.value = 'idle'
-  connectionMessage.value = 'Checking public Supabase endpoint…'
+  connectionMessage.value = 'Verificando endpoint publico do Supabase...'
 
   authState.value = 'idle'
-  authMessage.value = 'Checking current session…'
+  authMessage.value = 'Verificando sessao atual...'
 
   tableAccessState.value = 'idle'
-  tableAccessMessage.value = 'Checking table access…'
+  tableAccessMessage.value = 'Verificando acesso as tabelas...'
 
   tableCounts.value.forEach((entry) => {
     entry.count = null
@@ -205,7 +205,7 @@ async function refreshSetupState() {
     await fetchCounts()
   } else {
     tableAccessState.value = 'error'
-    tableAccessMessage.value = 'Skipped because Supabase public connection check failed.'
+    tableAccessMessage.value = 'Etapa ignorada porque a conexao publica com o Supabase falhou.'
   }
 
   isRefreshing.value = false
@@ -219,34 +219,34 @@ onMounted(async () => {
 <template>
   <section class="space-y-6">
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">PWRDEVS / Developer</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">PWRDEVS / Desenvolvedor</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Setup técnico</h2>
       <p class="mt-2 text-sm text-muted">
-        Temporary page to validate database connectivity and current core-table visibility.
+        Pagina temporaria para validar conectividade do banco e visibilidade das tabelas principais.
       </p>
     </div>
 
-    <AppCard title="Supabase Connection">
+    <AppCard title="Conexao Supabase">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">
         <template v-if="connectionState === 'idle'">
           <span class="inline-block h-3 w-3 animate-pulse rounded-full bg-muted" />
-          <span class="text-sm text-muted">Checking connection…</span>
+          <span class="text-sm text-muted">Verificando conexao...</span>
         </template>
 
         <template v-else-if="connectionState === 'connected'">
           <span class="inline-block h-3 w-3 rounded-full bg-emerald-500" />
-          <span class="text-sm font-semibold text-emerald-700">Supabase connected</span>
+          <span class="text-sm font-semibold text-emerald-700">Supabase conectado</span>
         </template>
 
         <template v-else>
           <span class="inline-block h-3 w-3 rounded-full bg-rose-500" />
-          <span class="text-sm font-semibold text-rose-700">Connection check failed</span>
+          <span class="text-sm font-semibold text-rose-700">Falha na verificacao da conexao</span>
         </template>
         </div>
 
         <AppButton
-          label="Refresh status"
+          label="Atualizar status"
           variant="secondary"
           size="sm"
           :disabled="isRefreshing"
@@ -259,26 +259,26 @@ onMounted(async () => {
       </p>
     </AppCard>
 
-    <AppCard title="Auth Status">
+    <AppCard title="Status de autenticacao">
       <div class="flex items-center gap-3">
         <template v-if="authState === 'idle'">
           <span class="inline-block h-3 w-3 animate-pulse rounded-full bg-muted" />
-          <span class="text-sm text-muted">Checking current session…</span>
+          <span class="text-sm text-muted">Verificando sessao atual...</span>
         </template>
 
         <template v-else-if="authState === 'authenticated'">
           <span class="inline-block h-3 w-3 rounded-full bg-emerald-500" />
-          <span class="text-sm font-semibold text-emerald-700">Authenticated user detected</span>
+          <span class="text-sm font-semibold text-emerald-700">Usuario autenticado detectado</span>
         </template>
 
         <template v-else-if="authState === 'anonymous'">
           <span class="inline-block h-3 w-3 rounded-full bg-amber-500" />
-          <span class="text-sm font-semibold text-amber-700">No authenticated user</span>
+          <span class="text-sm font-semibold text-amber-700">Nenhum usuario autenticado</span>
         </template>
 
         <template v-else>
           <span class="inline-block h-3 w-3 rounded-full bg-rose-500" />
-          <span class="text-sm font-semibold text-rose-700">Auth status check failed</span>
+          <span class="text-sm font-semibold text-rose-700">Falha na verificacao de autenticacao</span>
         </template>
       </div>
 
@@ -293,37 +293,37 @@ onMounted(async () => {
         </div>
 
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <dt class="font-semibold uppercase tracking-wide text-muted">User email</dt>
+          <dt class="font-semibold uppercase tracking-wide text-muted">Email do usuario</dt>
           <dd class="break-all text-foreground">{{ authEmail || 'null' }}</dd>
         </div>
 
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <dt class="font-semibold uppercase tracking-wide text-muted">Session status</dt>
+          <dt class="font-semibold uppercase tracking-wide text-muted">Status da sessao</dt>
           <dd class="break-all text-foreground">{{ sessionSummary }}</dd>
         </div>
       </dl>
     </AppCard>
 
-    <AppCard title="Database Table Access" subtitle="Checks current client visibility for people, accounts, categories and cards.">
+    <AppCard title="Acesso as tabelas" subtitle="Valida a visibilidade atual do cliente para pessoas, contas, categorias e cartoes.">
       <div class="flex items-center gap-3">
         <template v-if="tableAccessState === 'idle'">
           <span class="inline-block h-3 w-3 animate-pulse rounded-full bg-muted" />
-          <span class="text-sm text-muted">Checking table access…</span>
+          <span class="text-sm text-muted">Verificando acesso as tabelas...</span>
         </template>
 
         <template v-else-if="tableAccessState === 'ok'">
           <span class="inline-block h-3 w-3 rounded-full bg-emerald-500" />
-          <span class="text-sm font-semibold text-emerald-700">Database tables reachable</span>
+          <span class="text-sm font-semibold text-emerald-700">Tabelas acessiveis</span>
         </template>
 
         <template v-else-if="tableAccessState === 'auth-required'">
           <span class="inline-block h-3 w-3 rounded-full bg-amber-500" />
-          <span class="text-sm font-semibold text-amber-700">Database access requires authenticated user or table grants</span>
+          <span class="text-sm font-semibold text-amber-700">Acesso exige usuario autenticado ou grants</span>
         </template>
 
         <template v-else>
           <span class="inline-block h-3 w-3 rounded-full bg-rose-500" />
-          <span class="text-sm font-semibold text-rose-700">Database table access check failed</span>
+          <span class="text-sm font-semibold text-rose-700">Falha na verificacao de acesso as tabelas</span>
         </template>
       </div>
 
@@ -340,7 +340,7 @@ onMounted(async () => {
           <p class="text-xs font-semibold uppercase tracking-wide text-muted">{{ entry.label }}</p>
 
           <template v-if="entry.accessState === 'auth-required'">
-            <p class="text-xs text-amber-700">Auth or grants required</p>
+            <p class="text-xs text-amber-700">Autenticacao ou grants necessarios</p>
           </template>
 
           <template v-else-if="entry.error">
@@ -353,7 +353,7 @@ onMounted(async () => {
 
           <template v-else>
             <p class="text-2xl font-semibold text-foreground">{{ entry.count }}</p>
-            <p class="text-xs text-muted">record{{ entry.count !== 1 ? 's' : '' }}</p>
+            <p class="text-xs text-muted">registro{{ entry.count !== 1 ? 's' : '' }}</p>
           </template>
         </div>
       </div>

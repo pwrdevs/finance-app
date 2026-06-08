@@ -40,7 +40,7 @@ onBeforeUnmount(() => {
         v-if="open"
         type="button"
         class="fixed inset-0 z-20 bg-foreground/40 backdrop-blur-[1px] lg:hidden"
-        aria-label="Close navigation menu"
+        aria-label="Fechar menu de navegacao"
         @click="closeSidebar"
       />
     </Transition>
@@ -50,6 +50,10 @@ onBeforeUnmount(() => {
       :class="open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
     >
       <div class="flex h-full flex-col p-4">
+        <div class="mb-5 flex justify-center">
+          <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-24 w-24 rounded-2xl object-contain shadow-soft" />
+        </div>
+
         <nav class="space-y-1">
           <NuxtLink
             v-for="link in links"

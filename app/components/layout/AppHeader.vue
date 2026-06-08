@@ -15,7 +15,7 @@ const emit = defineEmits<{
         <button
           type="button"
           class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface text-foreground lg:hidden"
-          aria-label="Open navigation menu"
+          aria-label="Abrir menu de navegacao"
           @click="emit('menu')"
         >
           <span aria-hidden="true" class="text-lg">=</span>
@@ -23,10 +23,7 @@ const emit = defineEmits<{
 
         <div class="flex items-center gap-3">
           <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="h-[72px] w-[72px] rounded-xl object-contain shadow-soft" />
-          <div>
-            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted">PWRDEVS</p>
-            <h1 class="text-base font-semibold text-foreground">{{ appName }}</h1>
-          </div>
+          <h1 class="text-base font-semibold text-foreground">{{ appName }}</h1>
         </div>
       </div>
 

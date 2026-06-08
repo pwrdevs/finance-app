@@ -50,7 +50,7 @@ function closeModal() {
             <button
               type="button"
               class="rounded-lg p-1 text-muted transition hover:bg-primary-light/50 hover:text-foreground"
-              aria-label="Close modal"
+              aria-label="Fechar modal"
               @click="closeModal"
             >
               <span aria-hidden="true">x</span>
@@ -63,7 +63,7 @@ function closeModal() {
 
           <footer class="flex justify-end gap-2 border-t border-border px-5 py-4">
             <slot name="footer">
-              <AppButton variant="ghost" label="Cancel" @click="closeModal" />
+              <AppButton variant="ghost" label="Cancelar" @click="closeModal" />
             </slot>
           </footer>
         </div>

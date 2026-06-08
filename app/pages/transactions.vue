@@ -5,9 +5,7 @@ import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import {
-  RECURRING_SCOPE,
   TRANSACTION_STATUS,
-  TRANSACTION_TYPES,
   type RecurringScope,
   type TransactionOriginType,
   type TransactionInstanceItem,
@@ -16,9 +14,7 @@ import {
 } from '~/composables/useTransactions'
 import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composables/useMasterData'
 
-definePageMeta({
-  middleware: 'auth'
-})
+definePageMeta({ middleware: 'auth' })
 
 const {
   cancelRecurringTransaction,
@@ -39,19 +35,20 @@ const modalError = ref('')
 const cancelError = ref('')
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
-const typeFilter = ref<'all' | TransactionType>('all')
-const personFilter = ref('all')
 const cardFilter = ref('all')
-const accountFilter = ref('all')
+const personFilter = ref('all')
 const categoryFilter = ref('all')
+const accountFilter = ref('all')
 const statusFilter = ref<'all' | TransactionStatus>('all')
-const checkedFilter = ref<'all' | 'checked' | 'unchecked'>('all')
+const searchDescription = ref('')
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
 const accounts = ref<AccountItem[]>([])
 const cards = ref<CardItem[]>([])
 const categories = ref<CategoryItem[]>([])
+
+const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
 const isCancelModalOpen = ref(false)
@@ -78,42 +75,37 @@ const formCardId = ref('')
 const formCategoryId = ref('')
 const formDescription = ref('')
 const formStatus = ref<TransactionStatus>('pending')
-const formChecked = ref(false)
 
 const columns = [
-  { key: 'instance_date', label: 'Date' },
-  { key: 'title', label: 'Title' },
-  { key: 'origin_label', label: 'Origin' },
-  { key: 'installment_label', label: 'Installment' },
-  { key: 'type', label: 'Type' },
-  { key: 'expected_value', label: 'Expected', align: 'right' as const },
-  { key: 'real_value', label: 'Real', align: 'right' as const },
-  { key: 'person_name', label: 'Person' },
-  { key: 'account_name', label: 'Account' },
-  { key: 'card_name', label: 'Card' },
-  { key: 'category_name', label: 'Category' },
-  { key: 'status', label: 'Status' },
-  { key: 'checked_badge', label: 'Checked' },
-  { key: 'actions', label: 'Actions', align: 'right' as const }
+  { key: 'checked_toggle', label: 'Conferido', align: 'center' as const },
+  { key: 'instance_date', label: 'Data' },
+  { key: 'description_text', label: 'Descricao' },
+  { key: 'person_name', label: 'Responsavel' },
+  { key: 'category_name', label: 'Categoria' },
+  { key: 'card_name', label: 'Cartao' },
+  { key: 'expected_value', label: 'Previsto', align: 'right' as const },
+  { key: 'real_value_input', label: 'Realizado', align: 'right' as const },
+  { key: 'actions', label: 'Acoes', align: 'right' as const }
 ]
 
 const originTypeOptions = [
-  { value: 'single', label: 'Single launch' },
-  { value: 'installment', label: 'Installment purchase' },
-  { value: 'recurring', label: 'Recurring monthly launch' }
+  { value: 'single', label: 'Lancamento unico' },
+  { value: 'installment', label: 'Compra parcelada' },
+  { value: 'recurring', label: 'Lancamento recorrente mensal' }
 ] as const
-
-const originTypeLabelMap: Record<TransactionOriginType, string> = {
-  single: 'Single',
-  installment: 'Installment',
-  recurring: 'Recurring'
-}
 
 const recurringScopeOptions = [
-  { value: 'single', label: 'Only this instance' },
-  { value: 'future', label: 'This and future instances' },
-  { value: 'series', label: 'Full series (future only)' }
+  { value: 'single', label: 'Somente esta instancia' },
+  { value: 'future', label: 'Esta e futuras instancias' },
+  { value: 'series', label: 'Serie completa (futuras)' }
 ] as const
+
+const transactionStatusLabelMap: Record<TransactionStatus, string> = {
+  pending: 'Pendente',
+  paid: 'Pago',
+  skipped: 'Ignorado',
+  canceled: 'Cancelado'
+}
 
 const peopleMap = computed(() => new Map(people.value.map(entry => [entry.id, entry.name])))
 const accountsMap = computed(() => new Map(accounts.value.map(entry => [entry.id, entry.name])))
@@ -122,84 +114,33 @@ const categoriesMap = computed(() => new Map(categories.value.map(entry => [entr
 
 const isEditingRecurring = computed(() => editingRow.value?.origin_type === 'recurring')
 
-const originTypeHint = computed(() => {
-  if (formOriginType.value === 'single') {
-    return 'Creates one instance for the selected date.'
-  }
-
-  if (formOriginType.value === 'installment') {
-    return 'Splits the total purchase into monthly card installments.'
-  }
-
-  return 'Generates monthly instances (up to 12 months in current MVP).'
-})
-
-const monthYearLabel = computed(() => {
-  const date = new Date(`${monthYear.value}-01T00:00:00`)
-
-  if (Number.isNaN(date.getTime())) {
-    return monthYear.value
-  }
-
-  return date.toLocaleDateString('en-CA', { month: 'long', year: 'numeric' })
-})
-
 const filteredRows = computed(() => {
+  const normalizedSearch = searchDescription.value.trim().toLowerCase()
+
   return rows.value
-    .filter((row) => typeFilter.value === 'all' || row.type === typeFilter.value)
     .filter((row) => personFilter.value === 'all' || row.person_id === personFilter.value)
     .filter((row) => cardFilter.value === 'all' || row.card_id === cardFilter.value)
     .filter((row) => accountFilter.value === 'all' || row.account_id === accountFilter.value)
     .filter((row) => categoryFilter.value === 'all' || row.category_id === categoryFilter.value)
     .filter((row) => statusFilter.value === 'all' || row.status === statusFilter.value)
     .filter((row) => {
-      if (checkedFilter.value === 'checked') {
-        return row.is_checked
-      }
-
-      if (checkedFilter.value === 'unchecked') {
-        return !row.is_checked
-      }
-
-      return true
+      if (!normalizedSearch) return true
+      const text = `${row.title} ${row.description ?? ''}`.toLowerCase()
+      return text.includes(normalizedSearch)
     })
     .map((row) => ({
       ...row,
-      origin_label: originTypeLabelMap[row.origin_type],
-      installment_label: row.origin_type === 'installment' && row.installment_number && row.installment_total
-        ? `${row.installment_number}/${row.installment_total}`
-        : '—',
-      person_name: row.person_id ? (peopleMap.value.get(row.person_id) || 'Unknown') : '—',
-      account_name: row.account_id ? (accountsMap.value.get(row.account_id) || 'Unknown') : '—',
-      card_name: row.card_id ? (cardsMap.value.get(row.card_id) || 'Unknown') : '—',
-      category_name: row.category_id ? (categoriesMap.value.get(row.category_id) || 'Unknown') : '—',
-      checked_badge: row.is_checked ? 'Checked' : 'Open'
+      description_text: row.description?.trim() ? `${row.title} - ${row.description}` : row.title,
+      person_name: row.person_id ? (peopleMap.value.get(row.person_id) || '-') : '-',
+      category_name: row.category_id ? (categoriesMap.value.get(row.category_id) || '-') : '-',
+      card_name: row.card_id ? (cardsMap.value.get(row.card_id) || '-') : '-',
+      account_name: row.account_id ? (accountsMap.value.get(row.account_id) || '-') : '-',
+      checked_toggle: row.is_checked
     }))
 })
 
-const totalExpected = computed(() => {
-  return filteredRows.value.reduce((sum, row) => {
-    const signed = row.type === 'income' ? row.expected_value : -row.expected_value
-    return sum + signed
-  }, 0)
-})
-
-const totalReal = computed(() => {
-  return filteredRows.value.reduce((sum, row) => {
-    if (row.real_value == null) {
-      return sum
-    }
-
-    const signed = row.type === 'income' ? row.real_value : -row.real_value
-    return sum + signed
-  }, 0)
-})
-
 function formatCurrency(value: number | null) {
-  if (value == null) {
-    return '—'
-  }
-
+  if (value == null) return '-'
   return Number(value).toFixed(2)
 }
 
@@ -224,7 +165,6 @@ function resetForm() {
   formCategoryId.value = ''
   formDescription.value = ''
   formStatus.value = 'pending'
-  formChecked.value = false
   modalError.value = ''
 }
 
@@ -249,7 +189,6 @@ function fillFormFromRow(row: TransactionInstanceItem) {
   formCategoryId.value = row.category_id ?? ''
   formDescription.value = row.description ?? ''
   formStatus.value = row.status
-  formChecked.value = row.is_checked
   modalError.value = ''
 }
 
@@ -271,10 +210,7 @@ function openRecurringCancelModal(row: TransactionInstanceItem) {
 }
 
 function parseOptionalNumber(value: string) {
-  if (!value.trim()) {
-    return null
-  }
-
+  if (!value.trim()) return null
   const parsed = Number(value)
   return Number.isNaN(parsed) ? Number.NaN : parsed
 }
@@ -285,10 +221,19 @@ function parseMonthYear(value: string) {
   const month = Number(monthText)
 
   if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) {
-    throw new Error('Invalid month/year filter.')
+    throw new Error('Filtro de periodo invalido.')
   }
 
   return { month, year }
+}
+
+function clearFilters() {
+  cardFilter.value = 'all'
+  personFilter.value = 'all'
+  categoryFilter.value = 'all'
+  accountFilter.value = 'all'
+  statusFilter.value = 'all'
+  searchDescription.value = ''
 }
 
 async function fetchRows() {
@@ -299,7 +244,7 @@ async function fetchRows() {
     const period = parseMonthYear(monthYear.value)
     rows.value = await listManualInstances(period)
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Unable to load transactions for the selected month.'
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel carregar os lancamentos.'
   } finally {
     loading.value = false
   }
@@ -313,7 +258,58 @@ async function fetchOptions() {
     cards.value = options.cards
     categories.value = options.categories
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Unable to load filters and form options.'
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel carregar os filtros.'
+  }
+}
+
+function getRealDraftValue(row: TransactionInstanceItem) {
+  if (realValueDrafts.value[row.id] != null) return realValueDrafts.value[row.id]
+  if (row.real_value != null) return String(row.real_value)
+  return String(row.expected_value)
+}
+
+function onRealDraftInput(rowId: string, value: string) {
+  realValueDrafts.value = { ...realValueDrafts.value, [rowId]: value }
+}
+
+async function saveInlineRealValue(row: TransactionInstanceItem) {
+  const rawValue = getRealDraftValue(row).trim()
+  const parsedReal = rawValue === '' ? null : Number(rawValue)
+
+  if (parsedReal != null && Number.isNaN(parsedReal)) {
+    pageError.value = 'Valor realizado invalido.'
+    return
+  }
+
+  if (row.real_value === parsedReal) return
+
+  pageError.value = ''
+
+  try {
+    await updateTransactionInstance(
+      row.id,
+      {
+        title: row.title,
+        type: row.type,
+        expected_value: row.expected_value,
+        real_value: parsedReal,
+        due_date: row.due_date,
+        instance_date: row.instance_date,
+        person_id: row.person_id,
+        account_id: row.account_id,
+        card_id: row.card_id,
+        category_id: row.category_id,
+        description: row.description,
+        status: row.status,
+        is_checked: row.is_checked
+      },
+      row.source_transaction_id,
+      row.origin_type
+    )
+
+    await fetchRows()
+  } catch (err) {
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel salvar o valor realizado.'
   }
 }
 
@@ -321,24 +317,24 @@ async function submitForm() {
   modalError.value = ''
 
   if (!formTitle.value.trim()) {
-    modalError.value = 'Title is required to save this launch.'
+    modalError.value = 'Descricao obrigatoria para salvar o lancamento.'
     return
   }
 
   const parsedExpected = Number(formExpectedValue.value)
   if (Number.isNaN(parsedExpected) || parsedExpected <= 0) {
-    modalError.value = 'Expected value must be a valid number greater than zero.'
+    modalError.value = 'Valor previsto deve ser maior que zero.'
     return
   }
 
   const parsedReal = parseOptionalNumber(formRealValue.value)
   if (Number.isNaN(parsedReal)) {
-    modalError.value = 'Real value must be a valid number when provided.'
+    modalError.value = 'Valor realizado invalido.'
     return
   }
 
   if (formOriginType.value === 'single' && (!formDueDate.value || !formInstanceDate.value)) {
-    modalError.value = 'Due date and instance date are required for a single launch.'
+    modalError.value = 'Vencimento e data do lancamento sao obrigatorios.'
     return
   }
 
@@ -346,34 +342,34 @@ async function submitForm() {
 
   if (formOriginType.value === 'installment') {
     if (!Number.isInteger(parsedInstallmentTotal) || parsedInstallmentTotal < 2) {
-      modalError.value = 'Installment total must be an integer greater than or equal to 2.'
+      modalError.value = 'Quantidade de parcelas deve ser inteira e maior ou igual a 2.'
       return
     }
 
     if (!formCardId.value) {
-      modalError.value = 'Card is required for installment transactions.'
+      modalError.value = 'Cartao obrigatorio para lancamento parcelado.'
       return
     }
 
     if (!formInstallmentStartDate.value) {
-      modalError.value = 'Installment start date is required.'
+      modalError.value = 'Data inicial do parcelamento obrigatoria.'
       return
     }
   }
 
   if (formOriginType.value === 'recurring') {
     if (!formRecurringStartDate.value) {
-      modalError.value = 'Recurring start date is required.'
+      modalError.value = 'Data inicial da recorrencia obrigatoria.'
       return
     }
 
     if (!editingRow.value && !formRecurringNoEndDate.value && !formRecurringEndDate.value) {
-      modalError.value = 'Recurring end date is required when no end date is disabled.'
+      modalError.value = 'Data final obrigatoria quando a opcao sem data final estiver desativada.'
       return
     }
 
     if (formRecurringEndDate.value && formRecurringEndDate.value < formRecurringStartDate.value) {
-      modalError.value = 'Recurring end date must be greater than or equal to start date.'
+      modalError.value = 'Data final da recorrencia deve ser maior ou igual a data inicial.'
       return
     }
   }
@@ -398,7 +394,7 @@ async function submitForm() {
             category_id: formCategoryId.value || null,
             description: formDescription.value,
             status: formStatus.value,
-            is_checked: formChecked.value,
+            is_checked: editingRow.value.is_checked,
             recurring_end_date: formRecurringNoEndDate.value ? null : (formRecurringEndDate.value || null),
             recurring_no_end_date: formRecurringNoEndDate.value
           },
@@ -420,7 +416,7 @@ async function submitForm() {
             category_id: formCategoryId.value || null,
             description: formDescription.value,
             status: formStatus.value,
-            is_checked: formChecked.value
+            is_checked: editingRow.value.is_checked
           },
           editingRow.value.source_transaction_id,
           editingRow.value.origin_type
@@ -432,7 +428,7 @@ async function submitForm() {
         title: formTitle.value,
         type: formType.value,
         expected_value: parsedExpected,
-        real_value: parsedReal,
+        real_value: parsedExpected,
         due_date: formOriginType.value === 'single' ? formDueDate.value : formInstallmentStartDate.value,
         instance_date: formOriginType.value === 'single' ? formInstanceDate.value : formInstallmentStartDate.value,
         installment_total: formOriginType.value === 'installment' ? parsedInstallmentTotal : undefined,
@@ -447,15 +443,15 @@ async function submitForm() {
         card_id: formCardId.value || null,
         category_id: formCategoryId.value || null,
         description: formDescription.value,
-        status: formStatus.value,
-        is_checked: formChecked.value
+        status: 'pending',
+        is_checked: false
       })
     }
 
     isModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    modalError.value = err instanceof Error ? err.message : 'Unable to save this transaction right now.'
+    modalError.value = err instanceof Error ? err.message : 'Nao foi possivel salvar o lancamento.'
   } finally {
     saving.value = false
   }
@@ -468,7 +464,7 @@ async function toggleChecked(row: TransactionInstanceItem) {
     await setChecked(row, !row.is_checked)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Unable to update reconciliation status.'
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar a conferencia.'
   }
 }
 
@@ -484,7 +480,7 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
     await setStatus(row, nextStatus)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Unable to update transaction status.'
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar o status.'
   }
 }
 
@@ -492,7 +488,7 @@ async function confirmRecurringCancel() {
   cancelError.value = ''
 
   if (!cancelTargetRow.value) {
-    cancelError.value = 'No recurring transaction selected for cancellation.'
+    cancelError.value = 'Nenhum lancamento recorrente selecionado para cancelamento.'
     return
   }
 
@@ -503,7 +499,7 @@ async function confirmRecurringCancel() {
     isCancelModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    cancelError.value = err instanceof Error ? err.message : 'Unable to cancel recurring transaction for the selected scope.'
+    cancelError.value = err instanceof Error ? err.message : 'Nao foi possivel cancelar no escopo selecionado.'
   } finally {
     cancelSaving.value = false
   }
@@ -513,222 +509,108 @@ onMounted(async () => {
   await Promise.all([fetchOptions(), fetchRows()])
 })
 
-watch(monthYear, async () => {
-  await fetchRows()
-})
+watch(monthYear, fetchRows)
 </script>
 
 <template>
   <section class="space-y-6">
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Transactions</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Financial Launches</h2>
-      <p class="mt-2 text-sm text-muted">Single, installment, and recurring launches. Financial calculations use transaction_instances as source of truth.</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Lancamentos</p>
+      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Conferencia Financeira</h2>
+      <p class="mt-2 text-sm text-muted">Tabela principal de conciliacao com conferencia e valor realizado inline.</p>
     </div>
 
-    <AppCard title="Filters" subtitle="Start with month, card and status on mobile.">
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <AppInput v-model="monthYear" label="Month / Year" type="month" />
+    <AppCard title="Filtros" subtitle="Estrutura principal para periodo, cartao e responsavel.">
+      <div class="grid gap-3 md:grid-cols-3">
+        <AppInput v-model="monthYear" label="Periodo" type="month" />
 
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Card</label>
+          <label class="block text-sm font-medium text-foreground">Cartao</label>
           <select v-model="cardFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
+            <option value="all">Todos</option>
             <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
           </select>
         </div>
 
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Type</label>
-          <select v-model="typeFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option v-for="entry in TRANSACTION_TYPES" :key="entry" :value="entry">{{ entry }}</option>
+          <label class="block text-sm font-medium text-foreground">Responsavel</label>
+          <select v-model="personFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option value="all">Todos</option>
+            <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-3 grid gap-3 md:grid-cols-3">
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Categoria</label>
+          <select v-model="categoryFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option value="all">Todas</option>
+            <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+          </select>
+        </div>
+
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Conta</label>
+          <select v-model="accountFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <option value="all">Todas</option>
+            <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
           </select>
         </div>
 
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Status</label>
           <select v-model="statusFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
-          </select>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Person</label>
-          <select v-model="personFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-          </select>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Account</label>
-          <select v-model="accountFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-          </select>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Category</label>
-          <select v-model="categoryFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-          </select>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Checked</label>
-          <select v-model="checkedFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option value="all">All</option>
-            <option value="checked">Checked</option>
-            <option value="unchecked">Unchecked</option>
+            <option value="all">Todos</option>
+            <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
           </select>
         </div>
       </div>
 
-      <div class="mt-4">
-        <AppButton label="New transaction" size="lg" block @click="openCreateModal" />
+      <div class="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+        <AppInput v-model="searchDescription" label="Pesquisar descricao" placeholder="Digite parte da descricao" />
+        <AppButton label="Limpar filtros" variant="ghost" @click="clearFilters" />
+        <AppButton label="Novo lancamento" @click="openCreateModal" />
       </div>
     </AppCard>
 
     <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
 
-    <AppCard
-      title="Instances list"
-      :subtitle="loading
-        ? 'Loading data...'
-        : `${filteredRows.length} record(s) in ${monthYearLabel} · Expected ${formatCurrency(totalExpected)} · Real ${formatCurrency(totalReal)}`"
-    >
-      <div class="space-y-3 md:hidden">
-        <article
-          v-for="row in filteredRows"
-          :key="row.id"
-          class="rounded-2xl border border-border bg-surface p-3 shadow-soft"
-        >
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-semibold text-foreground">{{ row.title }}</p>
-              <p class="mt-1 text-[11px] uppercase tracking-[0.12em] text-muted">
-                {{ row.instance_date }} · {{ row.origin_label }}
-              </p>
-            </div>
-            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize" :class="row.type === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
-              {{ row.type }}
-            </span>
-          </div>
-
-          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
-              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Expected</p>
-              <p class="mt-1 font-semibold text-foreground">{{ formatCurrency(Number(row.expected_value)) }}</p>
-            </div>
-            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
-              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Real</p>
-              <p class="mt-1 font-semibold text-foreground">{{ formatCurrency(row.real_value == null ? null : Number(row.real_value)) }}</p>
-            </div>
-            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
-              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Card</p>
-              <p class="mt-1 truncate font-semibold text-foreground">{{ row.card_name }}</p>
-            </div>
-            <div class="rounded-xl bg-primary-light/20 px-3 py-2">
-              <p class="text-[11px] uppercase tracking-[0.12em] text-muted">Checked</p>
-              <p class="mt-1 font-semibold" :class="row.checked_badge === 'Checked' ? 'text-emerald-700' : 'text-amber-700'">{{ row.checked_badge }}</p>
-            </div>
-          </div>
-
-          <div class="mt-3 space-y-2">
-            <label class="block text-xs font-medium text-foreground">Status</label>
-            <select
-              class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground"
-              :value="row.status"
-              @change="changeStatus(row as TransactionInstanceItem, ($event.target as HTMLSelectElement).value as TransactionStatus)"
-            >
-              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
-            </select>
-          </div>
-
-          <div class="mt-4 grid grid-cols-2 gap-2">
-            <AppButton size="lg" label="Edit" block @click="openEditModal(row as TransactionInstanceItem)" />
-            <AppButton
-              size="lg"
-              :variant="row.is_checked ? 'secondary' : 'primary'"
-              :label="row.is_checked ? 'Undo reconcile' : 'Reconcile'"
-              block
-              @click="toggleChecked(row as TransactionInstanceItem)"
+    <AppCard title="Tabela de lancamentos" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
+      <div class="overflow-x-auto">
+        <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhum lancamento encontrado para o periodo selecionado.">
+          <template #cell-checked_toggle="{ row }">
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-border"
+              :checked="Boolean((row as TransactionInstanceItem).is_checked)"
+              @change="toggleChecked(row as TransactionInstanceItem)"
             />
-            <AppButton
-              v-if="row.status !== 'canceled'"
-              size="lg"
-              variant="danger"
-              label="Cancel"
-              block
-              class="col-span-2"
-              @click="changeStatus(row as TransactionInstanceItem, 'canceled')"
-            />
-          </div>
-        </article>
-
-        <p v-if="!filteredRows.length" class="rounded-xl border border-border bg-surface px-4 py-5 text-center text-sm text-muted">
-          No transactions found for this period. Try changing filters or create a new launch.
-        </p>
-      </div>
-
-      <div class="hidden md:block">
-        <AppTable :columns="columns" :rows="filteredRows" empty-message="No transactions found for this period.">
-          <template #cell-instance_date="{ value }">
-            {{ String(value) }}
-          </template>
-
-          <template #cell-type="{ value }">
-            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize" :class="value === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
-              {{ value }}
-            </span>
-          </template>
-
-          <template #cell-origin_label="{ value }">
-            <span>{{ value }}</span>
           </template>
 
           <template #cell-expected_value="{ value }">
             {{ formatCurrency(Number(value)) }}
           </template>
 
-          <template #cell-real_value="{ value }">
-            {{ formatCurrency(value == null ? null : Number(value)) }}
-          </template>
-
-          <template #cell-status="{ row }">
-            <select
-              class="h-9 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
-              :value="(row as TransactionInstanceItem).status"
-              @change="changeStatus(row as TransactionInstanceItem, ($event.target as HTMLSelectElement).value as TransactionStatus)"
-            >
-              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
-            </select>
-          </template>
-
-          <template #cell-checked_badge="{ value }">
-            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Checked' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
-              {{ value }}
-            </span>
+          <template #cell-real_value_input="{ row }">
+            <input
+              class="h-9 w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs text-foreground"
+              :value="getRealDraftValue(row as TransactionInstanceItem)"
+              type="number"
+              @input="onRealDraftInput((row as TransactionInstanceItem).id, ($event.target as HTMLInputElement).value)"
+              @blur="saveInlineRealValue(row as TransactionInstanceItem)"
+              @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+            />
           </template>
 
           <template #cell-actions="{ row }">
             <div class="flex justify-end gap-2">
-              <AppButton size="sm" variant="ghost" label="Edit" @click="openEditModal(row as TransactionInstanceItem)" />
-              <AppButton
-                size="sm"
-                :variant="(row as TransactionInstanceItem).is_checked ? 'secondary' : 'primary'"
-                :label="(row as TransactionInstanceItem).is_checked ? 'Undo reconcile' : 'Reconcile'"
-                @click="toggleChecked(row as TransactionInstanceItem)"
-              />
+              <AppButton size="sm" variant="ghost" label="Editar" @click="openEditModal(row as TransactionInstanceItem)" />
               <AppButton
                 v-if="(row as TransactionInstanceItem).status !== 'canceled'"
                 size="sm"
                 variant="danger"
-                label="Cancel"
+                label="Cancelar"
                 @click="changeStatus(row as TransactionInstanceItem, 'canceled')"
               />
             </div>
@@ -739,143 +621,140 @@ watch(monthYear, async () => {
 
     <AppModal
       v-model="isModalOpen"
-      :title="editingRow ? 'Edit transaction instance' : 'New transaction'"
-      description="Creates and manages single, installment and recurring launches."
-      max-width-class="max-w-2xl"
+      :title="editingRow ? 'Editar lancamento' : 'Novo lancamento'"
+      description="Preencha os dados por secoes para manter consistencia financeira."
+      max-width-class="max-w-3xl"
     >
-      <div class="space-y-4">
-        <AppInput v-model="formTitle" label="Title" placeholder="Transaction title" required />
+      <div class="space-y-5">
+        <section class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-semibold text-foreground">1) Dados principais</p>
+          <AppInput v-model="formTitle" label="Descricao" placeholder="Ex.: Mercado" required />
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Origin Type</label>
-          <select v-model="formOriginType" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
-            <option v-for="entry in originTypeOptions" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
-          </select>
-          <p v-if="editingRow" class="text-xs text-muted">Origin type cannot be changed in edit mode.</p>
-          <p v-else class="text-xs text-muted">{{ originTypeHint }}</p>
-        </div>
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Origem</label>
+            <select v-model="formOriginType" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
+              <option v-for="entry in originTypeOptions" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
+            </select>
+          </div>
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Type</label>
-          <select v-model="formType" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="entry in TRANSACTION_TYPES" :key="entry" :value="entry">{{ entry }}</option>
-          </select>
-        </div>
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Tipo financeiro</label>
+            <select v-model="formType" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="income">Receita</option>
+              <option value="expense">Despesa</option>
+            </select>
+          </div>
+        </section>
 
-        <div class="grid gap-4 sm:grid-cols-2">
-          <AppInput
-            v-model="formExpectedValue"
-            :label="formOriginType === 'installment' ? 'Expected total purchase value' : 'Expected value'"
-            type="number"
-            placeholder="0.00"
-            required
-          />
-          <AppInput v-model="formRealValue" label="Real value" type="number" placeholder="Optional" />
-        </div>
-
-        <div v-if="formOriginType === 'single'" class="grid gap-4 sm:grid-cols-2">
-          <AppInput v-model="formDueDate" label="Due date" type="date" required />
-          <AppInput v-model="formInstanceDate" label="Instance date" type="date" required />
-        </div>
-
-        <div v-else-if="formOriginType === 'installment'" class="grid gap-4 sm:grid-cols-2">
-          <AppInput v-model="formInstallmentTotal" label="Installment total" type="number" placeholder="2" required />
-          <AppInput v-model="formInstallmentStartDate" label="Installment start date" type="date" required />
-        </div>
-
-        <div v-else class="space-y-3 rounded-xl border border-border p-3">
-          <p class="text-sm font-medium text-foreground">Repeat monthly</p>
+        <section class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-semibold text-foreground">2) Valores</p>
           <div class="grid gap-4 sm:grid-cols-2">
-            <AppInput v-model="formRecurringStartDate" label="Start date" type="date" required />
-            <AppInput
-              v-model="formRecurringEndDate"
-              label="End date (optional)"
-              type="date"
-              :disabled="formRecurringNoEndDate"
-              placeholder="Optional"
-            />
+            <AppInput v-model="formExpectedValue" label="Valor previsto" type="number" placeholder="0.00" required />
+            <AppInput v-model="formRealValue" label="Valor realizado (edicao)" type="number" placeholder="Sera igual ao previsto na criacao" />
           </div>
-          <label class="flex items-center gap-2 text-sm text-foreground">
-            <input v-model="formRecurringNoEndDate" type="checkbox" class="h-4 w-4 rounded border-border" />
-            No end date (MVP will generate 12 months)
-          </label>
-        </div>
+        </section>
 
-        <div v-if="isEditingRecurring" class="space-y-2 rounded-xl border border-border p-3">
-          <label class="block text-sm font-medium text-foreground">Apply edit to</label>
-          <select v-model="formRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
-        </div>
+        <section class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-semibold text-foreground">3) Classificacao</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Responsavel</label>
+              <select v-model="formPersonId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhum</option>
+                <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
 
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Person</label>
-            <select v-model="formPersonId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="">None</option>
-              <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-            </select>
-          </div>
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Conta</label>
+              <select v-model="formAccountId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhuma</option>
+                <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
 
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Account</label>
-            <select v-model="formAccountId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="">None</option>
-              <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-            </select>
-          </div>
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Cartao</label>
+              <select v-model="formCardId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhum</option>
+                <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
 
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Card</label>
-            <select v-model="formCardId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="">None</option>
-              <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-            </select>
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Categoria</label>
+              <select v-model="formCategoryId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhuma</option>
+                <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
           </div>
 
           <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Category</label>
-            <select v-model="formCategoryId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="">None</option>
-              <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+            <label class="block text-sm font-medium text-foreground">Status</label>
+            <select v-model="formStatus" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
             </select>
           </div>
-        </div>
+        </section>
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Status</label>
-          <select v-model="formStatus" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ entry }}</option>
-          </select>
-        </div>
+        <section class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-semibold text-foreground">4) Repeticao / Parcelamento</p>
 
-        <AppInput v-model="formDescription" label="Description" placeholder="Optional details" />
+          <div v-if="formOriginType === 'single'" class="grid gap-4 sm:grid-cols-2">
+            <AppInput v-model="formDueDate" label="Data de vencimento" type="date" required />
+            <AppInput v-model="formInstanceDate" label="Data da instancia" type="date" required />
+          </div>
 
-        <label class="flex items-center gap-2 text-sm text-foreground">
-          <input v-model="formChecked" type="checkbox" class="h-4 w-4 rounded border-border" />
-          Checked / reconciled
-        </label>
+          <div v-else-if="formOriginType === 'installment'" class="grid gap-4 sm:grid-cols-2">
+            <AppInput v-model="formInstallmentTotal" label="Quantidade de parcelas" type="number" placeholder="2" required />
+            <AppInput v-model="formInstallmentStartDate" label="Data inicial do parcelamento" type="date" required />
+          </div>
+
+          <div v-else class="space-y-3 rounded-xl border border-border p-3">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <AppInput v-model="formRecurringStartDate" label="Data inicial" type="date" required />
+              <AppInput v-model="formRecurringEndDate" label="Data final (opcional)" type="date" :disabled="formRecurringNoEndDate" />
+            </div>
+            <label class="flex items-center gap-2 text-sm text-foreground">
+              <input v-model="formRecurringNoEndDate" type="checkbox" class="h-4 w-4 rounded border-border" />
+              Sem data final (MVP gera ate 12 meses)
+            </label>
+          </div>
+
+          <div v-if="isEditingRecurring" class="space-y-2 rounded-xl border border-border p-3">
+            <label class="block text-sm font-medium text-foreground">Aplicar edicao em</label>
+            <select v-model="formRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-semibold text-foreground">5) Observacoes</p>
+          <AppInput v-model="formDescription" label="Observacoes" placeholder="Detalhes opcionais" />
+        </section>
 
         <p v-if="modalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ modalError }}</p>
       </div>
 
       <template #footer>
         <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-          <AppButton label="Cancel" variant="ghost" block @click="isModalOpen = false" />
-          <AppButton :label="saving ? 'Saving...' : 'Save'" :disabled="saving" block @click="submitForm" />
+          <AppButton label="Cancelar" variant="ghost" block @click="isModalOpen = false" />
+          <AppButton :label="saving ? 'Salvando...' : 'Salvar'" :disabled="saving" block @click="submitForm" />
         </div>
       </template>
     </AppModal>
 
     <AppModal
       v-model="isCancelModalOpen"
-      title="Cancel recurring transaction"
-      description="Choose how cancellation should be applied."
+      title="Cancelar lancamento recorrente"
+      description="Escolha como o cancelamento sera aplicado."
       max-width-class="max-w-lg"
     >
       <div class="space-y-3">
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Cancel scope</label>
+          <label class="block text-sm font-medium text-foreground">Escopo do cancelamento</label>
           <select v-model="cancelRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
             <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
@@ -886,14 +765,8 @@ watch(monthYear, async () => {
 
       <template #footer>
         <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-          <AppButton label="Back" variant="ghost" block @click="isCancelModalOpen = false" />
-          <AppButton
-            label="Confirm cancel"
-            variant="danger"
-            :disabled="cancelSaving"
-            block
-            @click="confirmRecurringCancel"
-          />
+          <AppButton label="Voltar" variant="ghost" block @click="isCancelModalOpen = false" />
+          <AppButton :label="cancelSaving ? 'Cancelando...' : 'Confirmar cancelamento'" variant="danger" :disabled="cancelSaving" block @click="confirmRecurringCancel" />
         </div>
       </template>
     </AppModal>

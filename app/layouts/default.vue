@@ -5,7 +5,7 @@ import AppSidebar from '~/components/layout/AppSidebar.vue'
 const isSidebarOpen = ref(false)
 
 const sidebarLinks = [
-  { label: 'Dashboard', to: '/dashboard' },
+  { label: 'Painel', to: '/dashboard' },
   { label: 'Responsáveis', to: '/people' },
   { label: 'Contas', to: '/accounts' },
   { label: 'Categorias', to: '/categories' },
@@ -25,7 +25,7 @@ function closeSidebar() {
 
 <template>
   <div class="min-h-screen bg-background text-foreground">
-    <AppHeader app-name="Finance App" @menu="toggleSidebar" />
+    <AppHeader app-name="Financeiro Pessoal" @menu="toggleSidebar" />
 
     <div class="mx-auto flex w-full max-w-[1440px] lg:items-start">
       <AppSidebar :open="isSidebarOpen" :links="sidebarLinks" @close="closeSidebar" />
