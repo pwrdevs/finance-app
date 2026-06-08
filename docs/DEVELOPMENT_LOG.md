@@ -190,3 +190,8 @@
 - 2026-06-08: Causa do scroll travado: combinacao de offsets de header e area central com overflow distribuido em containers errados; ajuste aplicado para `h-screen` no shell e rolagem apenas no `main`.
 - 2026-06-08: Logo principal do header ajustado para `h-20 w-20` com header `h-24`, garantindo destaque visual sem corte.
 - 2026-06-08: Decisao sobre dados compartilhados entre usuarios: modelo atual e migracoes usam isolamento estrito por `user_id` + RLS `auth.uid()` em todas as tabelas financeiras; para compartilhar dados de forma segura entre usuarios autorizados e manter administracao restrita, sera necessario introduzir `workspace_id` (ou equivalente) e migrar politicas/indices. Nenhuma mudanca destrutiva de RLS foi aplicada nesta rodada.
+- 2026-06-08: Redesign completo do shell aplicado com estrategia `topbar + rail`: navegacao principal no header (links por rota) e rail lateral compacta no desktop para atalhos visuais.
+- 2026-06-08: Header modernizado com logo maior PWRDEVS, status online e avatar do usuario; em mobile, navegacao continua via hamburger + drawer.
+- 2026-06-08: Sidebar convertida para rail compacta sem sobreposicao no desktop; drawer mantido apenas em mobile com overlay.
+- 2026-06-08: Visual global refinado para estilo SaaS premium (fundo escuro esverdeado, sombras suaves e foco verde de marca) sem alterar regras de negocio, banco, RLS ou logica de administracao.
+- 2026-06-08: Build de producao validado com sucesso apos o redesign (`npm run build`); validacao visual autenticada por perfil admin/comum segue dependente de sessao compartilhada no navegador.

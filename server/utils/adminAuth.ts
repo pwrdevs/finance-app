@@ -24,12 +24,15 @@ export async function requireAdmin(event: Parameters<typeof serverSupabaseUser>[
 
 export function getSupabaseAdminConfig() {
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NUXT_SUPABASE_SERVICE_KEY
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.NUXT_SUPABASE_SERVICE_ROLE_KEY
+    || process.env.SUPABASE_SERVICE_KEY
+    || process.env.NUXT_SUPABASE_SERVICE_KEY
 
   if (!url || !serviceKey) {
     throw createError({
       statusCode: 500,
-      statusMessage: 'Configuração admin indisponível. Defina NUXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.'
+      statusMessage: 'Configuracao admin indisponivel. Defina NUXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.'
     })
   }
 

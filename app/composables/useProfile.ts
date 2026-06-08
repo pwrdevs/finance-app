@@ -28,8 +28,34 @@ export function useProfile() {
     }
   }
 
+  async function resolveProfileUserId(targetUserId?: string | null) {
+    if (targetUserId) {
+      return targetUserId
+    }
+
+    if (user.value?.id) {
+      return user.value.id
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+
+    if (!sessionError && sessionData.session?.user?.id) {
+      return sessionData.session.user.id
+    }
+
+    const { data, error } = await supabase.auth.getUser()
+
+    if (!error && data.user?.id) {
+      return data.user.id
+    }
+
+    return null
+  }
+
   async function loadProfile(targetUserId = user.value?.id) {
-    if (!targetUserId) {
+    const resolvedUserId = await resolveProfileUserId(targetUserId)
+
+    if (!resolvedUserId) {
       profileFullName.value = ''
       profileAvatarUrl.value = ''
       return null
@@ -41,7 +67,7 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .select('full_name, avatar_url')
-        .eq('user_id', targetUserId)
+        .eq('user_id', resolvedUserId)
         .maybeSingle()
 
       if (error && error.code !== 'PGRST116') {

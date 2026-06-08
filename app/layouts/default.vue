@@ -35,13 +35,13 @@ function closeSidebar() {
 
 <template>
   <div class="h-screen overflow-hidden bg-background text-foreground">
-    <AppHeader app-name="Financeiro Pessoal" class="h-24 shrink-0" @menu="toggleSidebar" />
+    <AppHeader app-name="PWRDEVS Finance" :links="sidebarLinks" @menu="toggleSidebar" />
 
-    <div class="mx-auto flex h-[calc(100vh-6rem)] w-full max-w-[1600px] overflow-hidden">
+    <div class="mx-auto flex h-[calc(100vh-7rem)] w-full max-w-[1600px] overflow-hidden">
       <AppSidebar :open="isSidebarOpen" :links="sidebarLinks" @close="closeSidebar" />
 
       <main class="min-w-0 flex-1 overflow-y-auto">
-        <div class="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6 lg:px-6 lg:py-6">
+        <div class="mx-auto w-full max-w-[1460px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
           <slot />
         </div>
       </main>

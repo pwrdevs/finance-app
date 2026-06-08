@@ -69,7 +69,17 @@ const profileInitials = computed(() => {
 })
 
 async function refreshSidebarProfile() {
-  await refreshProfile(user.value?.id)
+  await refreshProfile()
+}
+
+function railLabel(label: string) {
+  const clean = label.trim()
+
+  if (!clean) {
+    return '•'
+  }
+
+  return clean.slice(0, 1).toUpperCase()
 }
 
 watch(
@@ -105,15 +115,35 @@ watch(
       <button
         v-if="open"
         type="button"
-        class="fixed inset-x-0 bottom-0 top-24 z-20 bg-foreground/35 backdrop-blur-[2px] lg:hidden"
+        class="fixed inset-x-0 bottom-0 top-28 z-20 bg-foreground/35 backdrop-blur-[2px] lg:hidden"
         aria-label="Fechar menu de navegacao"
         @click="closeSidebar"
       />
     </Transition>
 
+    <aside class="hidden h-full w-20 shrink-0 border-r border-border bg-surface lg:flex lg:flex-col lg:items-center lg:px-2 lg:py-4">
+      <NuxtLink to="/settings" class="mb-6 flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background text-sm font-semibold text-foreground shadow-sm transition hover:border-primary">
+        <img v-if="profileAvatar" :src="profileAvatar" alt="Foto do usuario" class="h-full w-full object-cover" />
+        <span v-else>{{ profileInitials }}</span>
+      </NuxtLink>
+
+      <nav class="flex w-full flex-1 flex-col items-center gap-2 overflow-y-auto">
+        <NuxtLink
+          v-for="link in links"
+          :key="`rail-${link.to}`"
+          :to="link.to"
+          class="flex h-10 w-10 items-center justify-center rounded-xl border border-transparent text-xs font-semibold text-muted transition hover:border-border hover:bg-primary-light/30 hover:text-foreground"
+          active-class="border-border bg-foreground text-surface shadow-soft"
+          :title="link.label"
+        >
+          {{ railLabel(link.label) }}
+        </NuxtLink>
+      </nav>
+    </aside>
+
     <aside
-      class="fixed bottom-0 left-0 top-24 z-30 w-72 border-r border-border bg-surface shadow-panel transition-transform duration-300 lg:static lg:top-auto lg:flex lg:h-full lg:shrink-0 lg:translate-x-0"
-      :class="open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+      class="fixed bottom-0 left-0 top-28 z-30 w-72 border-r border-border bg-surface shadow-panel transition-transform duration-300 lg:hidden"
+      :class="open ? 'translate-x-0' : '-translate-x-full'"
     >
       <div class="flex h-full flex-col overflow-hidden p-4">
         <div class="mb-5 rounded-2xl border border-border bg-background p-3.5">
@@ -133,7 +163,7 @@ watch(
         <nav class="space-y-1.5 overflow-y-auto pr-1">
           <NuxtLink
             v-for="link in links"
-            :key="link.to"
+            :key="`drawer-${link.to}`"
             :to="link.to"
             class="block rounded-xl px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-primary-light/45"
             active-class="bg-foreground text-surface shadow-soft hover:bg-foreground"

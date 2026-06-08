@@ -51,11 +51,17 @@ body,
 body {
   @apply bg-background text-foreground antialiased;
   overflow-x: hidden;
-  background-image: radial-gradient(circle at 12% 20%, rgb(var(--color-primary) / 0.18), transparent 35%),
-    radial-gradient(circle at 88% 10%, rgb(var(--color-primary-dark) / 0.16), transparent 28%),
-    linear-gradient(180deg, rgb(var(--color-background)) 0%, rgb(var(--color-background) / 0.94) 100%);
+  background-image:
+    radial-gradient(circle at 8% 10%, rgb(var(--color-primary) / 0.2), transparent 26%),
+    radial-gradient(circle at 92% 8%, rgb(var(--color-primary-dark) / 0.18), transparent 22%),
+    linear-gradient(160deg, rgb(var(--color-background)) 0%, rgb(13 18 14) 72%);
 }
 
 ::selection {
   @apply bg-primary-dark text-surface;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 2px;
 }
