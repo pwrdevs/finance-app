@@ -148,3 +148,9 @@
 - 2026-06-08: Header/sidebar visual cleanup delivered: top header branding logo increased for professional prominence and duplicated brand block removed from sidebar, leaving sidebar focused on navigation only.
 - 2026-06-08: Theme system implemented with real light/dark/system behavior via CSS variable palettes + global theme state (`useTheme`) + persistence in `localStorage`, including system preference tracking.
 - 2026-06-08: Settings page refactored to show and edit real profile information (`profiles.full_name`, `profiles.avatar_url`, authenticated email), with initials/avatar fallback and explicit save feedback.
+- 2026-06-08: Final authenticated MVP validation executed with temporary QA user, including login/logout, protected routes, dashboard reload without `401`, CRUD persistence for `people` and `transactions`, theme persistence, and mobile layout checks.
+- 2026-06-08: Transaction modal responsiveness fixed in `AppModal` using viewport-based max height and internal scroll area to prevent top fields from being cut off on small screens.
+- 2026-06-08: Header logo near brand title (`PWRDEVS` / `Finance App`) increased by 50% for better visual prominence.
+- 2026-06-08: Release prep started for Vercel: runtime now ignores local source-assets folder `LOGO/` via `.gitignore` since production logo assets are served from `public/`.
+- 2026-06-08: Temporary QA test records were removed safely from Supabase (`people`, `transaction_instances`, `transactions`) for user `qa.finance.validation@example.com`; user deletion in Auth is pending manual execution with service-role credentials.
+- 2026-06-08: README replaced with project-specific operational and Vercel deployment instructions (stack, env vars, scripts, deploy checklist).

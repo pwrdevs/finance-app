@@ -25,3 +25,6 @@ logs
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Local source assets not used by runtime app
+LOGO/

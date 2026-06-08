@@ -33,12 +33,12 @@ function closeModal() {
     <Transition name="slide-up">
       <div
         v-if="modelValue"
-        class="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center"
+        class="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-2 sm:items-center sm:p-4"
         role="dialog"
         aria-modal="true"
       >
         <div
-          class="w-full rounded-2xl border border-border bg-surface shadow-panel"
+          class="flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-panel sm:max-h-[calc(100dvh-2rem)]"
           :class="maxWidthClass"
         >
           <header class="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
@@ -57,7 +57,7 @@ function closeModal() {
             </button>
           </header>
 
-          <div class="p-5">
+          <div class="min-h-0 overflow-y-auto p-5">
             <slot />
           </div>
 
