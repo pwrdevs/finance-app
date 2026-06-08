@@ -185,3 +185,8 @@
 - 2026-06-08: Causa raiz da sensacao de conteudo preso: combinacao de alturas absolutas no container principal e limites de overflow sem hierarquia clara entre shell e `main`; correcao feita com estrutura `h-screen` no app + `pt` do header + `main` com `overflow-y-auto` e `min-w-0`.
 - 2026-06-08: CSS global reforcado para `html/body/#__nuxt` em 100vh e `overflow-x: hidden`, evitando corte e scroll horizontal em mobile.
 - 2026-06-08: Validacao tecnica concluida com `npm run build` (sucesso); validacao visual autenticada de Dashboard/Lancamentos/Configuracoes/Administracao ficou pendente nesta sessao por redirecionamento para `/login`.
+- 2026-06-08: Reparo imediato do shell: sidebar deixou de sobrepor o `main` no desktop ao voltar para participacao no `flex` (sem `fixed` em breakpoints `lg+`), mantendo drawer apenas em mobile.
+- 2026-06-08: Causa da sobreposicao: sidebar permanecia posicionada fora do fluxo em desktop, criando camada visual acima do conteudo e mascarando parte dos cards/tabelas.
+- 2026-06-08: Causa do scroll travado: combinacao de offsets de header e area central com overflow distribuido em containers errados; ajuste aplicado para `h-screen` no shell e rolagem apenas no `main`.
+- 2026-06-08: Logo principal do header ajustado para `h-20 w-20` com header `h-24`, garantindo destaque visual sem corte.
+- 2026-06-08: Decisao sobre dados compartilhados entre usuarios: modelo atual e migracoes usam isolamento estrito por `user_id` + RLS `auth.uid()` em todas as tabelas financeiras; para compartilhar dados de forma segura entre usuarios autorizados e manter administracao restrita, sera necessario introduzir `workspace_id` (ou equivalente) e migrar politicas/indices. Nenhuma mudanca destrutiva de RLS foi aplicada nesta rodada.

@@ -105,18 +105,18 @@ watch(
       <button
         v-if="open"
         type="button"
-        class="fixed inset-x-0 bottom-0 top-[5.5rem] z-20 bg-foreground/35 backdrop-blur-[2px] lg:hidden"
+        class="fixed inset-x-0 bottom-0 top-24 z-20 bg-foreground/35 backdrop-blur-[2px] lg:hidden"
         aria-label="Fechar menu de navegacao"
         @click="closeSidebar"
       />
     </Transition>
 
     <aside
-      class="fixed bottom-0 left-0 top-[5.5rem] z-30 w-[280px] border-r border-border bg-surface/96 shadow-panel backdrop-blur-sm transition-transform duration-300 lg:translate-x-0"
+      class="fixed bottom-0 left-0 top-24 z-30 w-72 border-r border-border bg-surface shadow-panel transition-transform duration-300 lg:static lg:top-auto lg:flex lg:h-full lg:shrink-0 lg:translate-x-0"
       :class="open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
     >
       <div class="flex h-full flex-col overflow-hidden p-4">
-        <div class="mb-5 rounded-2xl border border-border bg-gradient-to-br from-background to-primary-light/20 p-3.5">
+        <div class="mb-5 rounded-2xl border border-border bg-background p-3.5">
           <div class="flex items-center gap-3">
             <div class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-border/70 bg-primary-light/35 text-sm font-semibold text-foreground">
               <img v-if="profileAvatar" :src="profileAvatar" alt="Foto do usuario" class="h-full w-full object-cover" />
@@ -135,7 +135,7 @@ watch(
             v-for="link in links"
             :key="link.to"
             :to="link.to"
-            class="block rounded-xl px-3 py-2.5 text-sm font-medium text-foreground/85 transition hover:bg-primary-light/45 hover:text-foreground"
+            class="block rounded-xl px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-primary-light/45"
             active-class="bg-foreground text-surface shadow-soft hover:bg-foreground"
             @click="closeSidebar"
           >
