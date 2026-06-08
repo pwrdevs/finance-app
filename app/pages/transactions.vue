@@ -5,7 +5,9 @@ import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import {
+  RECURRING_FREQUENCIES,
   type DeleteRecurringScope,
+  type RecurringFrequency,
   TRANSACTION_STATUS,
   type RecurringScope,
   type TransactionOriginType,
@@ -74,6 +76,9 @@ const formInstallmentStartDate = ref('')
 const formRecurringStartDate = ref('')
 const formRecurringEndDate = ref('')
 const formRecurringNoEndDate = ref(true)
+const formRecurringFrequency = ref<RecurringFrequency>('monthly')
+const formRecurringEndingMode = ref<'open' | 'end_date' | 'occurrences'>('open')
+const formRecurringOccurrences = ref('12')
 const formRecurringScope = ref<RecurringScope>('single')
 const cancelRecurringScope = ref<RecurringScope>('single')
 const deleteRecurringScope = ref<DeleteRecurringScope>('single')
@@ -107,6 +112,13 @@ const recurringScopeOptions = [
   { value: 'future', label: 'Esta e futuras instancias' },
   { value: 'series', label: 'Serie completa (futuras)' }
 ] as const
+
+const recurringFrequencyLabelMap: Record<RecurringFrequency, string> = {
+  daily: 'Diario',
+  weekly: 'Semanal',
+  monthly: 'Mensal',
+  yearly: 'Anual'
+}
 
 const deleteRecurringScopeOptions = [
   { value: 'single', label: 'Somente este lancamento selecionado' },
@@ -170,6 +182,9 @@ function resetForm() {
   formRecurringStartDate.value = `${monthYear.value}-01`
   formRecurringEndDate.value = ''
   formRecurringNoEndDate.value = true
+  formRecurringFrequency.value = 'monthly'
+  formRecurringEndingMode.value = 'open'
+  formRecurringOccurrences.value = '12'
   formRecurringScope.value = 'single'
   formPersonId.value = ''
   formAccountId.value = ''
@@ -194,6 +209,9 @@ function fillFormFromRow(row: TransactionInstanceItem) {
   formRecurringStartDate.value = row.due_date
   formRecurringEndDate.value = ''
   formRecurringNoEndDate.value = false
+  formRecurringFrequency.value = 'monthly'
+  formRecurringEndingMode.value = 'end_date'
+  formRecurringOccurrences.value = '12'
   formRecurringScope.value = 'single'
   formPersonId.value = row.person_id ?? ''
   formAccountId.value = row.account_id ?? ''
@@ -358,6 +376,7 @@ async function submitForm() {
   }
 
   const parsedInstallmentTotal = Number(formInstallmentTotal.value)
+  const parsedRecurringOccurrences = Number(formRecurringOccurrences.value)
 
   if (formOriginType.value === 'installment') {
     if (!Number.isInteger(parsedInstallmentTotal) || parsedInstallmentTotal < 2) {
@@ -382,13 +401,18 @@ async function submitForm() {
       return
     }
 
-    if (!editingRow.value && !formRecurringNoEndDate.value && !formRecurringEndDate.value) {
+    if (!editingRow.value && formRecurringEndingMode.value === 'end_date' && !formRecurringEndDate.value) {
       modalError.value = 'Data final obrigatoria quando a opcao sem data final estiver desativada.'
       return
     }
 
-    if (formRecurringEndDate.value && formRecurringEndDate.value < formRecurringStartDate.value) {
+    if (formRecurringEndingMode.value === 'end_date' && formRecurringEndDate.value && formRecurringEndDate.value < formRecurringStartDate.value) {
       modalError.value = 'Data final da recorrencia deve ser maior ou igual a data inicial.'
+      return
+    }
+
+    if (!editingRow.value && formRecurringEndingMode.value === 'occurrences' && (!Number.isInteger(parsedRecurringOccurrences) || parsedRecurringOccurrences < 1)) {
+      modalError.value = 'Quantidade de recorrencias deve ser inteira e maior ou igual a 1.'
       return
     }
   }
@@ -414,8 +438,8 @@ async function submitForm() {
             description: formDescription.value,
             status: formStatus.value,
             is_checked: editingRow.value.is_checked,
-            recurring_end_date: formRecurringNoEndDate.value ? null : (formRecurringEndDate.value || null),
-            recurring_no_end_date: formRecurringNoEndDate.value
+            recurring_end_date: formRecurringEndingMode.value === 'end_date' ? (formRecurringEndDate.value || null) : null,
+            recurring_no_end_date: formRecurringEndingMode.value === 'open'
           },
           formRecurringScope.value
         )
@@ -453,10 +477,14 @@ async function submitForm() {
         installment_total: formOriginType.value === 'installment' ? parsedInstallmentTotal : undefined,
         installment_start_date: formOriginType.value === 'installment' ? formInstallmentStartDate.value : undefined,
         recurring_start_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : undefined,
-        recurring_end_date: formOriginType.value === 'recurring' && !formRecurringNoEndDate.value
+        recurring_end_date: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'end_date'
           ? (formRecurringEndDate.value || null)
           : null,
-        recurring_no_end_date: formOriginType.value === 'recurring' ? formRecurringNoEndDate.value : undefined,
+        recurring_no_end_date: formOriginType.value === 'recurring' ? formRecurringEndingMode.value === 'open' : undefined,
+        recurring_frequency: formOriginType.value === 'recurring' ? formRecurringFrequency.value : undefined,
+        recurring_occurrences_limit: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'occurrences'
+          ? parsedRecurringOccurrences
+          : null,
         person_id: formPersonId.value || null,
         account_id: formAccountId.value || null,
         card_id: formCardId.value || null,
@@ -764,12 +792,44 @@ watch(monthYear, fetchRows)
           <div v-else class="space-y-3 rounded-xl border border-border p-3">
             <div class="grid gap-4 sm:grid-cols-2">
               <AppInput v-model="formRecurringStartDate" label="Data inicial" type="date" required />
-              <AppInput v-model="formRecurringEndDate" label="Data final (opcional)" type="date" :disabled="formRecurringNoEndDate" />
+
+              <div class="space-y-2">
+                <label class="block text-sm font-medium text-foreground">Frequencia</label>
+                <select v-model="formRecurringFrequency" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
+                  <option v-for="entry in RECURRING_FREQUENCIES" :key="entry" :value="entry">{{ recurringFrequencyLabelMap[entry] }}</option>
+                </select>
+              </div>
             </div>
-            <label class="flex items-center gap-2 text-sm text-foreground">
-              <input v-model="formRecurringNoEndDate" type="checkbox" class="h-4 w-4 rounded border-border" />
-              Sem data final (MVP gera ate 12 meses)
-            </label>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Encerrar recorrencia por</label>
+              <select v-model="formRecurringEndingMode" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
+                <option value="open">Sem data final (limite MVP de 12 ocorrencias)</option>
+                <option value="end_date">Data final</option>
+                <option value="occurrences">Quantidade de recorrencias</option>
+              </select>
+            </div>
+
+            <AppInput
+              v-if="formRecurringEndingMode === 'end_date'"
+              v-model="formRecurringEndDate"
+              label="Data final"
+              type="date"
+              :disabled="Boolean(editingRow)"
+            />
+
+            <AppInput
+              v-if="formRecurringEndingMode === 'occurrences'"
+              v-model="formRecurringOccurrences"
+              label="Quantidade de recorrencias"
+              type="number"
+              placeholder="Ex.: 4"
+              :disabled="Boolean(editingRow)"
+            />
+
+            <p v-if="editingRow" class="text-xs text-muted">
+              Frequencia e regra de termino ficam travadas na edicao para evitar distorcer instancias recorrentes ja geradas.
+            </p>
           </div>
 
           <div v-if="isEditingRecurring" class="space-y-2 rounded-xl border border-border p-3">

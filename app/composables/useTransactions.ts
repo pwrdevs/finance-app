@@ -9,6 +9,9 @@ export type TransactionOriginType = (typeof TRANSACTION_ORIGIN_TYPES)[number]
 export const RECURRING_SCOPE = ['single', 'future', 'series'] as const
 export type RecurringScope = (typeof RECURRING_SCOPE)[number]
 
+export const RECURRING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'] as const
+export type RecurringFrequency = (typeof RECURRING_FREQUENCIES)[number]
+
 export const DELETE_RECURRING_SCOPE = ['single', 'future'] as const
 export type DeleteRecurringScope = (typeof DELETE_RECURRING_SCOPE)[number]
 
@@ -90,6 +93,8 @@ export interface CreateSingleTransactionPayload {
   recurring_start_date?: string
   recurring_end_date?: string | null
   recurring_no_end_date?: boolean
+  recurring_frequency?: RecurringFrequency
+  recurring_occurrences_limit?: number | null
   person_id?: string | null
   account_id?: string | null
   card_id?: string | null
@@ -119,8 +124,11 @@ export interface UpdateTransactionInstancePayload {
 
 interface RecurrenceRuleRecord {
   id: string
+  frequency: RecurringFrequency
+  interval_count: number
   start_date: string
   end_date: string | null
+  occurrences_limit: number | null
   is_active: boolean
 }
 
@@ -215,17 +223,42 @@ function maxIsoDate(first: string, second: string) {
   return first >= second ? first : second
 }
 
-function buildRecurringDates(startDate: string, endDate: string | null) {
+function addRecurringInterval(dateText: string, frequency: RecurringFrequency, step: number) {
+  if (frequency === 'daily') {
+    return shiftDays(dateText, step)
+  }
+
+  if (frequency === 'weekly') {
+    return shiftDays(dateText, step * 7)
+  }
+
+  if (frequency === 'yearly') {
+    return addMonthsKeepingDay(dateText, step * 12)
+  }
+
+  return addMonthsKeepingDay(dateText, step)
+}
+
+function buildRecurringDates(startDate: string, frequency: RecurringFrequency, endDate: string | null, occurrencesLimit?: number | null) {
   const dates: string[] = []
-  let cursor = startDate
+  const safeOccurrencesLimit = occurrencesLimit ?? null
+
+  if (safeOccurrencesLimit && safeOccurrencesLimit < 1) {
+    return dates
+  }
 
   while (dates.length < 12) {
+    const cursor = addRecurringInterval(startDate, frequency, dates.length)
+
     if (endDate && cursor > endDate) {
       break
     }
 
+    if (safeOccurrencesLimit && dates.length >= safeOccurrencesLimit) {
+      break
+    }
+
     dates.push(cursor)
-    cursor = addMonthsKeepingDay(startDate, dates.length)
   }
 
   return dates
@@ -378,6 +411,8 @@ export function useTransactions() {
   async function createRecurringTransaction(payload: CreateSingleTransactionPayload) {
     const userId = await getUserId()
     const startDate = payload.recurring_start_date
+    const frequency = payload.recurring_frequency ?? 'monthly'
+    const occurrencesLimit = payload.recurring_occurrences_limit ?? null
 
     if (!startDate) {
       throw new Error('A data inicial da recorrencia e obrigatoria.')
@@ -394,7 +429,11 @@ export function useTransactions() {
       throw new Error('A data final da recorrencia deve ser maior ou igual a data inicial.')
     }
 
-    const recurringDates = buildRecurringDates(startDate, endDate)
+    if (occurrencesLimit != null && occurrencesLimit < 1) {
+      throw new Error('A quantidade de recorrencias deve ser maior ou igual a 1.')
+    }
+
+    const recurringDates = buildRecurringDates(startDate, frequency, endDate, occurrencesLimit)
     if (!recurringDates.length) {
       throw new Error('Nenhuma instancia recorrente foi gerada para o periodo informado.')
     }
@@ -403,10 +442,11 @@ export function useTransactions() {
       .from('recurrence_rules')
       .insert({
         user_id: userId,
-        frequency: 'monthly',
+        frequency,
         interval_count: 1,
         start_date: startDate,
         end_date: endDate,
+        occurrences_limit: occurrencesLimit,
         edit_scope_default: 'series',
         is_active: true
       })
@@ -683,7 +723,7 @@ export function useTransactions() {
 
     const { data: recurrenceRule, error: recurrenceRuleError } = await supabase
       .from('recurrence_rules')
-      .select('id, start_date, end_date, is_active')
+      .select('id, frequency, interval_count, start_date, end_date, occurrences_limit, is_active')
       .eq('id', sourceTransaction.recurrence_rule_id)
       .single<RecurrenceRuleRecord>()
 
@@ -735,10 +775,11 @@ export function useTransactions() {
         .from('recurrence_rules')
         .insert({
           user_id: sourceTransaction.user_id,
-          frequency: 'monthly',
-          interval_count: 1,
+          frequency: recurrenceRule.frequency,
+          interval_count: recurrenceRule.interval_count,
           start_date: splitDate,
           end_date: nextEndDate,
+          occurrences_limit: recurrenceRule.occurrences_limit,
           edit_scope_default: 'series',
           is_active: true
         })
