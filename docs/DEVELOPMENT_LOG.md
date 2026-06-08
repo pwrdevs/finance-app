@@ -167,3 +167,12 @@
 - 2026-06-08: Ajuste final de shell aplicado para simplificacao visual: sidebar com logo PWRDEVS em destaque e menu, mantendo o nome do sistema apenas no header.
 - 2026-06-08: Tela tecnica `/developer/setup` convertida para PT-BR para reduzir residuos de texto em ingles na aplicacao.
 - 2026-06-08: Build local final (`npm run build`) executado com sucesso apos os ajustes de UX e regras financeiras, sem erros de compilacao.
+- 2026-06-08: Corrigida a causa da mensagem falsa `Usuario nao autenticado.` em `settings.vue`: havia corrida de hidratacao entre `useSupabaseUser()` e a sessao real; a tela agora resolve sessao com `supabase.auth.getSession()` antes de carregar/salvar perfil e redireciona para `/login` apenas quando a sessao realmente expirou.
+- 2026-06-08: Perfil em `settings.vue` atualizado para upload/captura de foto (`accept=image/*` com `capture=user`), tentativa de persistencia no Storage bucket `avatars` e fallback seguro para Data URL quando Storage nao estiver disponivel.
+- 2026-06-08: Layout principal estabilizado para desktop com sidebar fixa e rolagem apenas no conteudo principal (`h-screen` + `overflow-hidden` no shell e `overflow-y-auto` no `main`).
+- 2026-06-08: Menu lateral recebeu visibilidade condicional de `Administracao` somente para admin (`diego05.almeida@gmail.com`) em `default.vue`.
+- 2026-06-08: Seguranca de rota admin reforcada em `app/middleware/admin.ts` com validacao assincrona de usuario (`supabase.auth.getUser()`) e bloqueio explicito para nao-admin.
+- 2026-06-08: Cobertura de gestao de usuarios ampliada com exclusao administrativa via API (`server/api/admin/users/[id].delete.ts`) e acao de exclusao no painel `app/pages/developer/users.vue`.
+- 2026-06-08: Alias de rota criado em `app/pages/admin/users.vue` para redirecionar ao painel administrativo oficial (`/developer/users`) sob middleware admin.
+- 2026-06-08: Padronizacao PT-BR final em tipos/labels de `accounts.vue` e `categories.vue` (mapeamentos checking/savings/wallet/investment/other e income/expense para exibicao amigavel).
+- 2026-06-08: Validacoes executadas nesta rodada: `get_errors` sem erros, revisao de middlewares/login sem botao de cadastro publico, e build de producao com sucesso (`npm run build`).

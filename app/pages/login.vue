@@ -11,6 +11,7 @@ definePageMeta({
 const email = ref('')
 const password = ref('')
 const localError = ref('')
+const route = useRoute()
 
 const {
   authError,
@@ -22,6 +23,14 @@ const {
 
 const resetMessage = ref('')
 const resetError = ref('')
+
+const routeInfoMessage = computed(() => {
+  if (route.query.message === 'sessao-expirada') {
+    return 'Sua sessão expirou. Entre novamente para continuar.'
+  }
+
+  return ''
+})
 
 onMounted(() => {
   initAuthListener()
@@ -110,6 +119,10 @@ async function onRecoverPassword() {
 
         <p v-if="localError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">
           {{ localError }}
+        </p>
+
+        <p v-else-if="routeInfoMessage" class="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
+          {{ routeInfoMessage }}
         </p>
 
         <p v-else-if="authError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">

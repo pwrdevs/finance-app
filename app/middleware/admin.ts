@@ -1,12 +1,15 @@
-export default defineNuxtRouteMiddleware(() => {
-  const session = useSupabaseSession()
-  const { isAdmin } = useAccess()
+const ADMIN_EMAIL = 'diego05.almeida@gmail.com'
 
-  if (!session.value) {
+export default defineNuxtRouteMiddleware(async () => {
+  const supabase = useSupabaseClient()
+
+  const { data, error } = await supabase.auth.getUser()
+
+  if (error || !data.user?.email) {
     return navigateTo('/login')
   }
 
-  if (!isAdmin.value) {
+  if (data.user.email.toLowerCase() !== ADMIN_EMAIL) {
     return navigateTo('/dashboard')
   }
 })

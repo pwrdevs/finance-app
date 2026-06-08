@@ -62,11 +62,16 @@ const columns = [
   { key: 'name', label: 'Nome' },
   { key: 'type', label: 'Tipo' },
   { key: 'color', label: 'Cor' },
-  { key: 'icon', label: 'Icone' },
+  { key: 'icon', label: 'Ícone' },
   { key: 'status', label: 'Status' },
   { key: 'created_at', label: 'Criado em' },
-  { key: 'actions', label: 'Acoes', align: 'right' as const }
+  { key: 'actions', label: 'Ações', align: 'right' as const }
 ]
+
+const categoryTypeLabels: Record<CategoryType, string> = {
+  income: 'Receita',
+  expense: 'Despesa'
+}
 
 const filteredRows = computed(() => {
   const normalizedSearch = search.value.trim().toLowerCase()
@@ -79,7 +84,11 @@ const filteredRows = computed(() => {
     })
     .filter((row) => typeFilter.value === 'all' || row.type === typeFilter.value)
     .filter((row) => !normalizedSearch || row.name.toLowerCase().includes(normalizedSearch) || (row.icon || '').toLowerCase().includes(normalizedSearch) || (row.color || '').toLowerCase().includes(normalizedSearch))
-    .map((row) => ({ ...row, status: row.is_active ? 'Ativo' : 'Inativo' }))
+    .map((row) => ({
+      ...row,
+      status: row.is_active ? 'Ativo' : 'Inativo',
+      type_label: categoryTypeLabels[row.type]
+    }))
 })
 
 function formatDate(value: string) {
@@ -126,7 +135,7 @@ async function fetchRows() {
   try {
     rows.value = await listCategories()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Falha ao carregar categorias.'
+    pageError.value = err instanceof Error ? err.message : 'Não foi possível carregar as categorias.'
   } finally {
     loading.value = false
   }
@@ -135,7 +144,7 @@ async function fetchRows() {
 async function submitForm() {
   modalError.value = ''
   if (!name.value.trim()) {
-    modalError.value = 'Nome obrigatorio.'
+    modalError.value = 'Nome obrigatório.'
     return
   }
 
@@ -145,7 +154,7 @@ async function submitForm() {
     isModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    modalError.value = err instanceof Error ? err.message : 'Falha ao salvar categoria.'
+    modalError.value = err instanceof Error ? err.message : 'Não foi possível salvar a categoria.'
   } finally {
     saving.value = false
   }
@@ -157,12 +166,12 @@ async function deactivate(row: CategoryItem) {
     await deactivateCategory(row.id)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Falha ao desativar categoria.'
+    pageError.value = err instanceof Error ? err.message : 'Não foi possível desativar a categoria.'
   }
 }
 
 async function remove(row: CategoryItem) {
-  const confirmed = window.confirm(`Deseja deletar a categoria "${row.name}"? Esta acao nao pode ser desfeita.`)
+  const confirmed = window.confirm(`Deseja deletar a categoria "${row.name}"? Esta ação não pode ser desfeita.`)
 
   if (!confirmed) {
     return
@@ -174,7 +183,7 @@ async function remove(row: CategoryItem) {
     await deleteCategory(row.id)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Falha ao deletar categoria.'
+    pageError.value = err instanceof Error ? err.message : 'Não foi possível deletar a categoria.'
   }
 }
 
@@ -186,18 +195,18 @@ onMounted(fetchRows)
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dados mestres</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Categorias</h2>
-      <p class="mt-2 text-sm text-muted">Gerencie categorias para classificacao de receitas e despesas.</p>
+      <p class="mt-2 text-sm text-muted">Gerencie categorias para classificação de receitas e despesas.</p>
     </div>
 
     <AppCard title="Filtros">
       <div class="grid gap-4 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
-        <AppInput v-model="search" label="Buscar" placeholder="Buscar por nome, icone ou cor" />
+        <AppInput v-model="search" label="Buscar" placeholder="Buscar por nome, ícone ou cor" />
 
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Tipo</label>
           <select v-model="typeFilter" class="h-11 rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
             <option value="all">Todos</option>
-            <option v-for="entry in CATEGORY_TYPES" :key="entry" :value="entry">{{ entry }}</option>
+            <option v-for="entry in CATEGORY_TYPES" :key="entry" :value="entry">{{ categoryTypeLabels[entry] }}</option>
           </select>
         </div>
 
@@ -218,7 +227,7 @@ onMounted(fetchRows)
 
     <AppCard title="Lista de categorias" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
       <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhuma categoria encontrada.">
-        <template #cell-type="{ value }"><span class="capitalize">{{ value }}</span></template>
+        <template #cell-type="{ row }"><span>{{ (row as any).type_label }}</span></template>
         <template #cell-color="{ value }">
           <div class="flex items-center gap-2">
             <span class="inline-block h-4 w-4 rounded-full border border-border" :style="{ backgroundColor: String(value || '#e5e7eb') }" />
@@ -246,12 +255,12 @@ onMounted(fetchRows)
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Tipo</label>
           <select v-model="type" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="entry in CATEGORY_TYPES" :key="entry" :value="entry">{{ entry }}</option>
+            <option v-for="entry in CATEGORY_TYPES" :key="entry" :value="entry">{{ categoryTypeLabels[entry] }}</option>
           </select>
         </div>
 
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Cor padrao</label>
+          <label class="block text-sm font-medium text-foreground">Cor padrão</label>
           <div class="grid grid-cols-5 gap-2">
             <button
               v-for="option in COLOR_OPTIONS"
@@ -268,7 +277,7 @@ onMounted(fetchRows)
         </div>
 
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Icone (emoji)</label>
+          <label class="block text-sm font-medium text-foreground">Ícone (emoji)</label>
           <div class="grid grid-cols-6 gap-2">
             <button
               v-for="option in ICON_OPTIONS"

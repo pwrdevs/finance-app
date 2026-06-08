@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import AppButton from '~/components/common/AppButton.vue'
 import AppCard from '~/components/common/AppCard.vue'
-import AppInput from '~/components/common/AppInput.vue'
 
 definePageMeta({
   middleware: 'auth'
@@ -18,9 +17,14 @@ const profileLoading = ref(false)
 const profileSaving = ref(false)
 const profileError = ref('')
 const profileMessage = ref('')
+const sessionChecked = ref(false)
 
 const fullName = ref('')
 const avatarUrl = ref('')
+const selectedAvatarFile = ref<File | null>(null)
+const avatarPreviewUrl = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
+const captureInput = ref<HTMLInputElement | null>(null)
 
 const appVersion = 'MVP 0.1.0'
 const currentEnvironment = computed(() => config.public.appEnv || 'development')
@@ -51,6 +55,10 @@ const profileName = computed(() => {
 })
 
 const profileAvatar = computed(() => {
+  if (avatarPreviewUrl.value) {
+    return avatarPreviewUrl.value
+  }
+
   const dbAvatar = avatarUrl.value.trim()
 
   if (dbAvatar) {
@@ -75,12 +83,134 @@ const profileInitials = computed(() => {
   return tokens.map(token => token[0]?.toUpperCase() || '').join('')
 })
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      resolve(result)
+    }
+
+    reader.onerror = () => {
+      reject(new Error('Não foi possível ler o arquivo de imagem.'))
+    }
+
+    reader.readAsDataURL(file)
+  })
+}
+
+async function resolveAuthenticatedUserId() {
+  const fromUser = user.value?.id
+
+  if (fromUser) {
+    sessionChecked.value = true
+    return fromUser
+  }
+
+  const { data, error } = await supabase.auth.getSession()
+
+  sessionChecked.value = true
+
+  if (error) {
+    throw error
+  }
+
+  return data.session?.user?.id || null
+}
+
+function resetSelectedAvatar() {
+  selectedAvatarFile.value = null
+  avatarPreviewUrl.value = ''
+
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+
+  if (captureInput.value) {
+    captureInput.value.value = ''
+  }
+}
+
+async function selectAvatar(file: File | null) {
+  if (!file) {
+    return
+  }
+
+  const maxSizeInBytes = 2 * 1024 * 1024
+
+  if (file.size > maxSizeInBytes) {
+    profileError.value = 'A imagem deve ter no máximo 2 MB.'
+    return
+  }
+
+  profileError.value = ''
+  selectedAvatarFile.value = file
+  avatarPreviewUrl.value = await readFileAsDataUrl(file)
+}
+
+function onFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  void selectAvatar(file)
+}
+
+function onCaptureChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  void selectAvatar(file)
+}
+
+function openFilePicker() {
+  fileInput.value?.click()
+}
+
+function openCameraCapture() {
+  captureInput.value?.click()
+}
+
+function removeAvatar() {
+  resetSelectedAvatar()
+  avatarUrl.value = ''
+}
+
+async function persistAvatar(userId: string) {
+  if (!selectedAvatarFile.value) {
+    return avatarUrl.value.trim() || null
+  }
+
+  const avatarFile = selectedAvatarFile.value
+  const extension = avatarFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+  const safeExtension = extension.replace(/[^a-z0-9]/g, '') || 'jpg'
+  const filePath = `${userId}/avatar-${Date.now()}.${safeExtension}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(filePath, avatarFile, {
+      upsert: true,
+      contentType: avatarFile.type || 'image/jpeg'
+    })
+
+  if (!uploadError) {
+    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
+    return data.publicUrl || null
+  }
+
+  const dataUrl = await readFileAsDataUrl(avatarFile)
+
+  if (dataUrl.length > 700_000) {
+    throw new Error('Não foi possível enviar para o Storage e a imagem está grande para fallback local. Use uma imagem menor.')
+  }
+
+  return dataUrl
+}
+
 async function loadProfile() {
   profileLoading.value = true
   profileError.value = ''
 
   try {
-    const userId = user.value?.id
+    const userId = await resolveAuthenticatedUserId()
 
     if (!userId) {
       return
@@ -98,6 +228,7 @@ async function loadProfile() {
 
     fullName.value = String(data?.full_name || '')
     avatarUrl.value = String(data?.avatar_url || '')
+    resetSelectedAvatar()
   } catch (err) {
     profileError.value = err instanceof Error ? err.message : 'Não foi possível carregar o perfil.'
   } finally {
@@ -111,16 +242,19 @@ async function saveProfile() {
   profileMessage.value = ''
 
   try {
-    const userId = user.value?.id
+    const userId = await resolveAuthenticatedUserId()
 
     if (!userId) {
-      throw new Error('Usuário não autenticado.')
+      await navigateTo('/login?message=sessao-expirada')
+      return
     }
+
+    const persistedAvatar = await persistAvatar(userId)
 
     const payload = {
       user_id: userId,
       full_name: fullName.value.trim() || null,
-      avatar_url: avatarUrl.value.trim() || null
+      avatar_url: persistedAvatar
     }
 
     const { error } = await supabase
@@ -131,6 +265,8 @@ async function saveProfile() {
       throw error
     }
 
+    avatarUrl.value = persistedAvatar || ''
+    resetSelectedAvatar()
     profileMessage.value = 'Perfil atualizado com sucesso.'
   } catch (err) {
     profileError.value = err instanceof Error ? err.message : 'Não foi possível salvar o perfil.'
@@ -142,6 +278,13 @@ async function saveProfile() {
 onMounted(() => {
   void loadProfile()
 })
+
+watch(
+  () => user.value?.id,
+  () => {
+    void loadProfile()
+  }
+)
 </script>
 
 <template>
@@ -167,8 +310,43 @@ onMounted(() => {
       </div>
 
       <div class="mt-4 grid gap-3 md:grid-cols-2">
-        <AppInput v-model="fullName" label="Nome completo" placeholder="Seu nome" />
-        <AppInput v-model="avatarUrl" label="URL do avatar" placeholder="https://..." hint="Upload de foto sera adicionado em uma proxima etapa." />
+        <div class="space-y-2 md:col-span-2">
+          <label class="block text-sm font-medium text-foreground">Nome completo</label>
+          <input
+            v-model="fullName"
+            type="text"
+            class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground"
+            placeholder="Seu nome"
+          >
+        </div>
+
+        <div class="space-y-2 md:col-span-2">
+          <p class="text-sm font-medium text-foreground">Foto de perfil</p>
+          <p class="text-xs text-muted">Você pode enviar uma imagem da galeria ou capturar pela câmera.</p>
+
+          <div class="flex flex-wrap gap-2">
+            <AppButton label="Enviar foto" variant="secondary" @click="openFilePicker" />
+            <AppButton label="Capturar foto" variant="secondary" @click="openCameraCapture" />
+            <AppButton label="Remover foto" variant="ghost" @click="removeAvatar" />
+          </div>
+
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/*"
+            class="hidden"
+            @change="onFileChange"
+          >
+
+          <input
+            ref="captureInput"
+            type="file"
+            accept="image/*"
+            capture="user"
+            class="hidden"
+            @change="onCaptureChange"
+          >
+        </div>
       </div>
 
       <div class="mt-4 flex flex-wrap gap-2">
@@ -177,6 +355,7 @@ onMounted(() => {
 
       <p v-if="profileError" class="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ profileError }}</p>
       <p v-else-if="profileMessage" class="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-700">{{ profileMessage }}</p>
+      <p v-else-if="profileLoading || !sessionChecked" class="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">Carregando dados da sessão...</p>
     </AppCard>
 
     <AppCard title="Aparência" subtitle="Escolha o tema visual da interface.">

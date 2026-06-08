@@ -36,8 +36,16 @@ const columns = [
   { key: 'initial_balance', label: 'Saldo inicial', align: 'right' as const },
   { key: 'status', label: 'Status' },
   { key: 'created_at', label: 'Criado em' },
-  { key: 'actions', label: 'Acoes', align: 'right' as const }
+  { key: 'actions', label: 'Ações', align: 'right' as const }
 ]
+
+const accountTypeLabels: Record<AccountType, string> = {
+  checking: 'Conta corrente',
+  savings: 'Poupança',
+  wallet: 'Carteira / Dinheiro',
+  investment: 'Investimento',
+  other: 'Outro'
+}
 
 const filteredRows = computed(() => {
   const normalizedSearch = search.value.trim().toLowerCase()
@@ -53,6 +61,7 @@ const filteredRows = computed(() => {
     .map((row) => ({
       ...row,
       status: row.is_active ? 'Ativo' : 'Inativo',
+      type_label: accountTypeLabels[row.type],
       initial_balance: formatBRL(Number(row.initial_balance))
     }))
 })
@@ -91,7 +100,7 @@ async function fetchRows() {
   try {
     rows.value = await listAccounts()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Falha ao carregar contas.'
+    pageError.value = err instanceof Error ? err.message : 'Não foi possível carregar as contas.'
   } finally {
     loading.value = false
   }
@@ -101,13 +110,13 @@ async function submitForm() {
   modalError.value = ''
 
   if (!name.value.trim()) {
-    modalError.value = 'Nome obrigatorio.'
+    modalError.value = 'Nome obrigatório.'
     return
   }
 
   const parsedBalance = Number(initialBalance.value)
   if (Number.isNaN(parsedBalance)) {
-    modalError.value = 'Saldo inicial deve ser um numero valido.'
+    modalError.value = 'Saldo inicial deve ser um número válido.'
     return
   }
 
@@ -121,7 +130,7 @@ async function submitForm() {
     isModalOpen.value = false
     await fetchRows()
   } catch (err) {
-    modalError.value = err instanceof Error ? err.message : 'Falha ao salvar conta.'
+    modalError.value = err instanceof Error ? err.message : 'Não foi possível salvar a conta.'
   } finally {
     saving.value = false
   }
@@ -133,12 +142,12 @@ async function deactivate(row: AccountItem) {
     await deactivateAccount(row.id)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Falha ao desativar conta.'
+    pageError.value = err instanceof Error ? err.message : 'Não foi possível desativar a conta.'
   }
 }
 
 async function remove(row: AccountItem) {
-  const confirmed = window.confirm(`Deseja deletar a conta "${row.name}"? Esta acao nao pode ser desfeita.`)
+  const confirmed = window.confirm(`Deseja deletar a conta "${row.name}"? Esta ação não pode ser desfeita.`)
 
   if (!confirmed) {
     return
@@ -150,7 +159,7 @@ async function remove(row: AccountItem) {
     await deleteAccount(row.id)
     await fetchRows()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Falha ao deletar conta.'
+    pageError.value = err instanceof Error ? err.message : 'Não foi possível deletar a conta.'
   }
 }
 
@@ -162,7 +171,7 @@ onMounted(fetchRows)
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dados mestres</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Contas</h2>
-      <p class="mt-2 text-sm text-muted">Gerencie as contas financeiras usadas pela aplicacao.</p>
+      <p class="mt-2 text-sm text-muted">Gerencie as contas financeiras usadas pela aplicação.</p>
     </div>
 
     <AppCard title="Filtros">
@@ -194,7 +203,7 @@ onMounted(fetchRows)
 
     <AppCard title="Lista de contas" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
       <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhuma conta encontrada.">
-        <template #cell-type="{ value }"><span class="capitalize">{{ value }}</span></template>
+        <template #cell-type="{ row }"><span>{{ (row as any).type_label }}</span></template>
         <template #cell-status="{ value }">
           <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">{{ value }}</span>
         </template>
@@ -215,7 +224,7 @@ onMounted(fetchRows)
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Tipo</label>
           <select v-model="type" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="entry in ACCOUNT_TYPES" :key="entry" :value="entry">{{ entry }}</option>
+            <option v-for="entry in ACCOUNT_TYPES" :key="entry" :value="entry">{{ accountTypeLabels[entry] }}</option>
           </select>
         </div>
         <AppInput v-model="initialBalance" label="Saldo inicial" type="number" placeholder="0.00" required />

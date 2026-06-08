@@ -46,7 +46,7 @@ async function createUser() {
   pageMessage.value = ''
 
   if (!email.value || !password.value) {
-    pageError.value = 'E-mail e senha são obrigatórios.'
+    pageError.value = 'E-mail e senha temporária são obrigatórios.'
     return
   }
 
@@ -111,6 +111,28 @@ async function resetPassword(user: AdminUser) {
   }
 }
 
+async function deleteUser(user: AdminUser) {
+  pageError.value = ''
+  pageMessage.value = ''
+
+  const confirmed = window.confirm(`Deseja excluir o usuário ${user.email}? Esta ação não pode ser desfeita.`)
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    await $fetch(`/api/admin/users/${user.id}`, {
+      method: 'DELETE'
+    })
+
+    pageMessage.value = 'Usuário excluído com sucesso.'
+    await fetchUsers()
+  } catch (err) {
+    pageError.value = err instanceof Error ? err.message : 'Não foi possível excluir usuário.'
+  }
+}
+
 function formatDate(value: string | null) {
   if (!value) {
     return '—'
@@ -129,14 +151,14 @@ onMounted(async () => {
     <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Administração</p>
       <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Gerenciar usuários</h2>
-      <p class="mt-2 text-sm text-muted">Criar usuários, resetar senha e ativar/desativar acesso.</p>
+      <p class="mt-2 text-sm text-muted">Criar usuários, resetar senha, ativar/desativar e excluir acesso.</p>
     </div>
 
     <AppCard title="Novo usuário">
       <div class="grid gap-3 md:grid-cols-3">
         <AppInput v-model="fullName" label="Nome" placeholder="Nome completo" />
         <AppInput v-model="email" label="E-mail" type="email" placeholder="email@dominio.com" />
-        <AppInput v-model="password" label="Senha inicial" type="password" placeholder="Mínimo 6 caracteres" />
+        <AppInput v-model="password" label="Senha temporária" type="password" placeholder="Mínimo 6 caracteres" />
       </div>
 
       <div class="mt-4">
@@ -168,6 +190,7 @@ onMounted(async () => {
                 :label="user.ativo ? 'Desativar' : 'Ativar'"
                 @click="toggleUser(user)"
               />
+              <AppButton size="sm" variant="danger" label="Excluir" @click="deleteUser(user)" />
             </div>
           </div>
         </article>
