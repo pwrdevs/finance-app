@@ -1,5 +1,5 @@
 import { defineEventHandler } from 'h3'
-import { requireAdmin, supabaseAdminRequest } from '../../../utils/adminAuth'
+import { ADMIN_PRINCIPAL_EMAIL, requireAdmin, supabaseAdminRequest } from '../../../utils/adminAuth'
 
 interface AdminUserResponse {
   users: Array<{
@@ -24,7 +24,8 @@ export default defineEventHandler(async (event) => {
       nome: String(user.user_metadata?.full_name || user.user_metadata?.name || '').trim(),
       criadoEm: user.created_at || null,
       ultimoLogin: user.last_sign_in_at || null,
-      ativo: !Boolean(user.banned_until)
+      ativo: !Boolean(user.banned_until),
+      isProtected: String(user.email || '').toLowerCase() === ADMIN_PRINCIPAL_EMAIL
     }))
   }
 })

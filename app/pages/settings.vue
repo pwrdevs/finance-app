@@ -12,15 +12,13 @@ const config = useRuntimeConfig()
 const { authEmail, logout } = useAuth()
 const { isAdmin } = useAccess()
 const { applyTheme, selectedTheme } = useTheme()
+const { loadProfile, profileAvatarUrl, profileFullName, setProfile } = useProfile()
 
 const profileLoading = ref(false)
 const profileSaving = ref(false)
 const profileError = ref('')
 const profileMessage = ref('')
-const sessionChecked = ref(false)
 
-const fullName = ref('')
-const avatarUrl = ref('')
 const selectedAvatarFile = ref<File | null>(null)
 const avatarPreviewUrl = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -32,7 +30,7 @@ const currentEnvironment = computed(() => config.public.appEnv || 'development')
 const profileEmail = computed(() => user.value?.email || authEmail.value || 'Não disponível')
 
 const profileName = computed(() => {
-  const dbName = fullName.value.trim()
+  const dbName = profileFullName.value.trim()
 
   if (dbName) {
     return dbName
@@ -59,7 +57,7 @@ const profileAvatar = computed(() => {
     return avatarPreviewUrl.value
   }
 
-  const dbAvatar = avatarUrl.value.trim()
+  const dbAvatar = profileAvatarUrl.value.trim()
 
   if (dbAvatar) {
     return dbAvatar
@@ -104,13 +102,10 @@ async function resolveAuthenticatedUserId() {
   const fromUser = user.value?.id
 
   if (fromUser) {
-    sessionChecked.value = true
     return fromUser
   }
 
   const { data, error } = await supabase.auth.getSession()
-
-  sessionChecked.value = true
 
   if (error) {
     throw error
@@ -171,12 +166,12 @@ function openCameraCapture() {
 
 function removeAvatar() {
   resetSelectedAvatar()
-  avatarUrl.value = ''
+  profileAvatarUrl.value = ''
 }
 
 async function persistAvatar(userId: string) {
   if (!selectedAvatarFile.value) {
-    return avatarUrl.value.trim() || null
+    return profileAvatarUrl.value.trim() || null
   }
 
   const avatarFile = selectedAvatarFile.value
@@ -205,7 +200,7 @@ async function persistAvatar(userId: string) {
   return dataUrl
 }
 
-async function loadProfile() {
+async function refreshProfile() {
   profileLoading.value = true
   profileError.value = ''
 
@@ -226,8 +221,10 @@ async function loadProfile() {
       throw error
     }
 
-    fullName.value = String(data?.full_name || '')
-    avatarUrl.value = String(data?.avatar_url || '')
+    setProfile({
+      fullName: String(data?.full_name || ''),
+      avatarUrl: String(data?.avatar_url || '')
+    })
     resetSelectedAvatar()
   } catch (err) {
     profileError.value = err instanceof Error ? err.message : 'Não foi possível carregar o perfil.'
@@ -253,7 +250,7 @@ async function saveProfile() {
 
     const payload = {
       user_id: userId,
-      full_name: fullName.value.trim() || null,
+      full_name: profileFullName.value.trim() || null,
       avatar_url: persistedAvatar
     }
 
@@ -265,7 +262,10 @@ async function saveProfile() {
       throw error
     }
 
-    avatarUrl.value = persistedAvatar || ''
+    setProfile({
+      fullName: profileFullName.value,
+      avatarUrl: persistedAvatar || ''
+    })
     resetSelectedAvatar()
     profileMessage.value = 'Perfil atualizado com sucesso.'
   } catch (err) {
@@ -276,13 +276,13 @@ async function saveProfile() {
 }
 
 onMounted(() => {
-  void loadProfile()
+  void refreshProfile()
 })
 
 watch(
   () => user.value?.id,
   () => {
-    void loadProfile()
+    void refreshProfile()
   }
 )
 </script>
@@ -313,7 +313,7 @@ watch(
         <div class="space-y-2 md:col-span-2">
           <label class="block text-sm font-medium text-foreground">Nome completo</label>
           <input
-            v-model="fullName"
+            v-model="profileFullName"
             type="text"
             class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground"
             placeholder="Seu nome"
@@ -355,7 +355,6 @@ watch(
 
       <p v-if="profileError" class="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ profileError }}</p>
       <p v-else-if="profileMessage" class="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-700">{{ profileMessage }}</p>
-      <p v-else-if="profileLoading || !sessionChecked" class="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">Carregando dados da sessão...</p>
     </AppCard>
 
     <AppCard title="Aparência" subtitle="Escolha o tema visual da interface.">

@@ -3,12 +3,62 @@ interface ProfileBootstrapResult {
   profileId: string | null
 }
 
+interface ProfileData {
+  fullName: string
+  avatarUrl: string
+}
+
 export function useProfile() {
   const supabase = useSupabaseClient()
   const user = useSupabaseUser()
 
   const isEnsuringProfile = useState('profile:isEnsuringProfile', () => false)
   const profileError = useState<string | null>('profile:error', () => null)
+  const profileFullName = useState('profile:fullName', () => '')
+  const profileAvatarUrl = useState('profile:avatarUrl', () => '')
+  const isLoadingProfile = useState('profile:isLoadingProfile', () => false)
+
+  function setProfile(profile: Partial<ProfileData>) {
+    if (typeof profile.fullName === 'string') {
+      profileFullName.value = profile.fullName
+    }
+
+    if (typeof profile.avatarUrl === 'string') {
+      profileAvatarUrl.value = profile.avatarUrl
+    }
+  }
+
+  async function loadProfile(targetUserId = user.value?.id) {
+    if (!targetUserId) {
+      profileFullName.value = ''
+      profileAvatarUrl.value = ''
+      return null
+    }
+
+    isLoadingProfile.value = true
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('user_id', targetUserId)
+        .maybeSingle()
+
+      if (error && error.code !== 'PGRST116') {
+        throw error
+      }
+
+      profileFullName.value = String(data?.full_name || '')
+      profileAvatarUrl.value = String(data?.avatar_url || '')
+
+      return {
+        fullName: profileFullName.value,
+        avatarUrl: profileAvatarUrl.value
+      }
+    } finally {
+      isLoadingProfile.value = false
+    }
+  }
 
   async function ensureProfile(targetUserId = user.value?.id): Promise<ProfileBootstrapResult> {
     if (!targetUserId) {
@@ -62,7 +112,12 @@ export function useProfile() {
 
   return {
     ensureProfile,
+    isLoadingProfile,
     isEnsuringProfile,
-    profileError
+    loadProfile,
+    profileAvatarUrl,
+    profileError,
+    profileFullName,
+    setProfile
   }
 }

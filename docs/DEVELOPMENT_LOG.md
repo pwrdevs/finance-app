@@ -176,3 +176,8 @@
 - 2026-06-08: Alias de rota criado em `app/pages/admin/users.vue` para redirecionar ao painel administrativo oficial (`/developer/users`) sob middleware admin.
 - 2026-06-08: Padronizacao PT-BR final em tipos/labels de `accounts.vue` e `categories.vue` (mapeamentos checking/savings/wallet/investment/other e income/expense para exibicao amigavel).
 - 2026-06-08: Validacoes executadas nesta rodada: `get_errors` sem erros, revisao de middlewares/login sem botao de cadastro publico, e build de producao com sucesso (`npm run build`).
+- 2026-06-08: Admin de usuarios ganhou edicao completa via API server-side (`email`, `full_name` em profile, `password` e `ativo`), com feedback de criacao/atualizacao/reset/erro e refresh automatico da listagem.
+- 2026-06-08: Exclusao e desativacao do administrador principal foram bloqueadas no frontend e no backend para `diego05.almeida@gmail.com`, retornando `403` com a mensagem obrigatoria.
+- 2026-06-08: O travamento de rolagem foi causado por shell sem `min-h-0` e alturas fixas conflitantes; o layout agora deixa header e sidebar fixos e permite scroll apenas no `main`.
+- 2026-06-08: A sidebar passou a consumir estado compartilhado de perfil via `useProfile`, refletindo nome/foto atualizados em Configuracoes sem exigir logout/login.
+- 2026-06-08: O logo do header foi ampliado para destacar a marca sem comprometer o alinhamento do topo.

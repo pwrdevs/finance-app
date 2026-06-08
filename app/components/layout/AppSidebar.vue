@@ -4,11 +4,8 @@ interface SidebarLink {
   to: string
 }
 
-const supabase = useSupabaseClient()
 const user = useSupabaseUser()
-
-const fullName = ref('')
-const avatarUrl = ref('')
+const { loadProfile: refreshProfile, profileAvatarUrl, profileFullName } = useProfile()
 
 const props = defineProps<{
   open: boolean
@@ -24,7 +21,7 @@ function closeSidebar() {
 }
 
 const profileName = computed(() => {
-  const dbName = fullName.value.trim()
+  const dbName = profileFullName.value.trim()
 
   if (dbName) {
     return dbName
@@ -47,7 +44,7 @@ const profileName = computed(() => {
 })
 
 const profileAvatar = computed(() => {
-  const dbAvatar = avatarUrl.value.trim()
+  const dbAvatar = profileAvatarUrl.value.trim()
 
   if (dbAvatar) {
     return dbAvatar
@@ -71,27 +68,8 @@ const profileInitials = computed(() => {
   return tokens.map(token => token[0]?.toUpperCase() || '').join('')
 })
 
-async function loadProfile() {
-  const userId = user.value?.id
-
-  if (!userId) {
-    fullName.value = ''
-    avatarUrl.value = ''
-    return
-  }
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('full_name, avatar_url')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (error && error.code !== 'PGRST116') {
-    return
-  }
-
-  fullName.value = String(data?.full_name || '')
-  avatarUrl.value = String(data?.avatar_url || '')
+async function refreshSidebarProfile() {
+  await refreshProfile(user.value?.id)
 }
 
 watch(
@@ -110,13 +88,13 @@ onBeforeUnmount(() => {
 })
 
 onMounted(async () => {
-  await loadProfile()
+  await refreshSidebarProfile()
 })
 
 watch(
   () => user.value?.id,
   async () => {
-    await loadProfile()
+    await refreshSidebarProfile()
   }
 )
 </script>
@@ -127,14 +105,14 @@ watch(
       <button
         v-if="open"
         type="button"
-        class="fixed inset-x-0 bottom-0 top-20 z-20 bg-foreground/40 backdrop-blur-[1px] lg:hidden"
+        class="fixed inset-x-0 bottom-0 top-24 z-20 bg-foreground/40 backdrop-blur-[1px] lg:hidden"
         aria-label="Fechar menu de navegacao"
         @click="closeSidebar"
       />
     </Transition>
 
     <aside
-      class="fixed bottom-0 left-0 top-20 z-30 w-72 border-r border-border bg-surface shadow-panel transition-transform duration-300 lg:sticky lg:top-20 lg:z-10 lg:h-[calc(100vh-5rem)] lg:translate-x-0"
+      class="fixed bottom-0 left-0 top-24 z-30 w-72 border-r border-border bg-surface shadow-panel transition-transform duration-300 lg:sticky lg:top-24 lg:z-10 lg:h-[calc(100dvh-6rem)] lg:translate-x-0"
       :class="open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
     >
       <div class="flex h-full flex-col overflow-y-auto p-4">

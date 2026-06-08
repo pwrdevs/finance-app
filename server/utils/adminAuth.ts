@@ -1,7 +1,12 @@
 import { createError } from 'h3'
 import { serverSupabaseUser } from '#supabase/server'
 
-const ADMIN_EMAILS = ['diego05.almeida@gmail.com']
+export const ADMIN_PRINCIPAL_EMAIL = 'diego05.almeida@gmail.com'
+const ADMIN_EMAILS = [ADMIN_PRINCIPAL_EMAIL]
+
+export function isProtectedAdminPrincipal(email?: string | null) {
+  return String(email || '').toLowerCase() === ADMIN_PRINCIPAL_EMAIL
+}
 
 export async function requireAdmin(event: Parameters<typeof serverSupabaseUser>[0]) {
   const user = await serverSupabaseUser(event)
