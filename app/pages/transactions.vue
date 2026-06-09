@@ -144,6 +144,11 @@ const recurringScopeOptions = [
   { value: 'series', label: 'Serie completa (futuras)' }
 ] as const
 
+const editRecurringScopeOptions = [
+  { value: 'single', label: 'Somente esta instancia' },
+  { value: 'future', label: 'Esta e futuras instancias' }
+] as const
+
 const recurringFrequencyLabelMap: Record<RecurringFrequency, string> = {
   daily: 'Diario',
   weekly: 'Semanal',
@@ -1541,7 +1546,7 @@ onMounted(async () => {
           <div v-if="isEditingRecurring" class="space-y-2 rounded-xl border border-border p-3">
             <label class="block text-sm font-medium text-foreground">Aplicar edicao em</label>
             <select v-model="formRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              <option v-for="option in editRecurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </div>
         </section>

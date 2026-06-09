@@ -1249,146 +1249,21 @@ export function useTransactions() {
     const normalizedCardId = normalizeOptionalId(payload.card_id)
     const normalizedAccountId = normalizeOptionalId(payload.account_id)
     const normalizedCategoryId = normalizeOptionalId(payload.category_id)
-    const today = getTodayIsoDate()
 
-    if (scope === 'future') {
-      const splitDate = maxIsoDate(item.instance_date, today)
-      const nextEndMode = payload.recurring_end_mode
-        ?? deriveRecurringEndMode(recurrenceRule.end_date, recurrenceRule.occurrences_limit)
-      const recurringSchedule = buildRecurringSchedule(
-        splitDate,
-        recurrenceRule.frequency,
-        nextEndMode,
-        payload.recurring_end_date ?? recurrenceRule.end_date,
-        payload.recurring_occurrences_count ?? recurrenceRule.occurrences_limit
-      )
+    const applyFromDate = item.instance_date
 
-      const { data: newRule, error: newRuleError } = await supabase
-        .from('recurrence_rules')
-        .insert({
-          user_id: sourceTransaction.user_id,
-          frequency: recurrenceRule.frequency,
-          interval_count: recurrenceRule.interval_count,
-          start_date: splitDate,
-          end_date: recurringSchedule.ruleEndDate,
-          occurrences_limit: recurringSchedule.ruleOccurrencesLimit,
-          edit_scope_default: 'series',
-          is_active: true
-        })
-        .select('id')
-        .single()
+    const { data: futureInstanceRows, error: futureInstancesQueryError } = await supabase
+      .from('transaction_instances')
+      .select('instance_date')
+      .eq('recurrence_rule_id', recurrenceRule.id)
+      .gte('instance_date', applyFromDate)
+      .order('instance_date', { ascending: true })
 
-      if (newRuleError) {
-        throw newRuleError
-      }
-
-      const { data: newSourceTransaction, error: newSourceTransactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: sourceTransaction.user_id,
-          type: payload.type,
-          origin_type: 'recurring',
-          title: payload.title.trim(),
-          description: normalizedDescription,
-          expected_value: payload.expected_value,
-          real_value: payload.expected_value,
-          due_date: splitDate,
-          is_checked: false,
-          checked_at: null,
-          person_id: normalizedPersonId,
-          card_id: normalizedCardId,
-          account_id: normalizedAccountId,
-          category_id: normalizedCategoryId,
-          recurrence_rule_id: newRule.id,
-          reimbursement_group_id: item.reimbursement_group_id,
-          reimbursement_role: item.reimbursement_role
-        })
-        .select('id')
-        .single()
-
-      if (newSourceTransactionError) {
-        throw newSourceTransactionError
-      }
-
-      const previousEndDate = shiftDays(splitDate, -1)
-      const cappedPreviousEndDate = previousEndDate < recurrenceRule.start_date
-        ? recurrenceRule.start_date
-        : previousEndDate
-
-      const { error: oldRuleUpdateError } = await supabase
-        .from('recurrence_rules')
-        .update({
-          end_date: cappedPreviousEndDate,
-          occurrences_limit: null
-        })
-        .eq('id', recurrenceRule.id)
-
-      if (oldRuleUpdateError) {
-        throw oldRuleUpdateError
-      }
-
-      const { error: deleteFutureInstancesError } = await supabase
-        .from('transaction_instances')
-        .delete()
-        .eq('recurrence_rule_id', recurrenceRule.id)
-        .gte('instance_date', splitDate)
-
-      if (deleteFutureInstancesError) {
-        throw deleteFutureInstancesError
-      }
-
-      const futureInstances = buildRecurringInstances(
-        sourceTransaction.user_id,
-        newRule.id,
-        newSourceTransaction.id,
-        recurringSchedule.dates,
-        {
-          expectedValue: payload.expected_value,
-          status: payload.status,
-          personId: normalizedPersonId,
-          cardId: normalizedCardId,
-          accountId: normalizedAccountId,
-          categoryId: normalizedCategoryId,
-          reimbursementGroupId: item.reimbursement_group_id,
-          reimbursementRole: item.reimbursement_role
-        }
-      )
-
-      const { error: futureInstancesError } = await supabase
-        .from('transaction_instances')
-        .insert(futureInstances)
-
-      if (futureInstancesError) {
-        throw futureInstancesError
-      }
-
-      return
+    if (futureInstancesQueryError) {
+      throw futureInstancesQueryError
     }
 
-    const applyFromDate = maxIsoDate(item.instance_date, today)
-    const nextEndMode = payload.recurring_end_mode
-      ?? deriveRecurringEndMode(recurrenceRule.end_date, recurrenceRule.occurrences_limit)
-    const recurringSchedule = buildRecurringSchedule(
-      applyFromDate,
-      recurrenceRule.frequency,
-      nextEndMode,
-      payload.recurring_end_date ?? recurrenceRule.end_date,
-      payload.recurring_occurrences_count ?? recurrenceRule.occurrences_limit
-    )
-    const canPersistOccurrencesLimit = applyFromDate === recurrenceRule.start_date
-
-    const { error: recurrenceRuleError } = await supabase
-      .from('recurrence_rules')
-      .update({
-        end_date: recurringSchedule.ruleEndDate,
-        occurrences_limit: canPersistOccurrencesLimit ? recurringSchedule.ruleOccurrencesLimit : null,
-        is_active: true
-      })
-      .eq('id', recurrenceRule.id)
-
-    if (recurrenceRuleError) {
-      throw recurrenceRuleError
-    }
+    const futureDates = (futureInstanceRows ?? []).map(row => row.instance_date)
 
     const { error: sourceTransactionError } = await supabase
       .from('transactions')
@@ -1397,6 +1272,10 @@ export function useTransactions() {
         title: payload.title.trim(),
         description: normalizedDescription,
         expected_value: payload.expected_value,
+        real_value: payload.real_value ?? null,
+        due_date: payload.due_date,
+        is_checked: payload.is_checked,
+        checked_at: checkedAt,
         person_id: normalizedPersonId,
         card_id: normalizedCardId,
         account_id: normalizedAccountId,
@@ -1418,11 +1297,11 @@ export function useTransactions() {
       throw deleteSeriesInstancesError
     }
 
-    const seriesInstances = buildRecurringInstances(
+    const futureInstances = buildRecurringInstances(
       sourceTransaction.user_id,
       recurrenceRule.id,
       sourceTransaction.id,
-      recurringSchedule.dates,
+      futureDates,
       {
         expectedValue: payload.expected_value,
         status: payload.status,
@@ -1435,12 +1314,12 @@ export function useTransactions() {
       }
     )
 
-    const { error: seriesInstancesError } = await supabase
+    const { error: futureInstancesError } = await supabase
       .from('transaction_instances')
-      .insert(seriesInstances)
+      .insert(futureInstances)
 
-    if (seriesInstancesError) {
-      throw seriesInstancesError
+    if (futureInstancesError) {
+      throw futureInstancesError
     }
   }
 
