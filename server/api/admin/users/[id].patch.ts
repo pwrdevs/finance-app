@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
-import { ADMIN_PRINCIPAL_EMAIL, isProtectedAdminPrincipal, requireAdmin, supabaseAdminRequest } from '../../../utils/adminAuth'
+import { isProtectedAdminPrincipal, requireAdmin, supabaseAdminRequest } from '../../../utils/adminAuth'
 
 interface UpdateUserBody {
   email?: string
@@ -37,11 +37,11 @@ export default defineEventHandler(async (event) => {
   const protectedAdmin = isProtectedAdminPrincipal(targetEmail)
 
   if (protectedAdmin && hasActive && body.ativo === false) {
-    throw createError({ statusCode: 403, statusMessage: 'O administrador principal não pode ser removido.' })
+    throw createError({ statusCode: 403, statusMessage: 'Não é permitido alterar ou excluir o administrador principal.' })
   }
 
   if (protectedAdmin && hasEmail && String(body.email || '').trim().toLowerCase() !== targetEmail) {
-    throw createError({ statusCode: 403, statusMessage: 'O administrador principal não pode ser removido.' })
+    throw createError({ statusCode: 403, statusMessage: 'Não é permitido alterar ou excluir o administrador principal.' })
   }
 
   const authPayload: Record<string, unknown> = {}

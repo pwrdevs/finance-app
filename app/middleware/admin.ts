@@ -1,7 +1,8 @@
-const ADMIN_EMAIL = 'diego05.almeida@gmail.com'
+import { isAdmin, useAdminEmailConfig } from '~/utils/admin'
 
 export default defineNuxtRouteMiddleware(async () => {
   const supabase = useSupabaseClient()
+  const adminEmail = useAdminEmailConfig()
 
   const { data, error } = await supabase.auth.getUser()
 
@@ -9,7 +10,7 @@ export default defineNuxtRouteMiddleware(async () => {
     return navigateTo('/login')
   }
 
-  if (data.user.email.toLowerCase() !== ADMIN_EMAIL) {
+  if (!isAdmin(data.user.email, adminEmail)) {
     return navigateTo('/dashboard')
   }
 })

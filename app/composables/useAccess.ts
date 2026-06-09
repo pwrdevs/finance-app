@@ -1,14 +1,15 @@
-const ADMIN_EMAILS = ['diego05.almeida@gmail.com']
+import { isAdmin, useAdminEmailConfig } from '~/utils/admin'
 
 export function useAccess() {
   const user = useSupabaseUser()
+  const adminEmail = useAdminEmailConfig()
 
   const isAuthenticated = computed(() => Boolean(user.value?.id))
   const userEmail = computed(() => (user.value?.email || '').toLowerCase())
-  const isAdmin = computed(() => ADMIN_EMAILS.includes(userEmail.value))
+  const hasAdminAccess = computed(() => isAdmin(userEmail.value, adminEmail))
 
   return {
-    isAdmin,
+    isAdmin: hasAdminAccess,
     isAuthenticated,
     userEmail
   }

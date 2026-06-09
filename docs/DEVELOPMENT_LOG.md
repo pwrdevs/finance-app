@@ -195,3 +195,8 @@
 - 2026-06-08: Sidebar convertida para rail compacta sem sobreposicao no desktop; drawer mantido apenas em mobile com overlay.
 - 2026-06-08: Visual global refinado para estilo SaaS premium (fundo escuro esverdeado, sombras suaves e foco verde de marca) sem alterar regras de negocio, banco, RLS ou logica de administracao.
 - 2026-06-08: Build de producao validado com sucesso apos o redesign (`npm run build`); validacao visual autenticada por perfil admin/comum segue dependente de sessao compartilhada no navegador.
+- 2026-06-08: Autorizacao administrativa centralizada em `server/utils/adminAuth.ts` com validacao unica `isAdmin(email)` baseada exclusivamente em `ADMIN_EMAIL` (sem e-mail hardcoded no backend).
+- 2026-06-08: Endpoints administrativos (`GET/POST/PATCH/DELETE/reset-password`) passaram a depender de `requireAdmin(event)` com logs `Admin access granted`/`Admin access denied` e validacao obrigatoria de `ADMIN_EMAIL`, `NUXT_PUBLIC_SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`.
+- 2026-06-08: Protecao do administrador principal alinhada ao `ADMIN_EMAIL`; PATCH/DELETE retornam mensagem padrao: `Não é permitido alterar ou excluir o administrador principal.`.
+- 2026-06-08: Frontend admin sem hardcode: `useAccess`, middleware `admin` e tela `/developer/users` migrados para helper compartilhado (`app/utils/admin.ts`) usando `runtimeConfig.public.adminEmail` exposto por `nuxt.config.ts`.
+- 2026-06-08: Validacao tecnica executada apos refatoracao: busca por hardcode de email sem ocorrencias em app/server (exceto `.env`), `get_errors` sem erros e `npm run build` concluido com sucesso (warning conhecido de sourcemap do Nuxt).

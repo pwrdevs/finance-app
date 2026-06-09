@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const targetUser = await supabaseAdminRequest<AdminUserDetails>(`/auth/v1/admin/users/${id}`)
 
   if (isProtectedAdminPrincipal(targetUser.email)) {
-    throw createError({ statusCode: 403, statusMessage: 'O administrador principal não pode ser removido.' })
+    throw createError({ statusCode: 403, statusMessage: 'Não é permitido alterar ou excluir o administrador principal.' })
   }
 
   await supabaseAdminRequest(`/auth/v1/admin/users/${id}`, {

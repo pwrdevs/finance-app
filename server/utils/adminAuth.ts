@@ -1,40 +1,59 @@
 import { createError } from 'h3'
 import { serverSupabaseUser } from '#supabase/server'
 
-export const ADMIN_PRINCIPAL_EMAIL = 'diego05.almeida@gmail.com'
-const ADMIN_EMAILS = [ADMIN_PRINCIPAL_EMAIL]
+function normalizeEmail(email?: string | null) {
+  return String(email || '').trim().toLowerCase()
+}
+
+function getRequiredAdminEnv() {
+  const adminEmail = normalizeEmail(process.env.ADMIN_EMAIL)
+  const url = String(process.env.NUXT_PUBLIC_SUPABASE_URL || '').trim()
+  const serviceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+
+  if (!adminEmail || !url || !serviceKey) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Configuracao admin indisponivel. Defina ADMIN_EMAIL, NUXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.'
+    })
+  }
+
+  return { adminEmail, url, serviceKey }
+}
+
+export function getAdminEmail() {
+  return getRequiredAdminEnv().adminEmail
+}
+
+export function isAdmin(email?: string | null) {
+  const adminEmail = getAdminEmail()
+  return Boolean(normalizeEmail(email) && normalizeEmail(email) === adminEmail)
+}
 
 export function isProtectedAdminPrincipal(email?: string | null) {
-  return String(email || '').toLowerCase() === ADMIN_PRINCIPAL_EMAIL
+  return isAdmin(email)
 }
 
 export async function requireAdmin(event: Parameters<typeof serverSupabaseUser>[0]) {
   const user = await serverSupabaseUser(event)
+  const userEmail = normalizeEmail(user?.email)
 
-  if (!user?.email) {
+  if (!userEmail) {
+    console.warn('Admin access denied:', userEmail || 'anonymous')
     throw createError({ statusCode: 401, statusMessage: 'Usuário não autenticado.' })
   }
 
-  if (!ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+  if (!isAdmin(userEmail)) {
+    console.warn('Admin access denied:', userEmail)
     throw createError({ statusCode: 403, statusMessage: 'Acesso permitido apenas para administradores.' })
   }
+
+  console.info('Admin access granted:', userEmail)
 
   return user
 }
 
 export function getSupabaseAdminConfig() {
-  const url = process.env.NUXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    || process.env.NUXT_SUPABASE_SERVICE_ROLE_KEY
-    || process.env.SUPABASE_SERVICE_KEY
-    || process.env.NUXT_SUPABASE_SERVICE_KEY
-
-  if (!url || !serviceKey) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Configuracao admin indisponivel. Defina NUXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.'
-    })
-  }
+  const { url, serviceKey } = getRequiredAdminEnv()
 
   return { url, serviceKey }
 }

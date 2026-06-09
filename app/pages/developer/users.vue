@@ -3,12 +3,11 @@ import AppButton from '~/components/common/AppButton.vue'
 import AppCard from '~/components/common/AppCard.vue'
 import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
+import { isProtectedAdminPrincipal } from '~/utils/admin'
 
 definePageMeta({
   middleware: 'admin'
 })
-
-const ADMIN_PRINCIPAL_EMAIL = 'diego05.almeida@gmail.com'
 
 interface AdminUser {
   id: string
@@ -102,7 +101,7 @@ function closeEditModal() {
 }
 
 function isProtectedAdmin(user: AdminUser) {
-  return user.isProtected || user.email.toLowerCase() === ADMIN_PRINCIPAL_EMAIL
+  return user.isProtected || isProtectedAdminPrincipal(user.email)
 }
 
 async function fetchUsers() {
@@ -157,7 +156,7 @@ async function toggleUser(user: AdminUser) {
   pageMessage.value = ''
 
   if (isProtectedAdmin(user) && user.ativo) {
-    pageError.value = 'O administrador principal não pode ser removido.'
+    pageError.value = 'Não é permitido alterar ou excluir o administrador principal.'
     return
   }
 
@@ -199,7 +198,7 @@ async function deleteUser(user: AdminUser) {
   pageMessage.value = ''
 
   if (isProtectedAdmin(user)) {
-    pageError.value = 'O administrador principal não pode ser removido.'
+    pageError.value = 'Não é permitido alterar ou excluir o administrador principal.'
     return
   }
 
@@ -288,7 +287,7 @@ onMounted(async () => {
         </label>
 
         <p v-if="isEditingProtectedAdmin" class="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
-          O administrador principal não pode ser removido.
+          Não é permitido alterar ou excluir o administrador principal.
         </p>
 
         <p v-if="editModalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ editModalError }}</p>
