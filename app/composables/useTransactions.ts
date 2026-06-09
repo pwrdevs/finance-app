@@ -21,6 +21,9 @@ export type DeleteRecurringScope = (typeof DELETE_RECURRING_SCOPE)[number]
 export const TRANSACTION_STATUS = ['pending', 'paid', 'skipped', 'canceled'] as const
 export type TransactionStatus = (typeof TRANSACTION_STATUS)[number]
 
+export const REIMBURSEMENT_ROLES = ['original', 'reimbursement'] as const
+export type ReimbursementRole = (typeof REIMBURSEMENT_ROLES)[number]
+
 interface SourceTransaction {
   id: string
   type: TransactionType
@@ -31,6 +34,8 @@ interface SourceTransaction {
   recurrence_rule_id: string | null
   installment_group_id: string | null
   installment_total: number | null
+  reimbursement_group_id: string | null
+  reimbursement_role: ReimbursementRole | null
 }
 
 interface TransactionInstanceRecord {
@@ -74,6 +79,18 @@ export interface TransactionInstanceItem {
   installment_group_id: string | null
   installment_number: number | null
   installment_total: number | null
+  reimbursement_group_id: string | null
+  reimbursement_role: ReimbursementRole | null
+}
+
+export interface LinkedReimbursementPayload {
+  enabled: boolean
+  person_id?: string | null
+  account_id?: string | null
+  category_id?: string | null
+  description?: string | null
+  expected_value?: number
+  received_date?: string | null
 }
 
 export interface TransactionFilters {
@@ -107,6 +124,7 @@ export interface CreateSingleTransactionPayload {
   description?: string | null
   status?: TransactionStatus
   is_checked?: boolean
+  reimbursement?: LinkedReimbursementPayload | null
 }
 
 export interface UpdateTransactionInstancePayload {
@@ -161,6 +179,80 @@ function normalizeOptionalText(value: string | null | undefined) {
 function normalizeOptionalId(value: string | null | undefined) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
+}
+
+function normalizeOptionalDate(value: string | null | undefined) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+interface NormalizedReimbursementPayload {
+  description: string
+  expectedValue: number
+  personId: string | null
+  accountId: string | null
+  categoryId: string
+  receivedDate: string | null
+}
+
+async function assertIncomeCategory(
+  supabase: ReturnType<typeof useSupabaseClient>,
+  userId: string,
+  categoryId: string
+) {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, type')
+    .eq('user_id', userId)
+    .eq('id', categoryId)
+    .single<{ id: string, type: 'income' | 'expense' }>()
+
+  if (error || !data) {
+    throw new Error('Categoria da entrada vinculada invalida.')
+  }
+
+  if (data.type !== 'income') {
+    throw new Error('A categoria da entrada vinculada deve ser do tipo receita.')
+  }
+}
+
+async function resolveReimbursementPayload(
+  supabase: ReturnType<typeof useSupabaseClient>,
+  userId: string,
+  payload: CreateSingleTransactionPayload
+) {
+  if (payload.type !== 'expense') {
+    return null
+  }
+
+  if (!payload.reimbursement?.enabled) {
+    return null
+  }
+
+  const categoryId = normalizeOptionalId(payload.reimbursement.category_id)
+
+  if (!categoryId) {
+    throw new Error('Categoria da entrada vinculada obrigatoria.')
+  }
+
+  await assertIncomeCategory(supabase, userId, categoryId)
+
+  const expectedValue = payload.reimbursement.expected_value ?? payload.expected_value
+
+  if (!Number.isFinite(expectedValue) || expectedValue <= 0) {
+    throw new Error('Valor da entrada vinculada deve ser maior que zero.')
+  }
+
+  const fallbackDescription = `Reembolso - ${payload.title.trim()}`
+
+  return {
+    description: normalizeOptionalText(payload.reimbursement.description) ?? fallbackDescription,
+    expectedValue,
+    personId: normalizeOptionalId(payload.reimbursement.person_id),
+    accountId: normalizeOptionalId(payload.reimbursement.account_id),
+    categoryId,
+    receivedDate: normalizeOptionalDate(payload.reimbursement.received_date)
+  } satisfies NormalizedReimbursementPayload
 }
 
 function getMonthRange(filters: TransactionFilters) {
@@ -365,6 +457,8 @@ function buildRecurringInstances(
     cardId?: string | null
     accountId?: string | null
     categoryId?: string | null
+    reimbursementGroupId?: string | null
+    reimbursementRole?: ReimbursementRole | null
   }
 ) {
   return dates.map(instanceDate => ({
@@ -380,7 +474,9 @@ function buildRecurringInstances(
     person_id: normalizeOptionalId(payload.personId),
     card_id: normalizeOptionalId(payload.cardId),
     account_id: normalizeOptionalId(payload.accountId),
-    category_id: normalizeOptionalId(payload.categoryId)
+    category_id: normalizeOptionalId(payload.categoryId),
+    reimbursement_group_id: payload.reimbursementGroupId ?? null,
+    reimbursement_role: payload.reimbursementRole ?? null
   }))
 }
 
@@ -432,7 +528,9 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     created_at: record.created_at,
     installment_group_id: source?.installment_group_id ?? null,
     installment_number: installmentNumber,
-    installment_total: installmentTotal
+    installment_total: installmentTotal,
+    reimbursement_group_id: source?.reimbursement_group_id ?? null,
+    reimbursement_role: source?.reimbursement_role ?? null
   }
 }
 
@@ -510,7 +608,9 @@ export function useTransactions() {
           origin_type,
           recurrence_rule_id,
           installment_group_id,
-          installment_total
+          installment_total,
+          reimbursement_group_id,
+          reimbursement_role
         )
       `)
       .gte('instance_date', from)
@@ -551,6 +651,9 @@ export function useTransactions() {
       throw new Error('Nenhuma instancia recorrente foi gerada para o periodo informado.')
     }
 
+    const reimbursementPayload = await resolveReimbursementPayload(supabase, userId, payload)
+    const reimbursementGroupId = reimbursementPayload ? generateGroupId() : null
+
     const { data: recurrenceRule, error: recurrenceRuleError } = await supabase
       .from('recurrence_rules')
       .insert({
@@ -587,7 +690,9 @@ export function useTransactions() {
         card_id: normalizeOptionalId(payload.card_id),
         account_id: normalizeOptionalId(payload.account_id),
         category_id: normalizeOptionalId(payload.category_id),
-        recurrence_rule_id: recurrenceRule.id
+        recurrence_rule_id: recurrenceRule.id,
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: reimbursementGroupId ? 'original' : null
       })
       .select('id')
       .single()
@@ -607,7 +712,9 @@ export function useTransactions() {
         personId: payload.person_id,
         cardId: payload.card_id,
         accountId: payload.account_id,
-        categoryId: payload.category_id
+        categoryId: payload.category_id,
+        reimbursementGroupId,
+        reimbursementRole: reimbursementGroupId ? 'original' : null
       }
     )
 
@@ -617,6 +724,95 @@ export function useTransactions() {
 
     if (instanceError) {
       throw instanceError
+    }
+
+    if (!reimbursementPayload || !reimbursementGroupId) {
+      return
+    }
+
+    const reimbursementStartDate = reimbursementPayload.receivedDate ?? startDate
+    const reimbursementSchedule = buildRecurringSchedule(
+      reimbursementStartDate,
+      frequency,
+      endMode,
+      payload.recurring_end_date ?? null,
+      payload.recurring_occurrences_count ?? payload.recurring_occurrences_limit ?? null
+    )
+
+    if (!reimbursementSchedule.dates.length) {
+      throw new Error('Nenhuma instancia de entrada vinculada foi gerada para o periodo informado.')
+    }
+
+    const { data: reimbursementRule, error: reimbursementRuleError } = await supabase
+      .from('recurrence_rules')
+      .insert({
+        user_id: userId,
+        frequency,
+        interval_count: 1,
+        start_date: reimbursementStartDate,
+        end_date: reimbursementSchedule.ruleEndDate,
+        occurrences_limit: reimbursementSchedule.ruleOccurrencesLimit,
+        edit_scope_default: 'series',
+        is_active: true
+      })
+      .select('id')
+      .single()
+
+    if (reimbursementRuleError) {
+      throw reimbursementRuleError
+    }
+
+    const { data: reimbursementTransaction, error: reimbursementTransactionError } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type: 'income',
+        origin_type: 'recurring',
+        title: reimbursementPayload.description,
+        description: null,
+        expected_value: reimbursementPayload.expectedValue,
+        real_value: reimbursementPayload.expectedValue,
+        due_date: reimbursementStartDate,
+        is_checked: false,
+        checked_at: null,
+        person_id: reimbursementPayload.personId,
+        card_id: null,
+        account_id: reimbursementPayload.accountId,
+        category_id: reimbursementPayload.categoryId,
+        recurrence_rule_id: reimbursementRule.id,
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: 'reimbursement'
+      })
+      .select('id')
+      .single()
+
+    if (reimbursementTransactionError) {
+      throw reimbursementTransactionError
+    }
+
+    const reimbursementInstances = buildRecurringInstances(
+      userId,
+      reimbursementRule.id,
+      reimbursementTransaction.id,
+      reimbursementSchedule.dates,
+      {
+        expectedValue: reimbursementPayload.expectedValue,
+        status: 'pending',
+        personId: reimbursementPayload.personId,
+        cardId: null,
+        accountId: reimbursementPayload.accountId,
+        categoryId: reimbursementPayload.categoryId,
+        reimbursementGroupId,
+        reimbursementRole: 'reimbursement'
+      }
+    )
+
+    const { error: reimbursementInstancesError } = await supabase
+      .from('transaction_instances')
+      .insert(reimbursementInstances)
+
+    if (reimbursementInstancesError) {
+      throw reimbursementInstancesError
     }
   }
 
@@ -632,6 +828,8 @@ export function useTransactions() {
     }
 
     const userId = await getUserId()
+  const reimbursementPayload = await resolveReimbursementPayload(supabase, userId, payload)
+  const reimbursementGroupId = reimbursementPayload ? generateGroupId() : null
     const isChecked = false
     const checkedAt = null
 
@@ -655,7 +853,9 @@ export function useTransactions() {
         person_id: normalizeOptionalId(payload.person_id),
         card_id: normalizeOptionalId(payload.card_id),
         account_id: normalizeOptionalId(payload.account_id),
-        category_id: normalizeOptionalId(payload.category_id)
+        category_id: normalizeOptionalId(payload.category_id),
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: reimbursementGroupId ? 'original' : null
       })
       .select('id')
       .single()
@@ -678,16 +878,77 @@ export function useTransactions() {
         person_id: normalizeOptionalId(payload.person_id),
         card_id: normalizeOptionalId(payload.card_id),
         account_id: normalizeOptionalId(payload.account_id),
-        category_id: normalizeOptionalId(payload.category_id)
+        category_id: normalizeOptionalId(payload.category_id),
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: reimbursementGroupId ? 'original' : null
       })
 
     if (instanceError) {
       throw instanceError
     }
+
+    if (!reimbursementPayload || !reimbursementGroupId) {
+      return
+    }
+
+    const reimbursementDueDate = reimbursementPayload.receivedDate ?? payload.due_date
+    const reimbursementInstanceDate = reimbursementPayload.receivedDate ?? payload.instance_date
+
+    const { data: reimbursementTransaction, error: reimbursementTransactionError } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type: 'income',
+        origin_type: 'single',
+        title: reimbursementPayload.description,
+        description: null,
+        expected_value: reimbursementPayload.expectedValue,
+        real_value: reimbursementPayload.expectedValue,
+        due_date: reimbursementDueDate,
+        is_checked: false,
+        checked_at: null,
+        person_id: reimbursementPayload.personId,
+        card_id: null,
+        account_id: reimbursementPayload.accountId,
+        category_id: reimbursementPayload.categoryId,
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: 'reimbursement'
+      })
+      .select('id')
+      .single()
+
+    if (reimbursementTransactionError) {
+      throw reimbursementTransactionError
+    }
+
+    const { error: reimbursementInstanceError } = await supabase
+      .from('transaction_instances')
+      .insert({
+        user_id: userId,
+        source_transaction_id: reimbursementTransaction.id,
+        instance_date: reimbursementInstanceDate,
+        expected_value: reimbursementPayload.expectedValue,
+        real_value: reimbursementPayload.expectedValue,
+        is_checked: false,
+        checked_at: null,
+        status: 'pending',
+        person_id: reimbursementPayload.personId,
+        card_id: null,
+        account_id: reimbursementPayload.accountId,
+        category_id: reimbursementPayload.categoryId,
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: 'reimbursement'
+      })
+
+    if (reimbursementInstanceError) {
+      throw reimbursementInstanceError
+    }
   }
 
   async function createInstallmentTransaction(payload: CreateSingleTransactionPayload) {
     const userId = await getUserId()
+    const reimbursementPayload = await resolveReimbursementPayload(supabase, userId, payload)
+    const reimbursementGroupId = reimbursementPayload ? generateGroupId() : null
     const installmentTotal = payload.installment_total ?? 0
     const startDate = payload.installment_start_date
 
@@ -725,7 +986,9 @@ export function useTransactions() {
         category_id: normalizeOptionalId(payload.category_id),
         installment_group_id: groupId,
         installment_number: 1,
-        installment_total: installmentTotal
+        installment_total: installmentTotal,
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: reimbursementGroupId ? 'original' : null
       })
       .select('id')
       .single()
@@ -746,7 +1009,9 @@ export function useTransactions() {
       person_id: normalizeOptionalId(payload.person_id),
       card_id: normalizeOptionalId(payload.card_id),
       account_id: normalizeOptionalId(payload.account_id),
-      category_id: normalizeOptionalId(payload.category_id)
+      category_id: normalizeOptionalId(payload.category_id),
+      reimbursement_group_id: reimbursementGroupId,
+      reimbursement_role: reimbursementGroupId ? 'original' : null
     }))
 
     const { error: instanceError } = await supabase
@@ -755,6 +1020,69 @@ export function useTransactions() {
 
     if (instanceError) {
       throw instanceError
+    }
+
+    if (!reimbursementPayload || !reimbursementGroupId) {
+      return
+    }
+
+    const reimbursementStartDate = reimbursementPayload.receivedDate ?? startDate
+    const reimbursementGroupSeed = generateGroupId()
+    const reimbursementValues = splitInstallmentValues(reimbursementPayload.expectedValue, installmentTotal)
+
+    const { data: reimbursementTransaction, error: reimbursementTransactionError } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type: 'income',
+        origin_type: 'installment',
+        title: reimbursementPayload.description,
+        description: null,
+        expected_value: reimbursementPayload.expectedValue,
+        real_value: reimbursementPayload.expectedValue,
+        due_date: reimbursementStartDate,
+        is_checked: false,
+        checked_at: null,
+        person_id: reimbursementPayload.personId,
+        card_id: null,
+        account_id: reimbursementPayload.accountId,
+        category_id: reimbursementPayload.categoryId,
+        installment_group_id: reimbursementGroupSeed,
+        installment_number: 1,
+        installment_total: installmentTotal,
+        reimbursement_group_id: reimbursementGroupId,
+        reimbursement_role: 'reimbursement'
+      })
+      .select('id')
+      .single()
+
+    if (reimbursementTransactionError) {
+      throw reimbursementTransactionError
+    }
+
+    const reimbursementInstances = reimbursementValues.map((parcelValue, index) => ({
+      user_id: userId,
+      source_transaction_id: reimbursementTransaction.id,
+      instance_date: addMonthsKeepingDay(reimbursementStartDate, index),
+      expected_value: parcelValue,
+      real_value: parcelValue,
+      is_checked: false,
+      checked_at: null,
+      status: 'pending' as const,
+      person_id: reimbursementPayload.personId,
+      card_id: null,
+      account_id: reimbursementPayload.accountId,
+      category_id: reimbursementPayload.categoryId,
+      reimbursement_group_id: reimbursementGroupId,
+      reimbursement_role: 'reimbursement'
+    }))
+
+    const { error: reimbursementInstancesError } = await supabase
+      .from('transaction_instances')
+      .insert(reimbursementInstances)
+
+    if (reimbursementInstancesError) {
+      throw reimbursementInstancesError
     }
   }
 
@@ -932,7 +1260,9 @@ export function useTransactions() {
           card_id: normalizedCardId,
           account_id: normalizedAccountId,
           category_id: normalizedCategoryId,
-          recurrence_rule_id: newRule.id
+          recurrence_rule_id: newRule.id,
+          reimbursement_group_id: item.reimbursement_group_id,
+          reimbursement_role: item.reimbursement_role
         })
         .select('id')
         .single()
@@ -979,7 +1309,9 @@ export function useTransactions() {
           personId: normalizedPersonId,
           cardId: normalizedCardId,
           accountId: normalizedAccountId,
-          categoryId: normalizedCategoryId
+          categoryId: normalizedCategoryId,
+          reimbursementGroupId: item.reimbursement_group_id,
+          reimbursementRole: item.reimbursement_role
         }
       )
 
@@ -1058,7 +1390,9 @@ export function useTransactions() {
         personId: normalizedPersonId,
         cardId: normalizedCardId,
         accountId: normalizedAccountId,
-        categoryId: normalizedCategoryId
+        categoryId: normalizedCategoryId,
+        reimbursementGroupId: item.reimbursement_group_id,
+        reimbursementRole: item.reimbursement_role
       }
     )
 

@@ -50,6 +50,7 @@ const personFilter = ref('all')
 const categoryFilter = ref('all')
 const accountFilter = ref('all')
 const statusFilter = ref<'all' | TransactionStatus>('all')
+const reimbursementLinkFilter = ref<'all' | 'normal' | 'linked'>('all')
 const searchDescription = ref('')
 const isFiltersModalOpen = ref(false)
 const draftMonthYear = ref(monthYear.value)
@@ -58,6 +59,7 @@ const draftPersonFilter = ref(personFilter.value)
 const draftCategoryFilter = ref(categoryFilter.value)
 const draftAccountFilter = ref(accountFilter.value)
 const draftStatusFilter = ref<'all' | TransactionStatus>(statusFilter.value)
+const draftReimbursementLinkFilter = ref<'all' | 'normal' | 'linked'>(reimbursementLinkFilter.value)
 const { month: initialDraftMonth, year: initialDraftYear } = parseMonthYear(monthYear.value)
 const draftFilterMonth = ref(String(initialDraftMonth).padStart(2, '0'))
 const draftFilterYear = ref(String(initialDraftYear))
@@ -101,10 +103,18 @@ const formCardId = ref('')
 const formCategoryId = ref('')
 const formDescription = ref('')
 const formStatus = ref<TransactionStatus>('pending')
+const formGenerateReimbursement = ref(false)
+const formReimbursementPersonId = ref('')
+const formReimbursementAccountId = ref('')
+const formReimbursementCategoryId = ref('')
+const formReimbursementDescription = ref('')
+const formReimbursementValue = ref('')
+const formReimbursementDate = ref('')
 
 const columns = [
   { key: 'instance_date', label: 'Data' },
   { key: 'description_text', label: 'Descricao' },
+  { key: 'link_badge', label: 'Vinculo' },
   { key: 'person_name', label: 'Responsavel' },
   { key: 'category_name', label: 'Categoria' },
   { key: 'card_name', label: 'Cartao' },
@@ -170,6 +180,7 @@ const peopleMap = computed(() => new Map(people.value.map(entry => [entry.id, en
 const accountsMap = computed(() => new Map(accounts.value.map(entry => [entry.id, entry.name])))
 const cardsMap = computed(() => new Map(cards.value.map(entry => [entry.id, entry.name])))
 const categoriesMap = computed(() => new Map(categories.value.map(entry => [entry.id, entry.name])))
+const incomeCategories = computed(() => categories.value.filter(entry => entry.type === 'income'))
 
 const isEditingRecurring = computed(() => editingRow.value?.origin_type === 'recurring')
 const selectedCardLabel = computed(() => {
@@ -193,6 +204,17 @@ const filteredRows = computed(() => {
     .filter((row) => categoryFilter.value === 'all' || row.category_id === categoryFilter.value)
     .filter((row) => statusFilter.value === 'all' || row.status === statusFilter.value)
     .filter((row) => {
+      if (reimbursementLinkFilter.value === 'normal') {
+        return !row.reimbursement_group_id
+      }
+
+      if (reimbursementLinkFilter.value === 'linked') {
+        return Boolean(row.reimbursement_group_id)
+      }
+
+      return true
+    })
+    .filter((row) => {
       if (!normalizedSearch) return true
       const text = `${row.title} ${row.description ?? ''}`.toLowerCase()
       return text.includes(normalizedSearch)
@@ -204,9 +226,30 @@ const filteredRows = computed(() => {
       category_name: row.category_id ? (categoriesMap.value.get(row.category_id) || '-') : '-',
       card_name: row.card_id ? (cardsMap.value.get(row.card_id) || '-') : '-',
       account_name: row.account_id ? (accountsMap.value.get(row.account_id) || '-') : '-',
+      link_badge: row.reimbursement_role === 'original'
+        ? 'Original'
+        : row.reimbursement_role === 'reimbursement'
+          ? 'Reembolso'
+          : 'Normal',
       checked_toggle: row.is_checked
     }))
 })
+
+function applyReimbursementDefaults() {
+  if (!formReimbursementDescription.value.trim()) {
+    formReimbursementDescription.value = formTitle.value.trim()
+      ? `Reembolso - ${formTitle.value.trim()}`
+      : 'Reembolso'
+  }
+
+  if (!formReimbursementValue.value.trim() && formExpectedValue.value.trim()) {
+    formReimbursementValue.value = formExpectedValue.value
+  }
+
+  if (!formReimbursementPersonId.value) {
+    formReimbursementPersonId.value = formPersonId.value
+  }
+}
 
 function formatCurrency(value: number | null) {
   return formatBRLOrDash(value)
@@ -236,6 +279,13 @@ function resetForm() {
   formCategoryId.value = ''
   formDescription.value = ''
   formStatus.value = 'pending'
+  formGenerateReimbursement.value = false
+  formReimbursementPersonId.value = ''
+  formReimbursementAccountId.value = ''
+  formReimbursementCategoryId.value = ''
+  formReimbursementDescription.value = ''
+  formReimbursementValue.value = ''
+  formReimbursementDate.value = ''
   modalError.value = ''
 }
 
@@ -263,6 +313,13 @@ function fillFormFromRow(row: TransactionInstanceItem) {
   formCategoryId.value = row.category_id ?? ''
   formDescription.value = row.description ?? ''
   formStatus.value = row.status
+  formGenerateReimbursement.value = false
+  formReimbursementPersonId.value = ''
+  formReimbursementAccountId.value = ''
+  formReimbursementCategoryId.value = ''
+  formReimbursementDescription.value = ''
+  formReimbursementValue.value = ''
+  formReimbursementDate.value = ''
   modalError.value = ''
 }
 
@@ -324,6 +381,7 @@ function clearFilters() {
   categoryFilter.value = 'all'
   accountFilter.value = 'all'
   statusFilter.value = 'all'
+  reimbursementLinkFilter.value = 'all'
   searchDescription.value = ''
   draftMonthYear.value = monthYear.value
   const { month, year } = parseMonthYear(monthYear.value)
@@ -334,6 +392,7 @@ function clearFilters() {
   draftCategoryFilter.value = 'all'
   draftAccountFilter.value = 'all'
   draftStatusFilter.value = 'all'
+  draftReimbursementLinkFilter.value = 'all'
 }
 
 function openFiltersModal() {
@@ -346,6 +405,7 @@ function openFiltersModal() {
   draftCategoryFilter.value = categoryFilter.value
   draftAccountFilter.value = accountFilter.value
   draftStatusFilter.value = statusFilter.value
+  draftReimbursementLinkFilter.value = reimbursementLinkFilter.value
   filtersModalError.value = ''
   isFiltersModalOpen.value = true
 }
@@ -367,6 +427,7 @@ async function applyFilters() {
   categoryFilter.value = draftCategoryFilter.value
   accountFilter.value = draftAccountFilter.value
   statusFilter.value = draftStatusFilter.value
+  reimbursementLinkFilter.value = draftReimbursementLinkFilter.value
 
   await fetchRows()
   isFiltersModalOpen.value = false
@@ -467,6 +528,30 @@ async function submitForm() {
   if (Number.isNaN(parsedReal)) {
     modalError.value = 'Valor realizado invalido.'
     return
+  }
+
+  let parsedReimbursementValue: number | null = null
+
+  if (!editingRow.value && formType.value === 'expense' && formGenerateReimbursement.value) {
+    const reimbursementRaw = formReimbursementValue.value.trim()
+    parsedReimbursementValue = reimbursementRaw ? Number(reimbursementRaw) : parsedExpected
+
+    if (Number.isNaN(parsedReimbursementValue) || parsedReimbursementValue <= 0) {
+      modalError.value = 'Valor da entrada vinculada deve ser maior que zero.'
+      return
+    }
+
+    if (!formReimbursementCategoryId.value) {
+      modalError.value = 'Categoria da entrada vinculada obrigatoria.'
+      return
+    }
+
+    const selectedIncomeCategory = incomeCategories.value.find(entry => entry.id === formReimbursementCategoryId.value)
+
+    if (!selectedIncomeCategory) {
+      modalError.value = 'Categoria da entrada vinculada deve ser do tipo receita.'
+      return
+    }
   }
 
   if (formOriginType.value === 'single' && (!formDueDate.value || !formInstanceDate.value)) {
@@ -596,7 +681,18 @@ async function submitForm() {
         category_id: formCategoryId.value || null,
         description: formDescription.value,
         status: 'pending',
-        is_checked: false
+        is_checked: false,
+        reimbursement: !editingRow.value && formType.value === 'expense' && formGenerateReimbursement.value
+          ? {
+              enabled: true,
+              person_id: formReimbursementPersonId.value || null,
+              account_id: formReimbursementAccountId.value || null,
+              category_id: formReimbursementCategoryId.value || null,
+              description: formReimbursementDescription.value.trim() || `Reembolso - ${formTitle.value.trim()}`,
+              expected_value: parsedReimbursementValue ?? parsedExpected,
+              received_date: formReimbursementDate.value || null
+            }
+          : null
       })
     }
 
@@ -682,6 +778,36 @@ async function confirmDeleteTransaction() {
   }
 }
 
+watch(formType, (nextType) => {
+  if (nextType !== 'expense') {
+    formGenerateReimbursement.value = false
+  }
+})
+
+watch(formGenerateReimbursement, (enabled) => {
+  if (enabled) {
+    applyReimbursementDefaults()
+  }
+})
+
+watch(formPersonId, (nextPersonId) => {
+  if (formGenerateReimbursement.value && !formReimbursementPersonId.value) {
+    formReimbursementPersonId.value = nextPersonId
+  }
+})
+
+watch(formExpectedValue, () => {
+  if (formGenerateReimbursement.value && !formReimbursementValue.value.trim()) {
+    formReimbursementValue.value = formExpectedValue.value
+  }
+})
+
+watch(formTitle, () => {
+  if (formGenerateReimbursement.value && !formReimbursementDescription.value.trim()) {
+    applyReimbursementDefaults()
+  }
+})
+
 onMounted(async () => {
   await Promise.all([fetchOptions(), fetchRows()])
 })
@@ -764,6 +890,15 @@ onMounted(async () => {
               <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
             </select>
           </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Vinculo</label>
+            <select v-model="draftReimbursementLinkFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="all">Todos</option>
+              <option value="normal">Normais</option>
+              <option value="linked">Vinculados / reembolsos</option>
+            </select>
+          </div>
         </div>
 
         <p v-if="filtersModalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ filtersModalError }}</p>
@@ -814,6 +949,25 @@ onMounted(async () => {
             >
               <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
             </select>
+          </template>
+
+          <template #cell-link_badge="{ row }">
+            <span
+              class="inline-flex rounded-full px-2 py-1 text-[11px] font-semibold"
+              :class="
+                (row as TransactionInstanceItem).reimbursement_role === 'original'
+                  ? 'bg-amber-100 text-amber-800'
+                  : (row as TransactionInstanceItem).reimbursement_role === 'reimbursement'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-100 text-slate-700'
+              "
+            >
+              {{ (row as TransactionInstanceItem).reimbursement_role === 'original'
+                ? 'Original'
+                : (row as TransactionInstanceItem).reimbursement_role === 'reimbursement'
+                  ? 'Reembolso'
+                  : 'Normal' }}
+            </span>
           </template>
 
           <template #cell-actions="{ row }">
@@ -997,7 +1151,46 @@ onMounted(async () => {
         </section>
 
         <section class="space-y-3 rounded-xl border border-border p-3">
-          <p class="text-sm font-semibold text-foreground">5) Observacoes</p>
+          <p class="text-sm font-semibold text-foreground">5) Reembolso / Repasse</p>
+
+          <label v-if="!editingRow && formType === 'expense'" class="flex items-center gap-2 text-sm text-foreground">
+            <input v-model="formGenerateReimbursement" type="checkbox" class="h-4 w-4 rounded border-border" />
+            Gerar entrada de reembolso/repasse
+          </label>
+
+          <div v-if="!editingRow && formType === 'expense' && formGenerateReimbursement" class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Responsavel pela entrada</label>
+              <select v-model="formReimbursementPersonId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhum</option>
+                <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Conta de recebimento</label>
+              <select v-model="formReimbursementAccountId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhuma</option>
+                <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Categoria da entrada</label>
+              <select v-model="formReimbursementCategoryId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Selecione</option>
+                <option v-for="entry in incomeCategories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
+
+            <AppInput v-model="formReimbursementValue" label="Valor da entrada" type="number" placeholder="0.00" />
+            <AppInput v-model="formReimbursementDescription" label="Descricao da entrada" placeholder="Reembolso - Despesa" />
+            <AppInput v-model="formReimbursementDate" label="Data de recebimento (opcional)" type="date" />
+          </div>
+        </section>
+
+        <section class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-semibold text-foreground">6) Observacoes</p>
           <AppInput v-model="formDescription" label="Observacoes" placeholder="Detalhes opcionais" />
         </section>
 

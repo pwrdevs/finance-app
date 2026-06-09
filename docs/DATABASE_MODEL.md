@@ -164,6 +164,8 @@ Store source financial records (manual, recurring seed, installment seed, or sta
 - installment_group_id: uuid (optional, logical grouping key)
 - installment_number: integer (optional)
 - installment_total: integer (optional)
+- reimbursement_group_id: uuid (optional, groups original expense and linked reimbursement income)
+- reimbursement_role: text (optional, original or reimbursement)
 - created_at: timestamptz
 - updated_at: timestamptz
 
@@ -182,6 +184,9 @@ Store source financial records (manual, recurring seed, installment seed, or sta
 - Financial queries must avoid double counting by not summing transactions and transaction_instances together for the same business event.
 - Installment constraints must enforce: installment_number >= 1, installment_total >= 1, and installment_number <= installment_total.
 - Installment fields should be all null together or all filled together: installment_group_id, installment_number, installment_total.
+- Reimbursement linkage uses structural fields (not description parsing): reimbursement_group_id + reimbursement_role.
+- reimbursement_role should be constrained to original or reimbursement.
+- reimbursement_group_id and reimbursement_role should be both null (normal transaction) or both filled (linked transaction).
 
 ## Table: recurrence_rules
 ### Objective
@@ -226,6 +231,8 @@ Represent concrete occurrences generated from recurring rules and/or future plan
 - person_id: uuid (optional, references people.id)
 - card_id: uuid (optional, references cards.id)
 - category_id: uuid (optional, references categories.id)
+- reimbursement_group_id: uuid (optional, links monthly concrete entries between expense and reimbursement)
+- reimbursement_role: text (optional, original or reimbursement)
 - created_at: timestamptz
 - updated_at: timestamptz
 
@@ -240,6 +247,7 @@ Represent concrete occurrences generated from recurring rules and/or future plan
 - This is the primary financial source table for balances, reports, card invoices and future projections in MVP.
 - Optional override fields (value, person, card, category) allow per-instance edits without breaking the full series.
 - A uniqueness rule on recurrence_rule_id + instance_date is recommended when applicable.
+- Reimbursement linkage should be persisted in instances to simplify dashboard/table filtering and monthly pair tracking.
 
 ## Future Feature: attachments
 ### Objective
