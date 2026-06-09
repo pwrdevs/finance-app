@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import AppHeader from '~/components/layout/AppHeader.vue'
-import AppSidebar from '~/components/layout/AppSidebar.vue'
 
-const isSidebarOpen = ref(false)
 const { isAdmin } = useAccess()
 
 const sidebarLinks = computed(() => {
@@ -19,32 +17,18 @@ const sidebarLinks = computed(() => {
     links.push({ label: 'Administração', to: '/developer/users' })
   }
 
-  links.push({ label: 'Configurações', to: '/settings' })
-
   return links
 })
-
-function toggleSidebar() {
-  isSidebarOpen.value = !isSidebarOpen.value
-}
-
-function closeSidebar() {
-  isSidebarOpen.value = false
-}
 </script>
 
 <template>
-  <div class="h-screen overflow-hidden bg-background text-foreground">
-    <AppHeader app-name="PWRDEVS Finance" :links="sidebarLinks" @menu="toggleSidebar" />
+  <div class="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <AppHeader app-name="PWRDEVS Finance" :links="sidebarLinks" />
 
-    <div class="mx-auto flex h-[calc(100vh-7rem)] w-full max-w-[1600px] overflow-hidden">
-      <AppSidebar :open="isSidebarOpen" :links="sidebarLinks" @close="closeSidebar" />
-
-      <main class="min-w-0 flex-1 overflow-y-auto">
-        <div class="mx-auto w-full max-w-[1460px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-          <slot />
-        </div>
-      </main>
-    </div>
+    <main class="min-h-0 flex-1 overflow-y-auto">
+      <div class="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+        <slot />
+      </div>
+    </main>
   </div>
 </template>
