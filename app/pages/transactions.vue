@@ -41,10 +41,13 @@ const saving = ref(false)
 const exportingPdf = ref(false)
 const exportingImage = ref(false)
 const scopeModalSaving = ref(false)
+const FILTERS_STORAGE_KEY = 'pwrdevs.finance.transactions.filters'
 const pageError = ref('')
 const modalError = ref('')
 const scopeModalError = ref('')
 const filtersModalError = ref('')
+const hasPersistedFilters = ref(false)
+const skipSearchPersistence = ref(false)
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
 const periodFilter = ref<string | 'all'>(monthYear.value)
@@ -244,6 +247,130 @@ interface PendingScopedEdit {
 }
 
 const pendingScopedEdit = ref<PendingScopedEdit | null>(null)
+
+interface PersistedTransactionFilters {
+  period_filter: string | 'all'
+  card_filter: string
+  person_filter: string
+  category_filter: string
+  account_filter: string
+  status_filter: 'all' | TransactionStatus
+  reimbursement_link_filter: 'all' | 'normal' | 'linked'
+  search_description: string
+}
+
+function isValidMonthYear(value: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
+}
+
+function isValidStatusFilter(value: string): value is 'all' | TransactionStatus {
+  return value === 'all' || TRANSACTION_STATUS.includes(value as TransactionStatus)
+}
+
+function isValidReimbursementLinkFilter(value: string): value is 'all' | 'normal' | 'linked' {
+  return value === 'all' || value === 'normal' || value === 'linked'
+}
+
+function pickPersistedOption(value: string, allowedIds: string[]) {
+  if (value === 'all') {
+    return 'all'
+  }
+
+  return allowedIds.includes(value) ? value : 'all'
+}
+
+function removePersistedFilters() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(FILTERS_STORAGE_KEY)
+  hasPersistedFilters.value = false
+}
+
+function saveFiltersToStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const payload: PersistedTransactionFilters = {
+    period_filter: periodFilter.value,
+    card_filter: cardFilter.value,
+    person_filter: personFilter.value,
+    category_filter: categoryFilter.value,
+    account_filter: accountFilter.value,
+    status_filter: statusFilter.value,
+    reimbursement_link_filter: reimbursementLinkFilter.value,
+    search_description: searchDescription.value.trim()
+  }
+
+  window.localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(payload))
+  hasPersistedFilters.value = true
+}
+
+function restoreFiltersFromStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const raw = window.localStorage.getItem(FILTERS_STORAGE_KEY)
+
+  if (!raw) {
+    hasPersistedFilters.value = false
+    return
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedTransactionFilters>
+    const validPeriod = parsed.period_filter === 'all'
+      ? 'all'
+      : (typeof parsed.period_filter === 'string' && isValidMonthYear(parsed.period_filter) ? parsed.period_filter : monthYear.value)
+    const validStatus = typeof parsed.status_filter === 'string' && isValidStatusFilter(parsed.status_filter)
+      ? parsed.status_filter
+      : 'all'
+    const validReimbursementFilter = typeof parsed.reimbursement_link_filter === 'string' && isValidReimbursementLinkFilter(parsed.reimbursement_link_filter)
+      ? parsed.reimbursement_link_filter
+      : 'all'
+
+    periodFilter.value = validPeriod
+    cardFilter.value = pickPersistedOption(String(parsed.card_filter ?? 'all'), cards.value.map(entry => entry.id))
+    personFilter.value = pickPersistedOption(String(parsed.person_filter ?? 'all'), people.value.map(entry => entry.id))
+    categoryFilter.value = pickPersistedOption(String(parsed.category_filter ?? 'all'), categories.value.map(entry => entry.id))
+    accountFilter.value = pickPersistedOption(String(parsed.account_filter ?? 'all'), accounts.value.map(entry => entry.id))
+    statusFilter.value = validStatus
+    reimbursementLinkFilter.value = validReimbursementFilter
+    searchDescription.value = typeof parsed.search_description === 'string' ? parsed.search_description : ''
+
+    draftAllPeriods.value = validPeriod === 'all'
+
+    if (validPeriod === 'all') {
+      draftMonthYear.value = monthYear.value
+      const { month, year } = parseMonthYear(monthYear.value)
+      draftFilterMonth.value = String(month).padStart(2, '0')
+      draftFilterYear.value = String(year)
+    } else {
+      draftMonthYear.value = validPeriod
+      const { month, year } = parseMonthYear(validPeriod)
+      draftFilterMonth.value = String(month).padStart(2, '0')
+      draftFilterYear.value = String(year)
+    }
+
+    draftCardFilter.value = cardFilter.value
+    draftPersonFilter.value = personFilter.value
+    draftCategoryFilter.value = categoryFilter.value
+    draftAccountFilter.value = accountFilter.value
+    draftStatusFilter.value = statusFilter.value
+    draftReimbursementLinkFilter.value = reimbursementLinkFilter.value
+    hasPersistedFilters.value = true
+  } catch {
+    removePersistedFilters()
+  }
+}
+
+function clearPersistedFiltersOnly() {
+  removePersistedFilters()
+  filtersModalError.value = ''
+}
 
 function openScopeDecisionModal(mode: 'edit' | 'cancel' | 'delete', row?: TransactionInstanceItem) {
   scopeModalMode.value = mode
@@ -655,6 +782,7 @@ function parseMonthYear(value: string) {
 }
 
 function clearFilters() {
+  skipSearchPersistence.value = true
   cardFilter.value = 'all'
   personFilter.value = 'all'
   categoryFilter.value = 'all'
@@ -674,6 +802,10 @@ function clearFilters() {
   draftAccountFilter.value = 'all'
   draftStatusFilter.value = 'all'
   draftReimbursementLinkFilter.value = 'all'
+  removePersistedFilters()
+  nextTick(() => {
+    skipSearchPersistence.value = false
+  })
 }
 
 function openFiltersModal() {
@@ -718,6 +850,7 @@ async function applyFilters() {
   accountFilter.value = draftAccountFilter.value
   statusFilter.value = draftStatusFilter.value
   reimbursementLinkFilter.value = draftReimbursementLinkFilter.value
+  saveFiltersToStorage()
 
   await fetchRows()
   isFiltersModalOpen.value = false
@@ -1135,8 +1268,18 @@ watch(formTitle, () => {
   }
 })
 
+watch(searchDescription, () => {
+  if (skipSearchPersistence.value) {
+    return
+  }
+
+  saveFiltersToStorage()
+})
+
 onMounted(async () => {
-  await Promise.all([fetchOptions(), fetchRows()])
+  await fetchOptions()
+  restoreFiltersFromStorage()
+  await fetchRows()
 })
 </script>
 
@@ -1153,6 +1296,15 @@ onMounted(async () => {
 
         <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
           <span class="rounded-full bg-primary-light/20 px-2.5 py-1 font-semibold text-foreground">{{ selectedPeriodLabel }}</span>
+          <span v-if="hasPersistedFilters" class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-[11px]">Filtros salvos neste dispositivo</span>
+          <button
+            v-if="hasPersistedFilters"
+            type="button"
+            class="rounded-full border border-border/80 px-2.5 py-1 text-[11px] font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
+            @click="clearPersistedFiltersOnly"
+          >
+            Limpar filtros salvos
+          </button>
         </div>
 
         <div class="w-full max-w-xl">
