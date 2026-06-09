@@ -12,7 +12,7 @@ export default defineNuxtConfig({
       ],
       link: [
         { rel: 'icon', type: 'image/png', href: '/pwrdevs-logo.png' },
-        { rel: 'apple-touch-icon', href: '/pwrdevs-logo.png' },
+        { rel: 'apple-touch-icon', href: '/pwrdevs-home-icon.png' },
         { rel: 'manifest', href: '/site.webmanifest' }
       ]
     }
