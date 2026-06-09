@@ -47,6 +47,7 @@ const deleteError = ref('')
 const filtersModalError = ref('')
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
+const periodFilter = ref<string | 'all'>(monthYear.value)
 const cardFilter = ref('all')
 const personFilter = ref('all')
 const categoryFilter = ref('all')
@@ -65,6 +66,7 @@ const draftReimbursementLinkFilter = ref<'all' | 'normal' | 'linked'>(reimbursem
 const { month: initialDraftMonth, year: initialDraftYear } = parseMonthYear(monthYear.value)
 const draftFilterMonth = ref(String(initialDraftMonth).padStart(2, '0'))
 const draftFilterYear = ref(String(initialDraftYear))
+const draftAllPeriods = ref(false)
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
@@ -172,6 +174,16 @@ const filterMonthOptions = [
 const filterYearOptions = computed(() => {
   const currentYear = new Date().getFullYear()
   return Array.from({ length: 8 }, (_, index) => String(currentYear - 3 + index))
+})
+
+const selectedPeriodLabel = computed(() => {
+  if (periodFilter.value === 'all') {
+    return 'Todos os períodos'
+  }
+
+  const [year, month] = periodFilter.value.split('-')
+  const monthOption = filterMonthOptions.find(entry => entry.value === month)
+  return monthOption ? `${monthOption.label}/${year}` : periodFilter.value
 })
 
 const transactionStatusLabelMap: Record<TransactionStatus, string> = {
@@ -596,10 +608,12 @@ function clearFilters() {
   statusFilter.value = 'all'
   reimbursementLinkFilter.value = 'all'
   searchDescription.value = ''
+  periodFilter.value = monthYear.value
   draftMonthYear.value = monthYear.value
   const { month, year } = parseMonthYear(monthYear.value)
   draftFilterMonth.value = String(month).padStart(2, '0')
   draftFilterYear.value = String(year)
+  draftAllPeriods.value = false
   draftCardFilter.value = 'all'
   draftPersonFilter.value = 'all'
   draftCategoryFilter.value = 'all'
@@ -609,10 +623,15 @@ function clearFilters() {
 }
 
 function openFiltersModal() {
-  draftMonthYear.value = monthYear.value
-  const { month, year } = parseMonthYear(monthYear.value)
-  draftFilterMonth.value = String(month).padStart(2, '0')
-  draftFilterYear.value = String(year)
+  draftAllPeriods.value = periodFilter.value === 'all'
+
+  if (periodFilter.value !== 'all') {
+    draftMonthYear.value = periodFilter.value
+    const { month, year } = parseMonthYear(periodFilter.value)
+    draftFilterMonth.value = String(month).padStart(2, '0')
+    draftFilterYear.value = String(year)
+  }
+
   draftCardFilter.value = cardFilter.value
   draftPersonFilter.value = personFilter.value
   draftCategoryFilter.value = categoryFilter.value
@@ -625,16 +644,20 @@ function openFiltersModal() {
 
 async function applyFilters() {
   filtersModalError.value = ''
-  draftMonthYear.value = `${draftFilterYear.value}-${draftFilterMonth.value}`
+  if (draftAllPeriods.value) {
+    periodFilter.value = 'all'
+  } else {
+    draftMonthYear.value = `${draftFilterYear.value}-${draftFilterMonth.value}`
 
-  try {
-    parseMonthYear(draftMonthYear.value)
-  } catch (err) {
-    filtersModalError.value = err instanceof Error ? err.message : 'Período inválido.'
-    return
+    try {
+      parseMonthYear(draftMonthYear.value)
+    } catch (err) {
+      filtersModalError.value = err instanceof Error ? err.message : 'Período inválido.'
+      return
+    }
+
+    periodFilter.value = draftMonthYear.value
   }
-
-  monthYear.value = draftMonthYear.value
   cardFilter.value = draftCardFilter.value
   personFilter.value = draftPersonFilter.value
   categoryFilter.value = draftCategoryFilter.value
@@ -651,8 +674,12 @@ async function fetchRows() {
   pageError.value = ''
 
   try {
-    const period = parseMonthYear(monthYear.value)
-    rows.value = await listManualInstances(period)
+    if (periodFilter.value === 'all') {
+      rows.value = await listManualInstances({})
+    } else {
+      const period = parseMonthYear(periodFilter.value)
+      rows.value = await listManualInstances(period)
+    }
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel carregar os lancamentos.'
   } finally {
@@ -1037,6 +1064,10 @@ onMounted(async () => {
           <AppButton label="Novo" size="sm" @click="openCreateModal" />
         </div>
 
+        <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span class="rounded-full bg-primary-light/20 px-2.5 py-1 font-semibold text-foreground">{{ selectedPeriodLabel }}</span>
+        </div>
+
         <div class="w-full max-w-xl">
           <AppInput v-model="searchDescription" label="Pesquisar descrição" placeholder="Digite parte da descrição" />
         </div>
@@ -1050,17 +1081,25 @@ onMounted(async () => {
       max-width-class="max-w-3xl"
     >
       <div class="space-y-4">
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 text-sm font-medium text-foreground">
+            <input v-model="draftAllPeriods" type="checkbox" class="h-4 w-4 rounded border-border" />
+            Todos os períodos
+          </label>
+          <p class="text-xs text-muted">Marque para visualizar todos os lançamentos sem filtro de mês e ano.</p>
+        </div>
+
         <div class="grid gap-3 md:grid-cols-3">
           <div class="space-y-2">
             <label class="block text-sm font-medium text-foreground">Ano</label>
-            <select v-model="draftFilterYear" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <select v-model="draftFilterYear" :disabled="draftAllPeriods" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60">
               <option v-for="year in filterYearOptions" :key="year" :value="year">{{ year }}</option>
             </select>
           </div>
 
           <div class="space-y-2">
             <label class="block text-sm font-medium text-foreground">Mês</label>
-            <select v-model="draftFilterMonth" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+            <select v-model="draftFilterMonth" :disabled="draftAllPeriods" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60">
               <option v-for="option in filterMonthOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </div>
@@ -1270,6 +1309,10 @@ onMounted(async () => {
     <AppCard title="Tabela de lançamentos" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
       <div class="overflow-x-auto">
         <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhum lançamento encontrado.">
+          <template #cell-instance_date="{ value }">
+            {{ formatDateBr(String(value)) }}
+          </template>
+
           <template #cell-checked_toggle="{ row }">
             <input
               type="checkbox"

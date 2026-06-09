@@ -106,8 +106,8 @@ export interface LinkedReimbursementPayload {
 }
 
 export interface TransactionFilters {
-  month: number
-  year: number
+  month?: number
+  year?: number
   from_date?: string
   to_date?: string
 }
@@ -273,6 +273,10 @@ function getMonthRange(filters: TransactionFilters) {
       from: filters.from_date,
       to: shiftDays(filters.to_date, 1)
     }
+  }
+
+  if (filters.month == null || filters.year == null) {
+    return null
   }
 
   const firstDay = new Date(Date.UTC(filters.year, filters.month - 1, 1))
@@ -598,9 +602,9 @@ export function useTransactions() {
 
   async function listManualInstances(filters: TransactionFilters) {
     await ensureAuthenticatedUserId()
-    const { from, to } = getMonthRange(filters)
+    const monthRange = getMonthRange(filters)
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('transaction_instances')
       .select(`
         id,
@@ -637,8 +641,14 @@ export function useTransactions() {
           reimbursement_role
         )
       `)
-      .gte('instance_date', from)
-      .lt('instance_date', to)
+
+    if (monthRange) {
+      query = query
+        .gte('instance_date', monthRange.from)
+        .lt('instance_date', monthRange.to)
+    }
+
+    const { data, error } = await query
       .order('instance_date', { ascending: false })
       .order('created_at', { ascending: false })
 
