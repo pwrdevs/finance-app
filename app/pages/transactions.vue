@@ -58,6 +58,9 @@ const draftPersonFilter = ref(personFilter.value)
 const draftCategoryFilter = ref(categoryFilter.value)
 const draftAccountFilter = ref(accountFilter.value)
 const draftStatusFilter = ref<'all' | TransactionStatus>(statusFilter.value)
+const { month: initialDraftMonth, year: initialDraftYear } = parseMonthYear(monthYear.value)
+const draftFilterMonth = ref(String(initialDraftMonth).padStart(2, '0'))
+const draftFilterYear = ref(String(initialDraftYear))
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
@@ -134,6 +137,26 @@ const deleteRecurringScopeOptions = [
   { value: 'single', label: 'Somente este lancamento selecionado' },
   { value: 'future', label: 'Este lancamento e todos os futuros' }
 ] as const
+
+const filterMonthOptions = [
+  { value: '01', label: 'Janeiro' },
+  { value: '02', label: 'Fevereiro' },
+  { value: '03', label: 'Março' },
+  { value: '04', label: 'Abril' },
+  { value: '05', label: 'Maio' },
+  { value: '06', label: 'Junho' },
+  { value: '07', label: 'Julho' },
+  { value: '08', label: 'Agosto' },
+  { value: '09', label: 'Setembro' },
+  { value: '10', label: 'Outubro' },
+  { value: '11', label: 'Novembro' },
+  { value: '12', label: 'Dezembro' }
+] as const
+
+const filterYearOptions = computed(() => {
+  const currentYear = new Date().getFullYear()
+  return Array.from({ length: 8 }, (_, index) => String(currentYear - 3 + index))
+})
 
 const transactionStatusLabelMap: Record<TransactionStatus, string> = {
   pending: 'Pendente',
@@ -302,6 +325,9 @@ function clearFilters() {
   statusFilter.value = 'all'
   searchDescription.value = ''
   draftMonthYear.value = monthYear.value
+  const { month, year } = parseMonthYear(monthYear.value)
+  draftFilterMonth.value = String(month).padStart(2, '0')
+  draftFilterYear.value = String(year)
   draftCardFilter.value = 'all'
   draftPersonFilter.value = 'all'
   draftCategoryFilter.value = 'all'
@@ -311,6 +337,9 @@ function clearFilters() {
 
 function openFiltersModal() {
   draftMonthYear.value = monthYear.value
+  const { month, year } = parseMonthYear(monthYear.value)
+  draftFilterMonth.value = String(month).padStart(2, '0')
+  draftFilterYear.value = String(year)
   draftCardFilter.value = cardFilter.value
   draftPersonFilter.value = personFilter.value
   draftCategoryFilter.value = categoryFilter.value
@@ -322,6 +351,7 @@ function openFiltersModal() {
 
 async function applyFilters() {
   filtersModalError.value = ''
+  draftMonthYear.value = `${draftFilterYear.value}-${draftFilterMonth.value}`
 
   try {
     parseMonthYear(draftMonthYear.value)
@@ -660,7 +690,7 @@ onMounted(async () => {
   <section class="space-y-5 overflow-x-hidden">
     <AppCard>
       <div class="flex flex-col gap-3">
-        <div class="flex flex-wrap items-center justify-center gap-2">
+        <div class="flex flex-wrap items-center justify-start gap-2">
           <AppButton label="Filtros" size="sm" variant="ghost" @click="openFiltersModal" />
           <AppButton label="Limpar" size="sm" variant="ghost" @click="clearFilters" />
           <AppButton label="Novo" size="sm" @click="openCreateModal" />
@@ -680,7 +710,19 @@ onMounted(async () => {
     >
       <div class="space-y-4">
         <div class="grid gap-3 md:grid-cols-3">
-          <AppInput v-model="draftMonthYear" label="Período" type="month" />
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Ano</label>
+            <select v-model="draftFilterYear" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option v-for="year in filterYearOptions" :key="year" :value="year">{{ year }}</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Mês</label>
+            <select v-model="draftFilterMonth" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option v-for="option in filterMonthOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </div>
 
           <div class="space-y-2">
             <label class="block text-sm font-medium text-foreground">Cartão</label>
