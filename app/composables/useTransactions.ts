@@ -6,7 +6,7 @@ export type TransactionType = (typeof TRANSACTION_TYPES)[number]
 export const TRANSACTION_ORIGIN_TYPES = ['single', 'installment', 'recurring'] as const
 export type TransactionOriginType = (typeof TRANSACTION_ORIGIN_TYPES)[number]
 
-export const RECURRING_SCOPE = ['single', 'future', 'series'] as const
+export const RECURRING_SCOPE = ['single', 'future'] as const
 export type RecurringScope = (typeof RECURRING_SCOPE)[number]
 
 export const RECURRING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'] as const
@@ -340,10 +340,6 @@ function shiftDays(dateText: string, dayOffset: number) {
   const date = new Date(`${dateText}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + dayOffset)
   return date.toISOString().slice(0, 10)
-}
-
-function maxIsoDate(first: string, second: string) {
-  return first >= second ? first : second
 }
 
 function addRecurringInterval(dateText: string, frequency: RecurringFrequency, step: number) {
@@ -702,7 +698,7 @@ export function useTransactions() {
         start_date: startDate,
         end_date: recurringSchedule.ruleEndDate,
         occurrences_limit: recurringSchedule.ruleOccurrencesLimit,
-        edit_scope_default: 'series',
+        edit_scope_default: 'future',
         is_active: true
       })
       .select('id')
@@ -791,7 +787,7 @@ export function useTransactions() {
         start_date: reimbursementStartDate,
         end_date: reimbursementSchedule.ruleEndDate,
         occurrences_limit: reimbursementSchedule.ruleOccurrencesLimit,
-        edit_scope_default: 'series',
+        edit_scope_default: 'future',
         is_active: true
       })
       .select('id')
@@ -1391,23 +1387,7 @@ export function useTransactions() {
     }
 
     const { recurrenceRule } = await getRecurringContext(item.source_transaction_id)
-    const today = getTodayIsoDate()
-    const fromDate = scope === 'future'
-      ? maxIsoDate(item.instance_date, today)
-      : today
-
-    if (scope === 'series') {
-      const { error: disableRuleError } = await supabase
-        .from('recurrence_rules')
-        .update({
-          is_active: false
-        })
-        .eq('id', recurrenceRule.id)
-
-      if (disableRuleError) {
-        throw disableRuleError
-      }
-    }
+    const fromDate = item.instance_date
 
     const { error: cancelError } = await supabase
       .from('transaction_instances')
@@ -1512,6 +1492,29 @@ export function useTransactions() {
       throw sourceTransactionError
     }
 
+
+  async function cancelInstallmentTransaction(item: TransactionInstanceItem, scope: DeleteRecurringScope = 'single') {
+    if (scope === 'single') {
+      await setStatus(item, 'canceled')
+      return
+    }
+
+    if (!item.source_transaction_id) {
+      throw new Error('Lancamento de origem parcelada obrigatorio.')
+    }
+
+    const { error: cancelError } = await supabase
+      .from('transaction_instances')
+      .update({
+        status: 'canceled'
+      })
+      .eq('source_transaction_id', item.source_transaction_id)
+      .gte('instance_date', item.instance_date)
+
+    if (cancelError) {
+      throw cancelError
+    }
+  }
     if (!sourceTransaction) {
       return
     }
@@ -1620,6 +1623,7 @@ export function useTransactions() {
   }
 
   return {
+    cancelInstallmentTransaction,
     cancelRecurringTransaction,
     createSingleTransaction,
     createTransaction: createSingleTransaction,

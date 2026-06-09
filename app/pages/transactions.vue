@@ -22,6 +22,7 @@ import { formatBRLOrDash } from '~/utils/currency'
 definePageMeta({ middleware: 'auth' })
 
 const {
+  cancelInstallmentTransaction,
   cancelRecurringTransaction,
   createTransaction,
   deleteTransactionInstance: removeTransactionInstance,
@@ -39,12 +40,10 @@ const loading = ref(false)
 const saving = ref(false)
 const exportingPdf = ref(false)
 const exportingImage = ref(false)
-const cancelSaving = ref(false)
-const deleteSaving = ref(false)
+const scopeModalSaving = ref(false)
 const pageError = ref('')
 const modalError = ref('')
-const cancelError = ref('')
-const deleteError = ref('')
+const scopeModalError = ref('')
 const filtersModalError = ref('')
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
@@ -79,12 +78,11 @@ const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
 const isExportPreviewOpen = ref(false)
-const isCancelModalOpen = ref(false)
-const isDeleteModalOpen = ref(false)
+const isScopeModalOpen = ref(false)
 const exportPreviewRef = ref<HTMLElement | null>(null)
 const editingRow = ref<TransactionInstanceItem | null>(null)
-const cancelTargetRow = ref<TransactionInstanceItem | null>(null)
-const deleteTargetRow = ref<TransactionInstanceItem | null>(null)
+const scopeTargetRow = ref<TransactionInstanceItem | null>(null)
+const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | null>(null)
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
@@ -101,9 +99,6 @@ const formRecurringNoEndDate = ref(true)
 const formRecurringFrequency = ref<RecurringFrequency>('monthly')
 const formRecurringEndingMode = ref<RecurringEndMode>('no_end')
 const formRecurringOccurrences = ref('12')
-const formRecurringScope = ref<RecurringScope>('single')
-const cancelRecurringScope = ref<RecurringScope>('single')
-const deleteRecurringScope = ref<DeleteRecurringScope>('single')
 const formPersonId = ref('')
 const formAccountId = ref('')
 const formCardId = ref('')
@@ -139,28 +134,12 @@ const originTypeOptions = [
   { value: 'recurring', label: 'Lancamento recorrente mensal' }
 ] as const
 
-const recurringScopeOptions = [
-  { value: 'single', label: 'Somente esta instancia' },
-  { value: 'future', label: 'Esta e futuras instancias' },
-  { value: 'series', label: 'Serie completa (futuras)' }
-] as const
-
-const installmentScopeOptions = [
-  { value: 'single', label: 'Somente esta parcela' },
-  { value: 'future', label: 'Esta parcela e futuras' }
-] as const
-
 const recurringFrequencyLabelMap: Record<RecurringFrequency, string> = {
   daily: 'Diario',
   weekly: 'Semanal',
   monthly: 'Mensal',
   yearly: 'Anual'
 }
-
-const deleteRecurringScopeOptions = [
-  { value: 'single', label: 'Somente este lancamento selecionado' },
-  { value: 'future', label: 'Este lancamento e todos os futuros' }
-] as const
 
 const filterMonthOptions = [
   { value: '01', label: 'Janeiro' },
@@ -205,17 +184,30 @@ const cardsMap = computed(() => new Map(cards.value.map(entry => [entry.id, entr
 const categoriesMap = computed(() => new Map(categories.value.map(entry => [entry.id, entry.name])))
 const incomeCategories = computed(() => categories.value.filter(entry => entry.type === 'income'))
 
-const isEditingRecurring = computed(() => editingRow.value?.origin_type === 'recurring')
-const isEditingScoped = computed(() => {
+const shouldAskScopeForEdit = computed(() => {
   const originType = editingRow.value?.origin_type
   return originType === 'recurring' || originType === 'installment'
 })
-const editScopeOptions = computed(() => {
-  if (editingRow.value?.origin_type === 'recurring') {
-    return recurringScopeOptions
+const scopeModalTitle = computed(() => {
+  if (scopeModalMode.value === 'cancel') {
+    return 'Como deseja cancelar este lancamento?'
   }
 
-  return installmentScopeOptions
+  if (scopeModalMode.value === 'delete') {
+    return 'Como deseja cancelar este lancamento?'
+  }
+
+  return 'Como deseja aplicar esta alteracao?'
+})
+const scopeModalSingleLabel = computed(() => {
+  if (scopeModalMode.value === 'cancel') return 'Cancelar apenas este'
+  if (scopeModalMode.value === 'delete') return 'Cancelar apenas este'
+  return 'Apenas este lancamento'
+})
+const scopeModalFutureLabel = computed(() => {
+  if (scopeModalMode.value === 'cancel') return 'Cancelar este e os proximos'
+  if (scopeModalMode.value === 'delete') return 'Cancelar este e os proximos'
+  return 'Este e os proximos'
 })
 const selectedCardLabel = computed(() => {
   if (cardFilter.value === 'all') return 'Todos'
@@ -227,6 +219,47 @@ const selectedStatusLabel = computed(() => {
 })
 const hasActiveCardFilter = computed(() => cardFilter.value !== 'all')
 const hasActiveStatusFilter = computed(() => statusFilter.value !== 'all')
+
+interface PendingScopedEdit {
+  row: TransactionInstanceItem
+  payload: {
+    title: string
+    type: TransactionType
+    expected_value: number
+    real_value: number | null
+    due_date: string
+    instance_date: string
+    person_id: string | null
+    account_id: string | null
+    card_id: string | null
+    category_id: string | null
+    description: string
+    status: TransactionStatus
+    is_checked: boolean
+    recurring_end_mode?: RecurringEndMode
+    recurring_end_date?: string | null
+    recurring_occurrences_count?: number | null
+    recurring_no_end_date?: boolean
+  }
+}
+
+const pendingScopedEdit = ref<PendingScopedEdit | null>(null)
+
+function openScopeDecisionModal(mode: 'edit' | 'cancel' | 'delete', row?: TransactionInstanceItem) {
+  scopeModalMode.value = mode
+  scopeTargetRow.value = row ?? editingRow.value
+  scopeModalError.value = ''
+  isScopeModalOpen.value = true
+}
+
+function closeScopeDecisionModal() {
+  isScopeModalOpen.value = false
+  scopeModalMode.value = null
+  scopeTargetRow.value = null
+  pendingScopedEdit.value = null
+  scopeModalError.value = ''
+  scopeModalSaving.value = false
+}
 
 function getDaysDiff(fromDate: string, toDate: string) {
   const from = new Date(`${fromDate}T00:00:00Z`)
@@ -514,7 +547,6 @@ function resetForm() {
   formRecurringFrequency.value = 'monthly'
   formRecurringEndingMode.value = 'no_end'
   formRecurringOccurrences.value = '12'
-  formRecurringScope.value = 'single'
   formPersonId.value = ''
   formAccountId.value = ''
   formCardId.value = ''
@@ -548,7 +580,6 @@ function fillFormFromRow(row: TransactionInstanceItem) {
   formRecurringFrequency.value = 'monthly'
   formRecurringEndingMode.value = 'end_date'
   formRecurringOccurrences.value = '12'
-  formRecurringScope.value = 'single'
   formPersonId.value = row.person_id ?? ''
   formAccountId.value = row.account_id ?? ''
   formCardId.value = row.card_id ?? ''
@@ -585,18 +616,27 @@ async function openEditModal(row: TransactionInstanceItem) {
   isModalOpen.value = true
 }
 
-function openRecurringCancelModal(row: TransactionInstanceItem) {
-  cancelTargetRow.value = row
-  cancelRecurringScope.value = 'single'
-  cancelError.value = ''
-  isCancelModalOpen.value = true
+async function deleteSingleTransaction(row: TransactionInstanceItem) {
+  deleteSaving.value = true
+  pageError.value = ''
+
+  try {
+    await removeTransactionInstance(row, 'single')
+    await fetchRows()
+  } catch (err) {
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel excluir o lancamento.'
+  } finally {
+    deleteSaving.value = false
+  }
 }
 
-function openDeleteModal(row: TransactionInstanceItem) {
-  deleteTargetRow.value = row
-  deleteRecurringScope.value = 'single'
-  deleteError.value = ''
-  isDeleteModalOpen.value = true
+async function handleDeleteClick(row: TransactionInstanceItem) {
+  if (row.origin_type === 'recurring' || row.origin_type === 'installment') {
+    openScopeDecisionModal('delete', row)
+    return
+  }
+
+  await deleteSingleTransaction(row)
 }
 
 function parseOptionalNumber(value: string) {
@@ -862,72 +902,55 @@ async function submitForm() {
 
   try {
     if (editingRow.value) {
-      if (editingRow.value.origin_type === 'recurring') {
-        await updateRecurringTransaction(
-          editingRow.value,
-          {
-            title: formTitle.value,
-            type: formType.value,
-            expected_value: parsedExpected,
-            real_value: parsedReal,
-            due_date: formDueDate.value,
-            instance_date: formInstanceDate.value,
-            person_id: formPersonId.value || null,
-            account_id: formAccountId.value || null,
-            card_id: formCardId.value || null,
-            category_id: formCategoryId.value || null,
-            description: formDescription.value,
-            status: formStatus.value,
-            is_checked: editingRow.value.is_checked,
-            recurring_end_mode: formRecurringEndingMode.value,
-            recurring_end_date: formRecurringEndingMode.value === 'end_date' ? (formRecurringEndDate.value || null) : null,
-            recurring_occurrences_count: formRecurringEndingMode.value === 'count' ? parsedRecurringOccurrences : null,
-            recurring_no_end_date: formRecurringEndingMode.value === 'no_end'
-          },
-          formRecurringScope.value
-        )
-      } else if (editingRow.value.origin_type === 'installment') {
-        await updateInstallmentTransaction(
-          editingRow.value,
-          {
-            title: formTitle.value,
-            type: formType.value,
-            expected_value: parsedExpected,
-            real_value: parsedReal,
-            due_date: formDueDate.value,
-            instance_date: formInstanceDate.value,
-            person_id: formPersonId.value || null,
-            account_id: formAccountId.value || null,
-            card_id: formCardId.value || null,
-            category_id: formCategoryId.value || null,
-            description: formDescription.value,
-            status: formStatus.value,
-            is_checked: editingRow.value.is_checked
-          },
-          formRecurringScope.value === 'future' ? 'future' : 'single'
-        )
-      } else {
-        await updateTransactionInstance(
-          editingRow.value.id,
-          {
-            title: formTitle.value,
-            type: formType.value,
-            expected_value: parsedExpected,
-            real_value: parsedReal,
-            due_date: formDueDate.value,
-            instance_date: formInstanceDate.value,
-            person_id: formPersonId.value || null,
-            account_id: formAccountId.value || null,
-            card_id: formCardId.value || null,
-            category_id: formCategoryId.value || null,
-            description: formDescription.value,
-            status: formStatus.value,
-            is_checked: editingRow.value.is_checked
-          },
-          editingRow.value.source_transaction_id,
-          editingRow.value.origin_type
-        )
+      const editPayload = {
+        title: formTitle.value,
+        type: formType.value,
+        expected_value: parsedExpected,
+        real_value: parsedReal,
+        due_date: formDueDate.value,
+        instance_date: formInstanceDate.value,
+        person_id: formPersonId.value || null,
+        account_id: formAccountId.value || null,
+        card_id: formCardId.value || null,
+        category_id: formCategoryId.value || null,
+        description: formDescription.value,
+        status: formStatus.value,
+        is_checked: editingRow.value.is_checked,
+        recurring_end_mode: formRecurringEndingMode.value,
+        recurring_end_date: formRecurringEndingMode.value === 'end_date' ? (formRecurringEndDate.value || null) : null,
+        recurring_occurrences_count: formRecurringEndingMode.value === 'count' ? parsedRecurringOccurrences : null,
+        recurring_no_end_date: formRecurringEndingMode.value === 'no_end'
       }
+
+      if (shouldAskScopeForEdit.value) {
+        pendingScopedEdit.value = {
+          row: editingRow.value,
+          payload: editPayload
+        }
+        openScopeDecisionModal('edit', editingRow.value)
+        return
+      }
+
+      await updateTransactionInstance(
+        editingRow.value.id,
+        {
+          title: editPayload.title,
+          type: editPayload.type,
+          expected_value: editPayload.expected_value,
+          real_value: editPayload.real_value,
+          due_date: editPayload.due_date,
+          instance_date: editPayload.instance_date,
+          person_id: editPayload.person_id,
+          account_id: editPayload.account_id,
+          card_id: editPayload.card_id,
+          category_id: editPayload.category_id,
+          description: editPayload.description,
+          status: editPayload.status,
+          is_checked: editPayload.is_checked
+        },
+        editingRow.value.source_transaction_id,
+        editingRow.value.origin_type
+      )
     } else {
       await createTransaction({
         origin_type: formOriginType.value,
@@ -996,8 +1019,8 @@ async function toggleChecked(row: TransactionInstanceItem) {
 async function changeStatus(row: TransactionInstanceItem, nextStatus: TransactionStatus) {
   pageError.value = ''
 
-  if (row.origin_type === 'recurring' && nextStatus === 'canceled') {
-    openRecurringCancelModal(row)
+  if ((row.origin_type === 'recurring' || row.origin_type === 'installment') && nextStatus === 'canceled') {
+    openScopeDecisionModal('cancel', row)
     return
   }
 
@@ -1009,49 +1032,79 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
   }
 }
 
-async function confirmRecurringCancel() {
-  cancelError.value = ''
+async function applyScopedEdit(scope: DeleteRecurringScope) {
+  if (!pendingScopedEdit.value) {
+    throw new Error('Nenhuma alteracao pendente para aplicar.')
+  }
 
-  if (!cancelTargetRow.value) {
-    cancelError.value = 'Nenhum lancamento recorrente selecionado para cancelamento.'
+  const { row, payload } = pendingScopedEdit.value
+
+  if (row.origin_type === 'recurring') {
+    await updateRecurringTransaction(row, payload, scope as RecurringScope)
     return
   }
 
-  cancelSaving.value = true
-
-  try {
-    await cancelRecurringTransaction(cancelTargetRow.value, cancelRecurringScope.value)
-    isCancelModalOpen.value = false
-    await fetchRows()
-  } catch (err) {
-    cancelError.value = err instanceof Error ? err.message : 'Nao foi possivel cancelar no escopo selecionado.'
-  } finally {
-    cancelSaving.value = false
+  if (row.origin_type === 'installment') {
+    await updateInstallmentTransaction(row, payload, scope)
+    return
   }
+
+  await updateTransactionInstance(
+    row.id,
+    payload,
+    row.source_transaction_id,
+    row.origin_type
+  )
 }
 
-async function confirmDeleteTransaction() {
-  deleteError.value = ''
-
-  if (!deleteTargetRow.value) {
-    deleteError.value = 'Nenhum lancamento selecionado para exclusao.'
+async function applyScopedCancel(row: TransactionInstanceItem, scope: DeleteRecurringScope) {
+  if (row.origin_type === 'recurring') {
+    await cancelRecurringTransaction(row, scope as RecurringScope)
     return
   }
 
-  deleteSaving.value = true
+  if (row.origin_type === 'installment') {
+    await cancelInstallmentTransaction(row, scope)
+    return
+  }
+
+  await setStatus(row, 'canceled')
+}
+
+async function confirmScopeDecision(scope: DeleteRecurringScope) {
+  scopeModalError.value = ''
+  scopeModalSaving.value = true
 
   try {
-    const scope = deleteTargetRow.value.origin_type === 'recurring' || deleteTargetRow.value.origin_type === 'installment'
-      ? deleteRecurringScope.value
-      : 'single'
+    if (scopeModalMode.value === 'edit') {
+      await applyScopedEdit(scope)
+      isModalOpen.value = false
+      closeScopeDecisionModal()
+      await fetchRows()
+      return
+    }
 
-    await removeTransactionInstance(deleteTargetRow.value, scope)
-    isDeleteModalOpen.value = false
-    await fetchRows()
+    if (!scopeTargetRow.value) {
+      throw new Error('Nenhum lancamento selecionado.')
+    }
+
+    if (scopeModalMode.value === 'cancel') {
+      await applyScopedCancel(scopeTargetRow.value, scope)
+      closeScopeDecisionModal()
+      await fetchRows()
+      return
+    }
+
+    if (scopeModalMode.value === 'delete') {
+      await removeTransactionInstance(scopeTargetRow.value, scope)
+      closeScopeDecisionModal()
+      await fetchRows()
+      return
+    }
   } catch (err) {
-    deleteError.value = err instanceof Error ? err.message : 'Nao foi possivel deletar o lancamento.'
+    scopeModalError.value = err instanceof Error ? err.message : 'Nao foi possivel aplicar a acao no escopo selecionado.'
   } finally {
-    deleteSaving.value = false
+    scopeModalSaving.value = false
   }
 }
 
@@ -1422,7 +1475,7 @@ onMounted(async () => {
                 variant="danger"
                 aria-label="Deletar lancamento"
                 title="Deletar"
-                @click="openDeleteModal(row as TransactionInstanceItem)"
+                @click="handleDeleteClick(row as TransactionInstanceItem)"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3 6h18" />
@@ -1575,12 +1628,6 @@ onMounted(async () => {
             </p>
           </div>
 
-          <div v-if="isEditingScoped" class="space-y-2 rounded-xl border border-border p-3">
-            <label class="block text-sm font-medium text-foreground">Aplicar edicao em</label>
-            <select v-model="formRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option v-for="option in editScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
-          </div>
         </section>
 
         <section class="space-y-3 rounded-xl border border-border p-3">
@@ -1638,56 +1685,49 @@ onMounted(async () => {
       </template>
     </AppModal>
 
-    <AppModal
-      v-model="isCancelModalOpen"
-      title="Cancelar lancamento recorrente"
-      description="Escolha como o cancelamento sera aplicado."
-      max-width-class="max-w-lg"
-    >
-      <div class="space-y-3">
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Escopo do cancelamento</label>
-          <select v-model="cancelRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" @click="closeScopeDecisionModal" />
+      </Transition>
+
+      <Transition name="slide-up">
+        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[80] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
+          <div class="w-full max-w-md rounded-3xl bg-[#16181a] p-5 shadow-2xl ring-1 ring-white/10">
+            <h3 class="text-lg font-semibold text-white">{{ scopeModalTitle }}</h3>
+
+            <div class="mt-4 grid gap-3">
+              <button
+                type="button"
+                class="h-12 rounded-2xl bg-white text-sm font-semibold text-[#111315] transition hover:bg-white/90 disabled:opacity-60"
+                :disabled="scopeModalSaving"
+                @click="confirmScopeDecision('single')"
+              >
+                {{ scopeModalSingleLabel }}
+              </button>
+
+              <button
+                type="button"
+                class="h-12 rounded-2xl bg-[#2a2f34] text-sm font-semibold text-white transition hover:bg-[#353b41] disabled:opacity-60"
+                :disabled="scopeModalSaving"
+                @click="confirmScopeDecision('future')"
+              >
+                {{ scopeModalFutureLabel }}
+              </button>
+
+              <button
+                type="button"
+                class="mt-1 h-11 rounded-2xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                :disabled="scopeModalSaving"
+                @click="closeScopeDecisionModal"
+              >
+                Voltar
+              </button>
+            </div>
+
+            <p v-if="scopeModalError" class="mt-3 rounded-xl bg-rose-200/15 px-3 py-2 text-xs text-rose-200">{{ scopeModalError }}</p>
+          </div>
         </div>
-
-        <p v-if="cancelError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ cancelError }}</p>
-      </div>
-
-      <template #footer>
-        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-          <AppButton label="Voltar" variant="ghost" block @click="isCancelModalOpen = false" />
-          <AppButton :label="cancelSaving ? 'Cancelando...' : 'Confirmar cancelamento'" variant="danger" :disabled="cancelSaving" block @click="confirmRecurringCancel" />
-        </div>
-      </template>
-    </AppModal>
-
-    <AppModal
-      v-model="isDeleteModalOpen"
-      title="Deletar lancamento"
-      description="Confirme a exclusao do lancamento selecionado."
-      max-width-class="max-w-lg"
-    >
-      <div class="space-y-3">
-        <p class="text-sm text-foreground">Esta acao nao pode ser desfeita.</p>
-
-        <div v-if="deleteTargetRow?.origin_type === 'recurring' || deleteTargetRow?.origin_type === 'installment'" class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Escopo da exclusao</label>
-          <select v-model="deleteRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="option in deleteRecurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
-        </div>
-
-        <p v-if="deleteError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ deleteError }}</p>
-      </div>
-
-      <template #footer>
-        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-          <AppButton label="Voltar" variant="ghost" block @click="isDeleteModalOpen = false" />
-          <AppButton :label="deleteSaving ? 'Deletando...' : 'Confirmar exclusao'" variant="danger" :disabled="deleteSaving" block @click="confirmDeleteTransaction" />
-        </div>
-      </template>
-    </AppModal>
+      </Transition>
+    </Teleport>
   </section>
 </template>
