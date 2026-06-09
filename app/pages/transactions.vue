@@ -36,6 +36,8 @@ const {
 
 const loading = ref(false)
 const saving = ref(false)
+const exportingPdf = ref(false)
+const exportingImage = ref(false)
 const cancelSaving = ref(false)
 const deleteSaving = ref(false)
 const pageError = ref('')
@@ -73,8 +75,11 @@ const categories = ref<CategoryItem[]>([])
 const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
+const isExportPreviewOpen = ref(false)
 const isCancelModalOpen = ref(false)
 const isDeleteModalOpen = ref(false)
+const exportPreviewRef = ref<HTMLElement | null>(null)
+const exportGeneratedAt = ref('')
 const editingRow = ref<TransactionInstanceItem | null>(null)
 const cancelTargetRow = ref<TransactionInstanceItem | null>(null)
 const deleteTargetRow = ref<TransactionInstanceItem | null>(null)
@@ -119,6 +124,7 @@ const columns = [
   { key: 'category_name', label: 'Categoria' },
   { key: 'card_name', label: 'Cartao' },
   { key: 'expected_value', label: 'Previsto', align: 'right' as const },
+  { key: 'installment_label', label: 'Parcela' },
   { key: 'real_value_input', label: 'Realizado', align: 'right' as const },
   { key: 'status_select', label: 'Status' },
   { key: 'checked_toggle', label: 'Conferido', align: 'center' as const },
@@ -191,8 +197,140 @@ const selectedStatusLabel = computed(() => {
   if (statusFilter.value === 'all') return 'Todos'
   return transactionStatusLabelMap[statusFilter.value]
 })
+const selectedPersonLabel = computed(() => {
+  if (personFilter.value === 'all') return 'Todos'
+  return people.value.find(entry => entry.id === personFilter.value)?.name ?? 'Todos'
+})
+const selectedCategoryLabel = computed(() => {
+  if (categoryFilter.value === 'all') return 'Todas'
+  return categories.value.find(entry => entry.id === categoryFilter.value)?.name ?? 'Todas'
+})
+const selectedAccountLabel = computed(() => {
+  if (accountFilter.value === 'all') return 'Todas'
+  return accounts.value.find(entry => entry.id === accountFilter.value)?.name ?? 'Todas'
+})
+const selectedLinkLabel = computed(() => {
+  if (reimbursementLinkFilter.value === 'all') return 'Todos'
+  return reimbursementLinkFilter.value === 'linked' ? 'Vinculados' : 'Normais'
+})
+const selectedPeriodLabel = computed(() => {
+  const [year, month] = monthYear.value.split('-')
+  const monthOption = filterMonthOptions.find(entry => entry.value === month)
+  return monthOption ? `${monthOption.label}/${year}` : monthYear.value
+})
+const previewSubtitle = computed(() => {
+  const filters = [
+    `Periodo: ${selectedPeriodLabel.value}`,
+    `Cartao: ${selectedCardLabel.value}`,
+    `Responsavel: ${selectedPersonLabel.value}`,
+    `Categoria: ${selectedCategoryLabel.value}`,
+    `Conta: ${selectedAccountLabel.value}`,
+    `Status: ${selectedStatusLabel.value}`,
+    `Vinculo: ${selectedLinkLabel.value}`
+  ]
+
+  if (searchDescription.value.trim()) {
+    filters.push(`Pesquisa: "${searchDescription.value.trim()}"`)
+  }
+
+  return filters.join(' • ')
+})
 const hasActiveCardFilter = computed(() => cardFilter.value !== 'all')
 const hasActiveStatusFilter = computed(() => statusFilter.value !== 'all')
+
+function getDaysDiff(fromDate: string, toDate: string) {
+  const from = new Date(`${fromDate}T00:00:00Z`)
+  const to = new Date(`${toDate}T00:00:00Z`)
+  const ms = to.getTime() - from.getTime()
+  return Math.floor(ms / (1000 * 60 * 60 * 24))
+}
+
+function getMonthDiff(fromDate: string, toDate: string) {
+  const [fromYear, fromMonth] = fromDate.split('-').map(Number)
+  const [toYear, toMonth] = toDate.split('-').map(Number)
+  return ((toYear - fromYear) * 12) + (toMonth - fromMonth)
+}
+
+function getYearDiff(fromDate: string, toDate: string) {
+  const [fromYear] = fromDate.split('-').map(Number)
+  const [toYear] = toDate.split('-').map(Number)
+  return toYear - fromYear
+}
+
+function getRecurringOccurrenceIndex(row: TransactionInstanceItem) {
+  const startDate = row.recurring_start_date ?? row.due_date
+  const step = Math.max(row.recurring_interval_count ?? 1, 1)
+  const frequency = row.recurring_frequency ?? 'monthly'
+
+  if (!startDate) {
+    return 1
+  }
+
+  if (frequency === 'daily') {
+    const diff = Math.max(0, getDaysDiff(startDate, row.instance_date))
+    return Math.floor(diff / step) + 1
+  }
+
+  if (frequency === 'weekly') {
+    const diff = Math.max(0, getDaysDiff(startDate, row.instance_date))
+    return Math.floor(diff / (7 * step)) + 1
+  }
+
+  if (frequency === 'yearly') {
+    const diff = Math.max(0, getYearDiff(startDate, row.instance_date))
+    return Math.floor(diff / step) + 1
+  }
+
+  const diff = Math.max(0, getMonthDiff(startDate, row.instance_date))
+  return Math.floor(diff / step) + 1
+}
+
+function getRecurringTotalOccurrences(row: TransactionInstanceItem, currentIndex: number) {
+  if (row.recurring_occurrences_limit && row.recurring_occurrences_limit > 0) {
+    return row.recurring_occurrences_limit
+  }
+
+  const startDate = row.recurring_start_date ?? row.due_date
+  const endDate = row.recurring_end_date
+  const step = Math.max(row.recurring_interval_count ?? 1, 1)
+  const frequency = row.recurring_frequency ?? 'monthly'
+
+  if (!startDate || !endDate) {
+    return Math.max(currentIndex, 12)
+  }
+
+  if (frequency === 'daily') {
+    const diff = Math.max(0, getDaysDiff(startDate, endDate))
+    return Math.floor(diff / step) + 1
+  }
+
+  if (frequency === 'weekly') {
+    const diff = Math.max(0, getDaysDiff(startDate, endDate))
+    return Math.floor(diff / (7 * step)) + 1
+  }
+
+  if (frequency === 'yearly') {
+    const diff = Math.max(0, getYearDiff(startDate, endDate))
+    return Math.floor(diff / step) + 1
+  }
+
+  const diff = Math.max(0, getMonthDiff(startDate, endDate))
+  return Math.floor(diff / step) + 1
+}
+
+function getInstallmentLabel(row: TransactionInstanceItem) {
+  if (row.origin_type === 'installment') {
+    return `${row.installment_number ?? 1}/${row.installment_total ?? 1}`
+  }
+
+  if (row.origin_type === 'recurring') {
+    const currentIndex = getRecurringOccurrenceIndex(row)
+    const total = getRecurringTotalOccurrences(row, currentIndex)
+    return `${currentIndex}/${total}`
+  }
+
+  return '1/1'
+}
 
 const filteredRows = computed(() => {
   const normalizedSearch = searchDescription.value.trim().toLowerCase()
@@ -221,6 +359,7 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
+      installment_label: getInstallmentLabel(row),
       description_text: row.description?.trim() ? `${row.title} - ${row.description}` : row.title,
       person_name: row.person_id ? (peopleMap.value.get(row.person_id) || '-') : '-',
       category_name: row.category_id ? (categoriesMap.value.get(row.category_id) || '-') : '-',
@@ -253,6 +392,120 @@ function applyReimbursementDefaults() {
 
 function formatCurrency(value: number | null) {
   return formatBRLOrDash(value)
+}
+
+function formatDateBr(value: string) {
+  const [year, month, day] = value.split('-')
+
+  if (!year || !month || !day) {
+    return value
+  }
+
+  return `${day}/${month}/${year}`
+}
+
+function getEffectiveValue(row: TransactionInstanceItem) {
+  return row.real_value ?? row.expected_value
+}
+
+const exportTotalEffective = computed(() => filteredRows.value.reduce((sum, row) => sum + getEffectiveValue(row), 0))
+
+function openExportPreview() {
+  if (!filteredRows.value.length) {
+    pageError.value = 'Nao ha lancamentos filtrados para exportar.'
+    return
+  }
+
+  exportGeneratedAt.value = new Date().toLocaleString('pt-BR')
+  pageError.value = ''
+  isExportPreviewOpen.value = true
+}
+
+async function exportPreviewPdf() {
+  if (exportingPdf.value) return
+
+  if (!filteredRows.value.length) {
+    pageError.value = 'Nao ha lancamentos filtrados para exportar.'
+    return
+  }
+
+  exportingPdf.value = true
+  pageError.value = ''
+
+  try {
+    const [canvas, { jsPDF }] = await Promise.all([
+      renderPreviewCanvas(),
+      import('jspdf')
+    ])
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
+    const margin = 20
+    const pageWidth = doc.internal.pageSize.getWidth() - (margin * 2)
+    const pageHeight = doc.internal.pageSize.getHeight() - (margin * 2)
+    const imageHeight = (canvas.height * pageWidth) / canvas.width
+    const imageData = canvas.toDataURL('image/png')
+
+    let remainingHeight = imageHeight
+    let positionY = margin
+
+    doc.addImage(imageData, 'PNG', margin, positionY, pageWidth, imageHeight)
+    remainingHeight -= pageHeight
+
+    while (remainingHeight > 0) {
+      doc.addPage()
+      positionY = margin - (imageHeight - remainingHeight)
+      doc.addImage(imageData, 'PNG', margin, positionY, pageWidth, imageHeight)
+      remainingHeight -= pageHeight
+    }
+
+    const fileDate = new Date().toISOString().slice(0, 10)
+    doc.save(`lancamentos-filtrados-${fileDate}.pdf`)
+  } catch (err) {
+    pageError.value = err instanceof Error
+      ? `Nao foi possivel exportar o PDF. ${err.message}`
+      : 'Nao foi possivel exportar o PDF.'
+  } finally {
+    exportingPdf.value = false
+  }
+}
+
+async function savePreviewAsImage() {
+  if (exportingImage.value) return
+
+  exportingImage.value = true
+  pageError.value = ''
+
+  try {
+    const canvas = await renderPreviewCanvas()
+
+    const imageDate = new Date().toISOString().slice(0, 10)
+    const link = document.createElement('a')
+    link.href = canvas.toDataURL('image/png')
+    link.download = `lancamentos-filtrados-${imageDate}.png`
+    link.click()
+  } catch (err) {
+    pageError.value = err instanceof Error
+      ? `Nao foi possivel salvar a imagem. ${err.message}`
+      : 'Nao foi possivel salvar a imagem.'
+  } finally {
+    exportingImage.value = false
+  }
+}
+
+async function renderPreviewCanvas() {
+  if (!exportPreviewRef.value) {
+    throw new Error('Nao foi possivel renderizar o preview para exportacao.')
+  }
+
+  await nextTick()
+
+  const { default: html2canvas } = await import('html2canvas')
+  return html2canvas(exportPreviewRef.value, {
+    scale: 3,
+    backgroundColor: '#f6f7f2',
+    useCORS: true,
+    windowWidth: exportPreviewRef.value.scrollWidth
+  })
 }
 
 function resetForm() {
@@ -820,6 +1073,7 @@ onMounted(async () => {
         <div class="flex flex-wrap items-center justify-start gap-2">
           <AppButton label="Filtros" size="sm" variant="ghost" @click="openFiltersModal" />
           <AppButton label="Limpar" size="sm" variant="ghost" @click="clearFilters" />
+          <AppButton label="Exportar" size="sm" variant="ghost" :disabled="!filteredRows.length" @click="openExportPreview" />
           <AppButton label="Novo" size="sm" @click="openCreateModal" />
         </div>
 
@@ -908,6 +1162,93 @@ onMounted(async () => {
         <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
           <AppButton label="Limpar filtros" variant="ghost" @click="clearFilters" />
           <AppButton label="Aplicar filtros" variant="secondary" @click="applyFilters" />
+        </div>
+      </template>
+    </AppModal>
+
+    <AppModal
+      v-model="isExportPreviewOpen"
+      title="Preview de exportacao"
+      description="Revise os lancamentos filtrados antes de salvar imagem ou exportar PDF."
+      max-width-class="max-w-6xl"
+    >
+      <div class="space-y-4">
+        <div class="rounded-xl border border-border/80 bg-primary-light/10 px-4 py-2 text-[11px] text-muted">
+          O preview abaixo e exatamente o mesmo layout exportado em PNG e PDF.
+        </div>
+
+        <div class="flex justify-center">
+          <div ref="exportPreviewRef" class="w-full max-w-5xl rounded-xl border border-border bg-[#f6f7f2] p-6 text-[#2f3526] shadow-soft">
+            <div class="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
+              <div class="flex min-w-[240px] items-center gap-3">
+                <img src="/pwrdevs-logo.png" alt="PWRDEVS Finance" class="h-12 w-12 rounded-md border border-border/60 bg-[#eef1df] p-1" />
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5c6642]">PWRDEVS Finance</p>
+                  <h3 class="text-lg font-semibold text-[#2f3526]">Resumo de lancamentos filtrados</h3>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <span class="inline-flex items-center rounded-full border border-[#8d9c68]/45 bg-[#e8edd5] px-3 py-1 text-xs font-semibold text-[#425030]">
+                  {{ filteredRows.length }} itens
+                </span>
+              </div>
+            </div>
+
+            <div class="mt-3 space-y-1 text-[11px] leading-relaxed text-[#5f664f]">
+              <p>{{ previewSubtitle }}</p>
+              <p>Gerado em: {{ exportGeneratedAt || new Date().toLocaleString('pt-BR') }}</p>
+            </div>
+
+            <div class="mt-4 overflow-hidden rounded-lg border border-border/80 bg-[#fdfdf9]">
+              <div class="overflow-x-auto">
+                <table class="min-w-full text-xs text-[#2f3526]">
+                  <thead>
+                    <tr class="bg-[#d7e0b5] text-[11px] font-semibold uppercase tracking-wide text-[#334127]">
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Data</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle min-w-[260px]">Descricao</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Vinculo</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Responsavel</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Categoria</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Cartao</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-center align-middle">Parcela</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-right align-middle">Valor considerado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="row in filteredRows"
+                      :key="row.id"
+                      class="border-b border-border/70 text-[#2f3526] odd:bg-[#fdfdf9] even:bg-[#f3f6e7]"
+                    >
+                      <td class="px-3 py-2.5 text-left align-middle">{{ formatDateBr(row.instance_date) }}</td>
+                      <td class="px-3 py-2.5 text-left align-middle">{{ row.description_text }}</td>
+                      <td class="px-3 py-2.5 text-left align-middle">{{ row.link_badge }}</td>
+                      <td class="px-3 py-2.5 text-left align-middle">{{ row.person_name }}</td>
+                      <td class="px-3 py-2.5 text-left align-middle">{{ row.category_name }}</td>
+                      <td class="px-3 py-2.5 text-left align-middle">{{ row.card_name }}</td>
+                      <td class="px-3 py-2.5 text-center align-middle">{{ row.installment_label }}</td>
+                      <td class="px-3 py-2.5 text-right align-middle tabular-nums">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr class="bg-[#c0cf8f] font-semibold text-[#2f3526]">
+                      <td colspan="7" class="px-3 py-3 text-right align-middle">Total</td>
+                      <td class="px-3 py-3 text-right align-middle text-sm tabular-nums">{{ formatCurrency(exportTotalEffective) }}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          <AppButton label="Fechar" variant="ghost" block @click="isExportPreviewOpen = false" />
+          <AppButton :label="exportingImage ? 'Exportando PNG...' : 'Exportar PNG'" variant="secondary" :disabled="exportingImage" block @click="savePreviewAsImage" />
+          <AppButton :label="exportingPdf ? 'Exportando PDF...' : 'Exportar PDF'" :disabled="exportingPdf" block @click="exportPreviewPdf" />
         </div>
       </template>
     </AppModal>

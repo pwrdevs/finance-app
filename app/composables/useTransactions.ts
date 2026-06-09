@@ -36,6 +36,13 @@ interface SourceTransaction {
   installment_total: number | null
   reimbursement_group_id: string | null
   reimbursement_role: ReimbursementRole | null
+  recurrence_rule: {
+    frequency: RecurringFrequency
+    interval_count: number
+    start_date: string
+    end_date: string | null
+    occurrences_limit: number | null
+  } | null
 }
 
 interface TransactionInstanceRecord {
@@ -79,6 +86,11 @@ export interface TransactionInstanceItem {
   installment_group_id: string | null
   installment_number: number | null
   installment_total: number | null
+  recurring_frequency: RecurringFrequency | null
+  recurring_interval_count: number | null
+  recurring_start_date: string | null
+  recurring_end_date: string | null
+  recurring_occurrences_limit: number | null
   reimbursement_group_id: string | null
   reimbursement_role: ReimbursementRole | null
 }
@@ -529,6 +541,11 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     installment_group_id: source?.installment_group_id ?? null,
     installment_number: installmentNumber,
     installment_total: installmentTotal,
+    recurring_frequency: source?.recurrence_rule?.frequency ?? null,
+    recurring_interval_count: source?.recurrence_rule?.interval_count ?? null,
+    recurring_start_date: source?.recurrence_rule?.start_date ?? null,
+    recurring_end_date: source?.recurrence_rule?.end_date ?? null,
+    recurring_occurrences_limit: source?.recurrence_rule?.occurrences_limit ?? null,
     reimbursement_group_id: source?.reimbursement_group_id ?? null,
     reimbursement_role: source?.reimbursement_role ?? null
   }
@@ -607,6 +624,13 @@ export function useTransactions() {
           due_date,
           origin_type,
           recurrence_rule_id,
+          recurrence_rule:recurrence_rule_id (
+            frequency,
+            interval_count,
+            start_date,
+            end_date,
+            occurrences_limit
+          ),
           installment_group_id,
           installment_total,
           reimbursement_group_id,

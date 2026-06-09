@@ -216,3 +216,5 @@
 - 2026-06-09: Funcionalidade de reembolso/repasse implementada em `/transactions` com opção de gerar entrada vinculada ao criar despesa (single, installment e recurring), incluindo defaults de valor/descrição e validação de categoria de receita.
 - 2026-06-09: Tabela de lançamentos atualizada com indicador de vínculo (`Normal`, `Original`, `Reembolso`) e filtro dedicado (`todos`, `normais`, `vinculados/reembolsos`).
 - 2026-06-09: Decisão MVP mantida para edição e cancelamento independentes entre lançamento original e entrada vinculada; pendência futura registrada para fluxo em cascata opcional.
+- 2026-06-09: Preview de exportação dos lançamentos filtrados redesenhado com visual de relatório profissional (logo, título, subtítulo com filtros aplicados, badge de quantidade, data/hora de geração, tabela refinada e linha de total destacada) mantendo os mesmos campos obrigatórios.
+- 2026-06-09: Exportação PNG/PDF unificada para capturar exatamente o mesmo layout do preview via canvas, com melhoria de resolução (`scale: 3`) e paginação limpa em PDF quando o conteúdo ultrapassa uma página.
