@@ -30,6 +30,7 @@ const {
   listManualInstances,
   setChecked,
   setStatus,
+  updateInstallmentTransaction,
   updateRecurringTransaction,
   updateTransactionInstance
 } = useTransactions()
@@ -144,6 +145,11 @@ const recurringScopeOptions = [
   { value: 'series', label: 'Serie completa (futuras)' }
 ] as const
 
+const installmentScopeOptions = [
+  { value: 'single', label: 'Somente esta parcela' },
+  { value: 'future', label: 'Esta parcela e futuras' }
+] as const
+
 const recurringFrequencyLabelMap: Record<RecurringFrequency, string> = {
   daily: 'Diario',
   weekly: 'Semanal',
@@ -200,6 +206,17 @@ const categoriesMap = computed(() => new Map(categories.value.map(entry => [entr
 const incomeCategories = computed(() => categories.value.filter(entry => entry.type === 'income'))
 
 const isEditingRecurring = computed(() => editingRow.value?.origin_type === 'recurring')
+const isEditingScoped = computed(() => {
+  const originType = editingRow.value?.origin_type
+  return originType === 'recurring' || originType === 'installment'
+})
+const editScopeOptions = computed(() => {
+  if (editingRow.value?.origin_type === 'recurring') {
+    return recurringScopeOptions
+  }
+
+  return installmentScopeOptions
+})
 const selectedCardLabel = computed(() => {
   if (cardFilter.value === 'all') return 'Todos'
   return cards.value.find(entry => entry.id === cardFilter.value)?.name ?? 'Todos'
@@ -869,6 +886,26 @@ async function submitForm() {
           },
           formRecurringScope.value
         )
+      } else if (editingRow.value.origin_type === 'installment') {
+        await updateInstallmentTransaction(
+          editingRow.value,
+          {
+            title: formTitle.value,
+            type: formType.value,
+            expected_value: parsedExpected,
+            real_value: parsedReal,
+            due_date: formDueDate.value,
+            instance_date: formInstanceDate.value,
+            person_id: formPersonId.value || null,
+            account_id: formAccountId.value || null,
+            card_id: formCardId.value || null,
+            category_id: formCategoryId.value || null,
+            description: formDescription.value,
+            status: formStatus.value,
+            is_checked: editingRow.value.is_checked
+          },
+          formRecurringScope.value === 'future' ? 'future' : 'single'
+        )
       } else {
         await updateTransactionInstance(
           editingRow.value.id,
@@ -1004,7 +1041,7 @@ async function confirmDeleteTransaction() {
   deleteSaving.value = true
 
   try {
-    const scope = deleteTargetRow.value.origin_type === 'recurring'
+    const scope = deleteTargetRow.value.origin_type === 'recurring' || deleteTargetRow.value.origin_type === 'installment'
       ? deleteRecurringScope.value
       : 'single'
 
@@ -1538,10 +1575,10 @@ onMounted(async () => {
             </p>
           </div>
 
-          <div v-if="isEditingRecurring" class="space-y-2 rounded-xl border border-border p-3">
+          <div v-if="isEditingScoped" class="space-y-2 rounded-xl border border-border p-3">
             <label class="block text-sm font-medium text-foreground">Aplicar edicao em</label>
             <select v-model="formRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option v-for="option in recurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              <option v-for="option in editScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </div>
         </section>
@@ -1635,7 +1672,7 @@ onMounted(async () => {
       <div class="space-y-3">
         <p class="text-sm text-foreground">Esta acao nao pode ser desfeita.</p>
 
-        <div v-if="deleteTargetRow?.origin_type === 'recurring'" class="space-y-2">
+        <div v-if="deleteTargetRow?.origin_type === 'recurring' || deleteTargetRow?.origin_type === 'installment'" class="space-y-2">
           <label class="block text-sm font-medium text-foreground">Escopo da exclusao</label>
           <select v-model="deleteRecurringScope" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
             <option v-for="option in deleteRecurringScopeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>

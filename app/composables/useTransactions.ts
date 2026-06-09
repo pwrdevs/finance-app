@@ -1323,6 +1323,63 @@ export function useTransactions() {
     }
   }
 
+  async function updateInstallmentTransaction(
+    item: TransactionInstanceItem,
+    payload: UpdateTransactionInstancePayload,
+    scope: DeleteRecurringScope = 'single'
+  ) {
+    if (!item.source_transaction_id) {
+      throw new Error('Lancamento de origem parcelada obrigatorio.')
+    }
+
+    const checkedAt = deriveCheckedAt(payload.is_checked)
+    const normalizedDescription = normalizeOptionalText(payload.description)
+    const normalizedPersonId = normalizeOptionalId(payload.person_id)
+    const normalizedCardId = normalizeOptionalId(payload.card_id)
+    const normalizedAccountId = normalizeOptionalId(payload.account_id)
+    const normalizedCategoryId = normalizeOptionalId(payload.category_id)
+
+    const targetInstances = supabase
+      .from('transaction_instances')
+      .update({
+        expected_value: payload.expected_value,
+        real_value: payload.real_value ?? null,
+        is_checked: payload.is_checked,
+        checked_at: checkedAt,
+        status: payload.status,
+        person_id: normalizedPersonId,
+        card_id: normalizedCardId,
+        account_id: normalizedAccountId,
+        category_id: normalizedCategoryId
+      })
+      .eq('source_transaction_id', item.source_transaction_id)
+
+    const { error: instanceError } = scope === 'future'
+      ? await targetInstances.gte('instance_date', item.instance_date)
+      : await targetInstances.eq('id', item.id)
+
+    if (instanceError) {
+      throw instanceError
+    }
+
+    const { error: sourceTransactionError } = await supabase
+      .from('transactions')
+      .update({
+        type: payload.type,
+        title: payload.title.trim(),
+        description: normalizedDescription,
+        person_id: normalizedPersonId,
+        card_id: normalizedCardId,
+        account_id: normalizedAccountId,
+        category_id: normalizedCategoryId
+      })
+      .eq('id', item.source_transaction_id)
+
+    if (sourceTransactionError) {
+      throw sourceTransactionError
+    }
+  }
+
   async function cancelRecurringTransaction(item: TransactionInstanceItem, scope: RecurringScope) {
     if (scope === 'single') {
       await setStatus(item, 'canceled')
@@ -1531,6 +1588,25 @@ export function useTransactions() {
       return
     }
 
+    if (item.origin_type === 'installment' && scope === 'future') {
+      if (!item.source_transaction_id) {
+        throw new Error('Lancamento de origem parcelada obrigatorio para deletar futuras instancias.')
+      }
+
+      const { error: deleteFutureError } = await supabase
+        .from('transaction_instances')
+        .delete()
+        .eq('source_transaction_id', item.source_transaction_id)
+        .gte('instance_date', item.instance_date)
+
+      if (deleteFutureError) {
+        throw deleteFutureError
+      }
+
+      await cleanupSourceTransactionIfNoInstances(item.source_transaction_id)
+      return
+    }
+
     const { error: deleteInstanceError } = await supabase
       .from('transaction_instances')
       .delete()
@@ -1551,6 +1627,7 @@ export function useTransactions() {
     getRecurringConfiguration,
     listFilterOptions,
     listManualInstances,
+    updateInstallmentTransaction,
     updateRecurringTransaction,
     setChecked,
     setStatus,
