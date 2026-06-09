@@ -182,9 +182,9 @@ watch(
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
+    <div class="rounded-2xl border border-border bg-surface p-4 shadow-panel sm:p-5">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Painel</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Resumo Financeiro Mensal</h2>
+      <h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Resumo Financeiro Mensal</h2>
       <p class="mt-2 text-sm text-muted">Os totais usam valor efetivo (real ou previsto) e excluem cancelados dos indicadores principais.</p>
     </div>
 
@@ -210,33 +210,33 @@ watch(
 
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <AppCard title="Receitas (ativas)">
-        <p class="text-2xl font-semibold text-emerald-700">{{ formatCurrency(summary.totalIncome) }}</p>
+        <p class="text-xl font-semibold text-emerald-700 sm:text-2xl">{{ formatCurrency(summary.totalIncome) }}</p>
       </AppCard>
 
       <AppCard title="Despesas (ativas)">
-        <p class="text-2xl font-semibold text-rose-700">{{ formatCurrency(summary.totalExpense) }}</p>
+        <p class="text-xl font-semibold text-rose-700 sm:text-2xl">{{ formatCurrency(summary.totalExpense) }}</p>
       </AppCard>
 
       <AppCard title="Saldo do mes (ativo)">
-        <p class="text-2xl font-semibold" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+        <p class="text-xl font-semibold sm:text-2xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
           {{ formatCurrency(summary.monthlyBalance) }}
         </p>
       </AppCard>
 
       <AppCard title="Conferidos (ativos)">
-        <p class="text-2xl font-semibold text-foreground">{{ formatCurrency(summary.checkedTotal) }}</p>
+        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ formatCurrency(summary.checkedTotal) }}</p>
       </AppCard>
 
       <AppCard title="Pendentes (ativos)">
-        <p class="text-2xl font-semibold text-foreground">{{ formatCurrency(summary.pendingTotal) }}</p>
+        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ formatCurrency(summary.pendingTotal) }}</p>
       </AppCard>
 
       <AppCard title="Total cancelado">
-        <p class="text-2xl font-semibold text-foreground">{{ formatCurrency(summary.canceledTotal) }}</p>
+        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ formatCurrency(summary.canceledTotal) }}</p>
       </AppCard>
 
       <AppCard title="Lancamentos ativos">
-        <p class="text-2xl font-semibold text-foreground">{{ summary.numberOfTransactions }}</p>
+        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ summary.numberOfTransactions }}</p>
       </AppCard>
     </div>
 

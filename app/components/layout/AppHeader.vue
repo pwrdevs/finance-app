@@ -76,25 +76,25 @@ watch(
 
 <template>
   <header class="shrink-0 border-b border-border/90 bg-background/95 shadow-soft backdrop-blur-sm">
-    <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-4 py-3 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between gap-3">
-        <div class="pointer-events-none flex min-w-0 items-center gap-0">
-          <div class="relative h-14 w-28 shrink-0 overflow-visible pl-6 sm:h-16 sm:w-32 sm:pl-7">
-            <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="absolute left-6 top-1/2 h-14 w-14 -translate-y-1/2 scale-[3] object-contain sm:left-7 sm:h-16 sm:w-16" />
+    <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-3 py-3 sm:gap-3 sm:px-6 lg:px-8">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div class="pointer-events-none flex min-w-0 items-center gap-2">
+          <div class="flex h-12 w-16 shrink-0 items-center justify-center sm:h-16 sm:w-24">
+            <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="max-h-full w-auto max-w-full object-contain" />
           </div>
-          <div class="-ml-10 min-w-0 sm:-ml-11">
-            <h1 class="truncate text-base font-semibold text-foreground sm:text-lg">{{ appName }}</h1>
-            <p class="truncate text-sm text-muted">Financeiro Pessoal</p>
+          <div class="min-w-0">
+            <h1 class="truncate text-sm font-semibold text-foreground sm:text-lg">{{ appName }}</h1>
+            <p class="truncate text-xs text-muted sm:text-sm">Financeiro Pessoal</p>
           </div>
         </div>
 
-        <div class="ml-auto flex shrink-0 items-center self-center">
-          <NuxtLink to="/settings" class="flex items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-2 shadow-sm transition hover:border-primary hover:bg-primary-light/25">
+        <div class="flex shrink-0 items-center self-start sm:self-center sm:ml-auto">
+          <NuxtLink to="/settings" class="flex items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-1.5 shadow-sm transition hover:border-primary hover:bg-primary-light/25 sm:py-2">
             <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-primary-light/35 text-xs font-semibold text-foreground">
               <img v-if="profileAvatar" :src="profileAvatar" alt="Avatar" class="h-full w-full object-cover" />
               <span v-else>{{ profileInitials }}</span>
             </div>
-            <span class="hidden max-w-[120px] truncate text-xs font-medium text-foreground md:inline">{{ profileName }}</span>
+            <span class="max-w-[140px] truncate text-xs font-medium text-foreground">{{ profileName }}</span>
           </NuxtLink>
         </div>
       </div>
@@ -104,7 +104,7 @@ watch(
           v-for="link in topLinks"
           :key="link.to"
           :to="link.to"
-          class="whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium text-muted transition hover:bg-primary-light/30 hover:text-foreground sm:text-sm"
+          class="whitespace-nowrap rounded-xl px-2.5 py-2 text-[11px] font-medium text-muted transition hover:bg-primary-light/30 hover:text-foreground sm:px-3 sm:text-sm"
           :class="route.path === link.to ? 'bg-primary-light/45 text-foreground' : ''"
         >
           {{ link.label }}

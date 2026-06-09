@@ -235,9 +235,9 @@ onMounted(async () => {
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
+    <div class="rounded-2xl border border-border bg-surface p-4 shadow-panel sm:p-5">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Administração</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Gerenciar usuários</h2>
+      <h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Gerenciar usuários</h2>
       <p class="mt-2 text-sm text-muted">Criar usuários, resetar senha, ativar/desativar e excluir acesso.</p>
     </div>
 
@@ -314,7 +314,7 @@ onMounted(async () => {
               <p class="mt-1 text-[11px] text-muted">Criado em: {{ formatDate(user.criadoEm) }} · Último login: {{ formatDate(user.ultimoLogin) }}</p>
             </div>
 
-            <div class="flex flex-wrap gap-2">
+            <div class="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
               <span v-if="user.isProtected" class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
                 Administrador principal
               </span>

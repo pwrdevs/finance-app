@@ -87,11 +87,11 @@ async function onRecoverPassword() {
 <template>
   <section class="mx-auto w-full max-w-xl space-y-6">
     <div class="rounded-2xl border border-border bg-surface p-6 text-center shadow-panel">
-      <div class="mx-auto mb-4 h-28 w-full max-w-[560px] overflow-hidden">
+      <div class="mx-auto mb-4 flex h-24 w-full max-w-[420px] items-center justify-center sm:h-28 sm:max-w-[480px]">
         <img
           src="/pwrdevs-escrito.png"
           alt="PWRDEVS"
-          class="w-full h-auto -translate-y-24"
+          class="max-h-full w-auto max-w-full object-contain"
         >
       </div>
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Acesso</p>
