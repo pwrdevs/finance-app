@@ -235,12 +235,6 @@ onMounted(async () => {
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-4 shadow-panel sm:p-5">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Administração</p>
-      <h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Gerenciar usuários</h2>
-      <p class="mt-2 text-sm text-muted">Criar usuários, resetar senha, ativar/desativar e excluir acesso.</p>
-    </div>
-
     <AppCard title="Novo usuário">
       <div class="grid gap-3 md:grid-cols-3">
         <AppInput v-model="fullName" label="Nome" placeholder="Nome completo" />

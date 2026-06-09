@@ -218,14 +218,6 @@ onMounted(async () => {
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">PWRDEVS / Desenvolvedor</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Setup técnico</h2>
-      <p class="mt-2 text-sm text-muted">
-        Pagina temporaria para validar conectividade do banco e visibilidade das tabelas principais.
-      </p>
-    </div>
-
     <AppCard title="Conexao Supabase">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">

@@ -182,12 +182,6 @@ watch(
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-4 shadow-panel sm:p-5">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Painel</p>
-      <h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Resumo Financeiro Mensal</h2>
-      <p class="mt-2 text-sm text-muted">Os totais usam valor efetivo (real ou previsto) e excluem cancelados dos indicadores principais.</p>
-    </div>
-
     <AppCard title="Filtros" :subtitle="loading ? 'Carregando dados mensais...' : 'Selecione mes e ano para atualizar o resumo.'">
       <div class="grid gap-4 md:grid-cols-2">
         <div class="space-y-2">

@@ -42,15 +42,22 @@ const pageError = ref('')
 const modalError = ref('')
 const cancelError = ref('')
 const deleteError = ref('')
+const filtersModalError = ref('')
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
-const isFiltersPanelOpen = ref(false)
 const cardFilter = ref('all')
 const personFilter = ref('all')
 const categoryFilter = ref('all')
 const accountFilter = ref('all')
 const statusFilter = ref<'all' | TransactionStatus>('all')
 const searchDescription = ref('')
+const isFiltersModalOpen = ref(false)
+const draftMonthYear = ref(monthYear.value)
+const draftCardFilter = ref(cardFilter.value)
+const draftPersonFilter = ref(personFilter.value)
+const draftCategoryFilter = ref(categoryFilter.value)
+const draftAccountFilter = ref(accountFilter.value)
+const draftStatusFilter = ref<'all' | TransactionStatus>(statusFilter.value)
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
@@ -294,15 +301,44 @@ function clearFilters() {
   accountFilter.value = 'all'
   statusFilter.value = 'all'
   searchDescription.value = ''
+  draftMonthYear.value = monthYear.value
+  draftCardFilter.value = 'all'
+  draftPersonFilter.value = 'all'
+  draftCategoryFilter.value = 'all'
+  draftAccountFilter.value = 'all'
+  draftStatusFilter.value = 'all'
 }
 
-function toggleFiltersPanel() {
-  isFiltersPanelOpen.value = !isFiltersPanelOpen.value
+function openFiltersModal() {
+  draftMonthYear.value = monthYear.value
+  draftCardFilter.value = cardFilter.value
+  draftPersonFilter.value = personFilter.value
+  draftCategoryFilter.value = categoryFilter.value
+  draftAccountFilter.value = accountFilter.value
+  draftStatusFilter.value = statusFilter.value
+  filtersModalError.value = ''
+  isFiltersModalOpen.value = true
 }
 
 async function applyFilters() {
+  filtersModalError.value = ''
+
+  try {
+    parseMonthYear(draftMonthYear.value)
+  } catch (err) {
+    filtersModalError.value = err instanceof Error ? err.message : 'Período inválido.'
+    return
+  }
+
+  monthYear.value = draftMonthYear.value
+  cardFilter.value = draftCardFilter.value
+  personFilter.value = draftPersonFilter.value
+  categoryFilter.value = draftCategoryFilter.value
+  accountFilter.value = draftAccountFilter.value
+  statusFilter.value = draftStatusFilter.value
+
   await fetchRows()
-  isFiltersPanelOpen.value = false
+  isFiltersModalOpen.value = false
 }
 
 async function fetchRows() {
@@ -618,116 +654,85 @@ async function confirmDeleteTransaction() {
 onMounted(async () => {
   await Promise.all([fetchOptions(), fetchRows()])
 })
-
-watch(monthYear, fetchRows)
 </script>
 
 <template>
   <section class="space-y-5 overflow-x-hidden">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Lancamentos</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Conferencia Financeira</h2>
-      <p class="mt-2 text-sm text-muted">Tabela principal de conciliacao com conferencia e valor realizado inline.</p>
-    </div>
-
-    <AppCard title="Painel de controle" subtitle="Ações rápidas e resumo dos filtros ativos.">
-      <div class="relative flex flex-col gap-3">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground">
-            Período selecionado: {{ monthYear }}
-          </span>
-          <AppButton label="Filtros" size="sm" variant="ghost" @click="toggleFiltersPanel" />
+    <AppCard>
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <AppButton label="Filtros" size="sm" variant="ghost" @click="openFiltersModal" />
           <AppButton label="Limpar" size="sm" variant="ghost" @click="clearFilters" />
-          <div class="ml-auto">
-            <AppButton label="Novo lançamento" size="sm" @click="openCreateModal" />
-          </div>
+          <AppButton label="Novo" size="sm" @click="openCreateModal" />
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium" :class="'border-border bg-background text-muted'">
-            Período: {{ monthYear }}
-          </span>
-          <span
-            class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium"
-            :class="hasActiveCardFilter ? 'border-primary-dark/50 bg-primary-light text-foreground' : 'border-border bg-background text-muted'"
-          >
-            Cartão: {{ selectedCardLabel }}
-          </span>
-          <span
-            class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium"
-            :class="hasActiveStatusFilter ? 'border-primary-dark/50 bg-primary-light text-foreground' : 'border-border bg-background text-muted'"
-          >
-            Status: {{ selectedStatusLabel }}
-          </span>
+        <div class="mx-auto w-full max-w-xl">
+          <AppInput v-model="searchDescription" label="Pesquisar descrição" placeholder="Digite parte da descrição" />
         </div>
-
-        <Transition
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="translate-y-2 scale-[0.98] opacity-0"
-          enter-to-class="translate-y-0 scale-100 opacity-100"
-          leave-active-class="transition duration-150 ease-in"
-          leave-from-class="translate-y-0 scale-100 opacity-100"
-          leave-to-class="translate-y-2 scale-[0.98] opacity-0"
-        >
-          <div
-            v-if="isFiltersPanelOpen"
-            class="absolute inset-x-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-[0_20px_50px_rgba(15,23,42,0.16)]"
-          >
-            <div class="max-h-[min(70vh,32rem)] overflow-y-auto pr-1">
-              <div class="grid gap-3 md:grid-cols-3">
-              <AppInput v-model="monthYear" label="Período" type="month" />
-
-              <div class="space-y-2">
-                <label class="block text-sm font-medium text-foreground">Cartão</label>
-                <select v-model="cardFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                  <option value="all">Todos</option>
-                  <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-                </select>
-              </div>
-
-              <div class="space-y-2">
-                <label class="block text-sm font-medium text-foreground">Responsável</label>
-                <select v-model="personFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                  <option value="all">Todos</option>
-                  <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-                </select>
-              </div>
-
-              <div class="space-y-2">
-                <label class="block text-sm font-medium text-foreground">Categoria</label>
-                <select v-model="categoryFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                  <option value="all">Todas</option>
-                  <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-                </select>
-              </div>
-
-              <div class="space-y-2">
-                <label class="block text-sm font-medium text-foreground">Conta</label>
-                <select v-model="accountFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                  <option value="all">Todas</option>
-                  <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-                </select>
-              </div>
-
-              <div class="space-y-2">
-                <label class="block text-sm font-medium text-foreground">Status</label>
-                <select v-model="statusFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                  <option value="all">Todos</option>
-                  <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
-                </select>
-              </div>
-              </div>
-
-              <div class="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-                <AppInput v-model="searchDescription" label="Pesquisar descrição" placeholder="Digite parte da descrição" />
-                <AppButton label="Aplicar filtros" variant="secondary" @click="applyFilters" />
-                <AppButton label="Limpar filtros" variant="ghost" @click="clearFilters" />
-              </div>
-            </div>
-          </div>
-        </Transition>
       </div>
     </AppCard>
+
+    <AppModal
+      v-model="isFiltersModalOpen"
+      title="Filtros"
+      description="Aplique os filtros para atualizar os resultados da tabela."
+      max-width-class="max-w-3xl"
+    >
+      <div class="space-y-4">
+        <div class="grid gap-3 md:grid-cols-3">
+          <AppInput v-model="draftMonthYear" label="Período" type="month" />
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Cartão</label>
+            <select v-model="draftCardFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="all">Todos</option>
+              <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Responsável</label>
+            <select v-model="draftPersonFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="all">Todos</option>
+              <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Categoria</label>
+            <select v-model="draftCategoryFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="all">Todas</option>
+              <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Conta</label>
+            <select v-model="draftAccountFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="all">Todas</option>
+              <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Status</label>
+            <select v-model="draftStatusFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="all">Todos</option>
+              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
+            </select>
+          </div>
+        </div>
+
+        <p v-if="filtersModalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ filtersModalError }}</p>
+      </div>
+
+      <template #footer>
+        <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <AppButton label="Limpar filtros" variant="ghost" @click="clearFilters" />
+          <AppButton label="Aplicar filtros" variant="secondary" @click="applyFilters" />
+        </div>
+      </template>
+    </AppModal>
 
     <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
 

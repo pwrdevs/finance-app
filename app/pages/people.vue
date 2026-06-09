@@ -187,12 +187,6 @@ onMounted(async () => {
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dados Mestres</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Pessoas</h2>
-      <p class="mt-2 text-sm text-muted">Gerencie responsáveis usados nos lançamentos financeiros.</p>
-    </div>
-
     <AppCard title="Filtros">
       <div class="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-end">
         <AppInput v-model="search" label="Busca" placeholder="Buscar por nome ou observação" />

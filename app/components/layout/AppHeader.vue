@@ -77,7 +77,7 @@ watch(
 <template>
   <header class="shrink-0 border-b border-border/90 bg-background/95 shadow-soft backdrop-blur-sm">
     <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-3 py-3 sm:gap-3 sm:px-6 lg:px-8">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <div class="flex items-center justify-between gap-3">
         <div class="pointer-events-none flex min-w-0 items-center gap-2">
           <div class="flex h-12 w-16 shrink-0 items-center justify-center sm:h-16 sm:w-24">
             <img src="/pwrdevs-logo.png" alt="PWRDEVS" class="max-h-full w-auto max-w-full object-contain" />
@@ -88,13 +88,13 @@ watch(
           </div>
         </div>
 
-        <div class="flex shrink-0 items-center self-start sm:self-center sm:ml-auto">
+        <div class="ml-auto flex shrink-0 items-center">
           <NuxtLink to="/settings" class="flex items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-1.5 shadow-sm transition hover:border-primary hover:bg-primary-light/25 sm:py-2">
             <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-primary-light/35 text-xs font-semibold text-foreground">
               <img v-if="profileAvatar" :src="profileAvatar" alt="Avatar" class="h-full w-full object-cover" />
               <span v-else>{{ profileInitials }}</span>
             </div>
-            <span class="max-w-[140px] truncate text-xs font-medium text-foreground">{{ profileName }}</span>
+            <span class="hidden max-w-[140px] truncate text-xs font-medium text-foreground sm:inline">{{ profileName }}</span>
           </NuxtLink>
         </div>
       </div>

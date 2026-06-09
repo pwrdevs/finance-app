@@ -209,3 +209,6 @@
 - 2026-06-08: Filtros migrados para painel recolhível (fechado por padrão em desktop/mobile) com animação suave e preservação de estado ao abrir/fechar; painel contém período, cartão, responsável, categoria, conta, status e pesquisa por descrição.
 - 2026-06-08: UX de resumo adicionada com chips de filtros ativos (`Período`, `Cartão`, `Status`) com destaque visual quando valor é diferente de `Todos`, mantendo `overflow-x` interno na tabela e evitando scroll horizontal da página.
 - 2026-06-08: Validação desta rodada: `get_errors` sem erros em `transactions.vue`, validação visual em `/transactions` confirmando barra compacta + painel recolhível + atualização de chips/filtros, e `npm run build` concluído com sucesso (warning conhecido de sourcemap do Nuxt).
+- 2026-06-09: Blocos de cabeçalho de contexto (ex.: `Lancamentos` / `Conferencia Financeira` e equivalentes) removidos das telas internas autenticadas para liberar espaço vertical e priorizar conteúdo útil (filtros, tabela e cards de dados).
+- 2026-06-09: Fluxo de filtros em `/transactions` alterado para modal: botão `Filtros` abre janela dedicada, usuário ajusta os campos em rascunho e `Aplicar filtros` fecha a janela e aplica o resultado.
+- 2026-06-09: Header mobile ajustado para manter perfil alinhado à direita com avatar visível e nome oculto no celular, preservando o layout atual no desktop.

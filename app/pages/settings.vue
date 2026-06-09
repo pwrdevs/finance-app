@@ -289,12 +289,6 @@ watch(
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Configurações</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Preferências do aplicativo</h2>
-      <p class="mt-2 text-sm text-muted">Gerencie perfil, aparência e opções do sistema.</p>
-    </div>
-
     <AppCard title="Perfil" subtitle="Informações da conta autenticada.">
       <div class="grid gap-4 md:grid-cols-3">
         <div class="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-primary-light/35 text-xl font-semibold text-foreground">

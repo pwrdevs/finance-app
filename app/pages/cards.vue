@@ -232,12 +232,6 @@ onMounted(fetchRows)
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-2xl border border-border bg-surface p-5 shadow-panel">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dados mestres</p>
-      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-foreground">Cartoes</h2>
-      <p class="mt-2 text-sm text-muted">Gerencie cartoes de credito e ciclo de fatura.</p>
-    </div>
-
     <AppCard title="Filtros">
       <div class="grid gap-4 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
         <AppInput v-model="search" label="Buscar" placeholder="Buscar por cartao, bandeira ou responsavel" />
