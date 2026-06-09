@@ -617,7 +617,6 @@ async function openEditModal(row: TransactionInstanceItem) {
 }
 
 async function deleteSingleTransaction(row: TransactionInstanceItem) {
-  deleteSaving.value = true
   pageError.value = ''
 
   try {
@@ -625,8 +624,6 @@ async function deleteSingleTransaction(row: TransactionInstanceItem) {
     await fetchRows()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel excluir o lancamento.'
-  } finally {
-    deleteSaving.value = false
   }
 }
 
