@@ -79,7 +79,6 @@ const isExportPreviewOpen = ref(false)
 const isCancelModalOpen = ref(false)
 const isDeleteModalOpen = ref(false)
 const exportPreviewRef = ref<HTMLElement | null>(null)
-const exportGeneratedAt = ref('')
 const editingRow = ref<TransactionInstanceItem | null>(null)
 const cancelTargetRow = ref<TransactionInstanceItem | null>(null)
 const deleteTargetRow = ref<TransactionInstanceItem | null>(null)
@@ -196,44 +195,6 @@ const selectedCardLabel = computed(() => {
 const selectedStatusLabel = computed(() => {
   if (statusFilter.value === 'all') return 'Todos'
   return transactionStatusLabelMap[statusFilter.value]
-})
-const selectedPersonLabel = computed(() => {
-  if (personFilter.value === 'all') return 'Todos'
-  return people.value.find(entry => entry.id === personFilter.value)?.name ?? 'Todos'
-})
-const selectedCategoryLabel = computed(() => {
-  if (categoryFilter.value === 'all') return 'Todas'
-  return categories.value.find(entry => entry.id === categoryFilter.value)?.name ?? 'Todas'
-})
-const selectedAccountLabel = computed(() => {
-  if (accountFilter.value === 'all') return 'Todas'
-  return accounts.value.find(entry => entry.id === accountFilter.value)?.name ?? 'Todas'
-})
-const selectedLinkLabel = computed(() => {
-  if (reimbursementLinkFilter.value === 'all') return 'Todos'
-  return reimbursementLinkFilter.value === 'linked' ? 'Vinculados' : 'Normais'
-})
-const selectedPeriodLabel = computed(() => {
-  const [year, month] = monthYear.value.split('-')
-  const monthOption = filterMonthOptions.find(entry => entry.value === month)
-  return monthOption ? `${monthOption.label}/${year}` : monthYear.value
-})
-const previewSubtitle = computed(() => {
-  const filters = [
-    `Periodo: ${selectedPeriodLabel.value}`,
-    `Cartao: ${selectedCardLabel.value}`,
-    `Responsavel: ${selectedPersonLabel.value}`,
-    `Categoria: ${selectedCategoryLabel.value}`,
-    `Conta: ${selectedAccountLabel.value}`,
-    `Status: ${selectedStatusLabel.value}`,
-    `Vinculo: ${selectedLinkLabel.value}`
-  ]
-
-  if (searchDescription.value.trim()) {
-    filters.push(`Pesquisa: "${searchDescription.value.trim()}"`)
-  }
-
-  return filters.join(' • ')
 })
 const hasActiveCardFilter = computed(() => cardFilter.value !== 'all')
 const hasActiveStatusFilter = computed(() => statusFilter.value !== 'all')
@@ -416,7 +377,6 @@ function openExportPreview() {
     return
   }
 
-  exportGeneratedAt.value = new Date().toLocaleString('pt-BR')
   pageError.value = ''
   isExportPreviewOpen.value = true
 }
@@ -1195,24 +1155,27 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="mt-3 space-y-1 text-[11px] leading-relaxed text-[#5f664f]">
-              <p>{{ previewSubtitle }}</p>
-              <p>Gerado em: {{ exportGeneratedAt || new Date().toLocaleString('pt-BR') }}</p>
-            </div>
-
             <div class="mt-4 overflow-hidden rounded-lg border border-border/80 bg-[#fdfdf9]">
               <div class="overflow-x-auto">
-                <table class="min-w-full text-xs text-[#2f3526]">
+                <table class="w-full table-fixed text-xs text-[#2f3526]">
+                  <colgroup>
+                    <col class="w-[12%]" />
+                    <col class="w-[27%]" />
+                    <col class="w-[15%]" />
+                    <col class="w-[14%]" />
+                    <col class="w-[11%]" />
+                    <col class="w-[7%]" />
+                    <col class="w-[14%]" />
+                  </colgroup>
                   <thead>
                     <tr class="bg-[#d7e0b5] text-[11px] font-semibold uppercase tracking-wide text-[#334127]">
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Data</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle min-w-[260px]">Descricao</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Vinculo</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Responsavel</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Descricao</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle whitespace-nowrap">Responsavel</th>
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Categoria</th>
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Cartao</th>
                       <th class="border-b border-border/80 px-3 py-2 text-center align-middle">Parcela</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-right align-middle">Valor considerado</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-right align-middle whitespace-nowrap">Valor</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1223,18 +1186,17 @@ onMounted(async () => {
                     >
                       <td class="px-3 py-2.5 text-left align-middle">{{ formatDateBr(row.instance_date) }}</td>
                       <td class="px-3 py-2.5 text-left align-middle">{{ row.description_text }}</td>
-                      <td class="px-3 py-2.5 text-left align-middle">{{ row.link_badge }}</td>
-                      <td class="px-3 py-2.5 text-left align-middle">{{ row.person_name }}</td>
+                      <td class="px-3 py-2.5 text-left align-middle whitespace-nowrap">{{ row.person_name }}</td>
                       <td class="px-3 py-2.5 text-left align-middle">{{ row.category_name }}</td>
                       <td class="px-3 py-2.5 text-left align-middle">{{ row.card_name }}</td>
                       <td class="px-3 py-2.5 text-center align-middle">{{ row.installment_label }}</td>
-                      <td class="px-3 py-2.5 text-right align-middle tabular-nums">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</td>
+                      <td class="px-3 py-2.5 text-right align-middle tabular-nums whitespace-nowrap">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</td>
                     </tr>
                   </tbody>
                   <tfoot>
                     <tr class="bg-[#c0cf8f] font-semibold text-[#2f3526]">
-                      <td colspan="7" class="px-3 py-3 text-right align-middle">Total</td>
-                      <td class="px-3 py-3 text-right align-middle text-sm tabular-nums">{{ formatCurrency(exportTotalEffective) }}</td>
+                      <td colspan="6" class="px-3 py-3 text-right align-middle">Total</td>
+                      <td class="px-3 py-3 text-right align-middle text-xs tabular-nums whitespace-nowrap">{{ formatCurrency(exportTotalEffective) }}</td>
                     </tr>
                   </tfoot>
                 </table>
