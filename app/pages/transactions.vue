@@ -1155,9 +1155,58 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="mt-4 overflow-hidden rounded-lg border border-border/80 bg-[#fdfdf9]">
-              <div class="overflow-x-auto">
-                <table class="w-full table-fixed text-xs text-[#2f3526]">
+            <div class="mt-4 space-y-4">
+              <div class="grid gap-3 md:hidden">
+                <article
+                  v-for="row in filteredRows"
+                  :key="`mobile-${row.id}`"
+                  class="rounded-lg border border-border/80 bg-[#fdfdf9] p-3 shadow-sm"
+                >
+                  <div class="flex items-start justify-between gap-3 border-b border-border/70 pb-2">
+                    <div>
+                      <p class="text-[11px] font-semibold uppercase tracking-wide text-[#66704f]">{{ formatDateBr(row.instance_date) }}</p>
+                      <p class="mt-1 text-sm font-semibold leading-5 text-[#2f3526]">{{ row.description_text }}</p>
+                    </div>
+                    <span class="shrink-0 rounded-full bg-[#e8edd5] px-2.5 py-1 text-[11px] font-semibold text-[#425030]">
+                      {{ row.installment_label }}
+                    </span>
+                  </div>
+
+                  <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-[#4b543f]">
+                    <div>
+                      <dt class="uppercase tracking-wide text-[#7a8466]">Responsável</dt>
+                      <dd class="mt-0.5 whitespace-nowrap text-sm font-medium text-[#2f3526]">{{ row.person_name }}</dd>
+                    </div>
+                    <div>
+                      <dt class="uppercase tracking-wide text-[#7a8466]">Categoria</dt>
+                      <dd class="mt-0.5 text-sm font-medium text-[#2f3526]">{{ row.category_name }}</dd>
+                    </div>
+                    <div>
+                      <dt class="uppercase tracking-wide text-[#7a8466]">Cartão</dt>
+                      <dd class="mt-0.5 text-sm font-medium text-[#2f3526]">{{ row.card_name }}</dd>
+                    </div>
+                    <div>
+                      <dt class="uppercase tracking-wide text-[#7a8466]">Vínculo</dt>
+                      <dd class="mt-0.5 text-sm font-medium text-[#2f3526]">{{ row.link_badge }}</dd>
+                    </div>
+                    <div class="col-span-2 flex items-center justify-between rounded-md bg-[#eef2de] px-3 py-2">
+                      <span class="text-[11px] font-semibold uppercase tracking-wide text-[#66704f]">Valor</span>
+                      <span class="text-sm font-semibold tabular-nums text-[#2f3526] whitespace-nowrap">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</span>
+                    </div>
+                  </dl>
+                </article>
+
+                <div class="rounded-lg border border-border/80 bg-[#c0cf8f] px-4 py-3 text-[#2f3526] shadow-sm">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm font-semibold uppercase tracking-wide">Total</span>
+                    <span class="text-base font-semibold tabular-nums whitespace-nowrap">{{ formatCurrency(exportTotalEffective) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="hidden overflow-hidden rounded-lg border border-border/80 bg-[#fdfdf9] md:block">
+                <div class="overflow-x-auto">
+                  <table class="w-full table-fixed text-xs text-[#2f3526]">
                   <colgroup>
                     <col class="w-[12%]" />
                     <col class="w-[27%]" />
@@ -1199,7 +1248,8 @@ onMounted(async () => {
                       <td class="px-3 py-3 text-right align-middle text-xs tabular-nums whitespace-nowrap">{{ formatCurrency(exportTotalEffective) }}</td>
                     </tr>
                   </tfoot>
-                </table>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
