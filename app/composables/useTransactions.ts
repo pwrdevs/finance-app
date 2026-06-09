@@ -1492,29 +1492,6 @@ export function useTransactions() {
       throw sourceTransactionError
     }
 
-
-  async function cancelInstallmentTransaction(item: TransactionInstanceItem, scope: DeleteRecurringScope = 'single') {
-    if (scope === 'single') {
-      await setStatus(item, 'canceled')
-      return
-    }
-
-    if (!item.source_transaction_id) {
-      throw new Error('Lancamento de origem parcelada obrigatorio.')
-    }
-
-    const { error: cancelError } = await supabase
-      .from('transaction_instances')
-      .update({
-        status: 'canceled'
-      })
-      .eq('source_transaction_id', item.source_transaction_id)
-      .gte('instance_date', item.instance_date)
-
-    if (cancelError) {
-      throw cancelError
-    }
-  }
     if (!sourceTransaction) {
       return
     }
@@ -1565,6 +1542,29 @@ export function useTransactions() {
 
     if (deleteRuleError) {
       throw deleteRuleError
+    }
+  }
+
+  async function cancelInstallmentTransaction(item: TransactionInstanceItem, scope: DeleteRecurringScope = 'single') {
+    if (scope === 'single') {
+      await setStatus(item, 'canceled')
+      return
+    }
+
+    if (!item.source_transaction_id) {
+      throw new Error('Lancamento de origem parcelada obrigatorio.')
+    }
+
+    const { error: cancelError } = await supabase
+      .from('transaction_instances')
+      .update({
+        status: 'canceled'
+      })
+      .eq('source_transaction_id', item.source_transaction_id)
+      .gte('instance_date', item.instance_date)
+
+    if (cancelError) {
+      throw cancelError
     }
   }
 
