@@ -30,6 +30,7 @@ export default defineNuxtConfig({
     public: {
       adminEmail: process.env.ADMIN_EMAIL || '',
       appEnv: process.env.NUXT_PUBLIC_APP_ENV || process.env.NODE_ENV || 'development',
+      appBuildTimestamp: process.env.NUXT_PUBLIC_APP_BUILD_TIMESTAMP || new Date().toISOString(),
       sessionInactivityDays: Number(process.env.NUXT_PUBLIC_SESSION_INACTIVITY_DAYS || 7)
     }
   },

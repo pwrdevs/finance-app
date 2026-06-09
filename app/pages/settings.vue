@@ -25,8 +25,28 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const captureInput = ref<HTMLInputElement | null>(null)
 
 const appVersion = 'MVP 0.1.0'
-const appVersionUpdatedAt = '09/06/2026 12:18'
 const currentEnvironment = computed(() => config.public.appEnv || 'development')
+const appVersionUpdatedAt = computed(() => {
+  const rawTimestamp = String(config.public.appBuildTimestamp || '').trim()
+
+  if (!rawTimestamp) {
+    return 'Não disponível'
+  }
+
+  const parsed = new Date(rawTimestamp)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return rawTimestamp
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(parsed)
+})
 
 const profileEmail = computed(() => user.value?.email || authEmail.value || 'Não disponível')
 
