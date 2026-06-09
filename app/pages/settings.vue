@@ -25,6 +25,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const captureInput = ref<HTMLInputElement | null>(null)
 
 const appVersion = 'MVP 0.1.0'
+const appVersionUpdatedAt = '09/06/2026 12:18'
 const currentEnvironment = computed(() => config.public.appEnv || 'development')
 
 const profileEmail = computed(() => user.value?.email || authEmail.value || 'Não disponível')
@@ -375,10 +376,15 @@ watch(
     </AppCard>
 
     <AppCard title="Sistema" subtitle="Informações técnicas e sessão atual.">
-      <div class="grid gap-4 md:grid-cols-2">
+      <div class="grid gap-4 md:grid-cols-3">
         <div class="rounded-xl border border-border bg-background px-4 py-3">
           <p class="text-xs uppercase tracking-[0.12em] text-muted">Versão</p>
           <p class="mt-1 text-sm font-semibold text-foreground">{{ appVersion }}</p>
+        </div>
+
+        <div class="rounded-xl border border-border bg-background px-4 py-3">
+          <p class="text-xs uppercase tracking-[0.12em] text-muted">Atualizada em</p>
+          <p class="mt-1 text-sm font-semibold text-foreground">{{ appVersionUpdatedAt }}</p>
         </div>
 
         <div class="rounded-xl border border-border bg-background px-4 py-3">
