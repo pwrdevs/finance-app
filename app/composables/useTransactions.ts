@@ -654,8 +654,8 @@ export function useTransactions() {
     }
 
     const { data, error } = await query
-      .order('instance_date', { ascending: false })
-      .order('created_at', { ascending: false })
+      .order('instance_date', { ascending: true })
+      .order('created_at', { ascending: true })
 
     if (error) {
       throw error
