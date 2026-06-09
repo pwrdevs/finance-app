@@ -389,12 +389,17 @@ function parseRecurringOccurrencesCount(value?: number | null) {
 function buildRecurringDates(startDate: string, frequency: RecurringFrequency, endDate: string | null, occurrencesLimit?: number | null) {
   const dates: string[] = []
   const safeOccurrencesLimit = occurrencesLimit ?? null
+  const isOpenEnded = !endDate && !safeOccurrencesLimit
 
   if (safeOccurrencesLimit && safeOccurrencesLimit < 1) {
     return dates
   }
 
-  while (dates.length < 12) {
+  while (true) {
+    if (isOpenEnded && dates.length >= 12) {
+      break
+    }
+
     const cursor = addRecurringInterval(startDate, frequency, dates.length)
 
     if (endDate && cursor > endDate) {
