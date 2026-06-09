@@ -7,6 +7,7 @@ import AppTable from '~/components/common/AppTable.vue'
 import {
   RECURRING_FREQUENCIES,
   type DeleteRecurringScope,
+  type RecurringEndMode,
   type RecurringFrequency,
   TRANSACTION_STATUS,
   type RecurringScope,
@@ -24,6 +25,7 @@ const {
   cancelRecurringTransaction,
   createTransaction,
   deleteTransactionInstance: removeTransactionInstance,
+  getRecurringConfiguration,
   listFilterOptions,
   listManualInstances,
   setChecked,
@@ -77,7 +79,7 @@ const formRecurringStartDate = ref('')
 const formRecurringEndDate = ref('')
 const formRecurringNoEndDate = ref(true)
 const formRecurringFrequency = ref<RecurringFrequency>('monthly')
-const formRecurringEndingMode = ref<'open' | 'end_date' | 'occurrences'>('open')
+const formRecurringEndingMode = ref<RecurringEndMode>('no_end')
 const formRecurringOccurrences = ref('12')
 const formRecurringScope = ref<RecurringScope>('single')
 const cancelRecurringScope = ref<RecurringScope>('single')
@@ -183,7 +185,7 @@ function resetForm() {
   formRecurringEndDate.value = ''
   formRecurringNoEndDate.value = true
   formRecurringFrequency.value = 'monthly'
-  formRecurringEndingMode.value = 'open'
+  formRecurringEndingMode.value = 'no_end'
   formRecurringOccurrences.value = '12'
   formRecurringScope.value = 'single'
   formPersonId.value = ''
@@ -227,8 +229,18 @@ function openCreateModal() {
   isModalOpen.value = true
 }
 
-function openEditModal(row: TransactionInstanceItem) {
+async function openEditModal(row: TransactionInstanceItem) {
   fillFormFromRow(row)
+
+  if (row.origin_type === 'recurring' && row.source_transaction_id) {
+    const recurringConfig = await getRecurringConfiguration(row.source_transaction_id)
+    formRecurringStartDate.value = recurringConfig.start_date
+    formRecurringFrequency.value = recurringConfig.frequency
+    formRecurringEndingMode.value = recurringConfig.end_mode
+    formRecurringEndDate.value = recurringConfig.end_date || ''
+    formRecurringOccurrences.value = recurringConfig.occurrences_count == null ? '12' : String(recurringConfig.occurrences_count)
+  }
+
   isModalOpen.value = true
 }
 
@@ -397,22 +409,22 @@ async function submitForm() {
 
   if (formOriginType.value === 'recurring') {
     if (!formRecurringStartDate.value) {
-      modalError.value = 'Data inicial da recorrencia obrigatoria.'
+      modalError.value = 'Data inicial da recorrência obrigatória.'
       return
     }
 
-    if (!editingRow.value && formRecurringEndingMode.value === 'end_date' && !formRecurringEndDate.value) {
-      modalError.value = 'Data final obrigatoria quando a opcao sem data final estiver desativada.'
+    if (formRecurringEndingMode.value === 'end_date' && !formRecurringEndDate.value) {
+      modalError.value = 'Data final da recorrência obrigatória quando o modo Data final estiver selecionado.'
       return
     }
 
     if (formRecurringEndingMode.value === 'end_date' && formRecurringEndDate.value && formRecurringEndDate.value < formRecurringStartDate.value) {
-      modalError.value = 'Data final da recorrencia deve ser maior ou igual a data inicial.'
+      modalError.value = 'Data final da recorrência deve ser maior ou igual à data inicial.'
       return
     }
 
-    if (!editingRow.value && formRecurringEndingMode.value === 'occurrences' && (!Number.isInteger(parsedRecurringOccurrences) || parsedRecurringOccurrences < 1)) {
-      modalError.value = 'Quantidade de recorrencias deve ser inteira e maior ou igual a 1.'
+    if (formRecurringEndingMode.value === 'count' && (!Number.isInteger(parsedRecurringOccurrences) || parsedRecurringOccurrences < 1)) {
+      modalError.value = 'Quantidade de recorrências deve ser um número inteiro maior ou igual a 1.'
       return
     }
   }
@@ -438,8 +450,10 @@ async function submitForm() {
             description: formDescription.value,
             status: formStatus.value,
             is_checked: editingRow.value.is_checked,
+            recurring_end_mode: formRecurringEndingMode.value,
             recurring_end_date: formRecurringEndingMode.value === 'end_date' ? (formRecurringEndDate.value || null) : null,
-            recurring_no_end_date: formRecurringEndingMode.value === 'open'
+            recurring_occurrences_count: formRecurringEndingMode.value === 'count' ? parsedRecurringOccurrences : null,
+            recurring_no_end_date: formRecurringEndingMode.value === 'no_end'
           },
           formRecurringScope.value
         )
@@ -477,12 +491,16 @@ async function submitForm() {
         installment_total: formOriginType.value === 'installment' ? parsedInstallmentTotal : undefined,
         installment_start_date: formOriginType.value === 'installment' ? formInstallmentStartDate.value : undefined,
         recurring_start_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : undefined,
+        recurring_end_mode: formOriginType.value === 'recurring' ? formRecurringEndingMode.value : undefined,
         recurring_end_date: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'end_date'
           ? (formRecurringEndDate.value || null)
           : null,
-        recurring_no_end_date: formOriginType.value === 'recurring' ? formRecurringEndingMode.value === 'open' : undefined,
+        recurring_no_end_date: formOriginType.value === 'recurring' ? formRecurringEndingMode.value === 'no_end' : undefined,
         recurring_frequency: formOriginType.value === 'recurring' ? formRecurringFrequency.value : undefined,
-        recurring_occurrences_limit: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'occurrences'
+        recurring_occurrences_count: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'count'
+          ? parsedRecurringOccurrences
+          : null,
+        recurring_occurrences_limit: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'count'
           ? parsedRecurringOccurrences
           : null,
         person_id: formPersonId.value || null,
@@ -802,11 +820,11 @@ watch(monthYear, fetchRows)
             </div>
 
             <div class="space-y-2">
-              <label class="block text-sm font-medium text-foreground">Encerrar recorrencia por</label>
-              <select v-model="formRecurringEndingMode" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
-                <option value="open">Sem data final (limite MVP de 12 ocorrencias)</option>
+              <label class="block text-sm font-medium text-foreground">Encerrar recorrência por</label>
+              <select v-model="formRecurringEndingMode" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="no_end">Sem data final</option>
+                <option value="count">Quantidade de vezes</option>
                 <option value="end_date">Data final</option>
-                <option value="occurrences">Quantidade de recorrencias</option>
               </select>
             </div>
 
@@ -815,20 +833,22 @@ watch(monthYear, fetchRows)
               v-model="formRecurringEndDate"
               label="Data final"
               type="date"
-              :disabled="Boolean(editingRow)"
             />
 
             <AppInput
-              v-if="formRecurringEndingMode === 'occurrences'"
+              v-if="formRecurringEndingMode === 'count'"
               v-model="formRecurringOccurrences"
-              label="Quantidade de recorrencias"
+              label="Quantidade de recorrências"
               type="number"
               placeholder="Ex.: 4"
-              :disabled="Boolean(editingRow)"
             />
 
+            <p v-if="formRecurringEndingMode === 'no_end'" class="text-xs text-muted">
+              O MVP gera até 12 meses futuros para recorrências sem data final.
+            </p>
+
             <p v-if="editingRow" class="text-xs text-muted">
-              Frequencia e regra de termino ficam travadas na edicao para evitar distorcer instancias recorrentes ja geradas.
+              A frequência permanece travada na edição para evitar distorcer instâncias recorrentes já geradas.
             </p>
           </div>
 

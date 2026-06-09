@@ -12,6 +12,9 @@ export type RecurringScope = (typeof RECURRING_SCOPE)[number]
 export const RECURRING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'] as const
 export type RecurringFrequency = (typeof RECURRING_FREQUENCIES)[number]
 
+export const RECURRING_END_MODES = ['no_end', 'count', 'end_date'] as const
+export type RecurringEndMode = (typeof RECURRING_END_MODES)[number]
+
 export const DELETE_RECURRING_SCOPE = ['single', 'future'] as const
 export type DeleteRecurringScope = (typeof DELETE_RECURRING_SCOPE)[number]
 
@@ -91,6 +94,8 @@ export interface CreateSingleTransactionPayload {
   installment_total?: number
   installment_start_date?: string
   recurring_start_date?: string
+  recurring_end_mode?: RecurringEndMode
+  recurring_occurrences_count?: number | null
   recurring_end_date?: string | null
   recurring_no_end_date?: boolean
   recurring_frequency?: RecurringFrequency
@@ -118,8 +123,18 @@ export interface UpdateTransactionInstancePayload {
   description?: string | null
   status: TransactionStatus
   is_checked: boolean
+  recurring_end_mode?: RecurringEndMode
+  recurring_occurrences_count?: number | null
   recurring_end_date?: string | null
   recurring_no_end_date?: boolean
+}
+
+export interface RecurringConfiguration {
+  start_date: string
+  frequency: RecurringFrequency
+  end_mode: RecurringEndMode
+  end_date: string | null
+  occurrences_count: number | null
 }
 
 interface RecurrenceRuleRecord {
@@ -239,6 +254,30 @@ function addRecurringInterval(dateText: string, frequency: RecurringFrequency, s
   return addMonthsKeepingDay(dateText, step)
 }
 
+function deriveRecurringEndMode(endDate: string | null, occurrencesLimit: number | null): RecurringEndMode {
+  if (occurrencesLimit != null) {
+    return 'count'
+  }
+
+  if (endDate) {
+    return 'end_date'
+  }
+
+  return 'no_end'
+}
+
+function parseRecurringOccurrencesCount(value?: number | null) {
+  if (value == null) {
+    return null
+  }
+
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error('A quantidade de recorrências deve ser um número inteiro maior ou igual a 1.')
+  }
+
+  return value
+}
+
 function buildRecurringDates(startDate: string, frequency: RecurringFrequency, endDate: string | null, occurrencesLimit?: number | null) {
   const dates: string[] = []
   const safeOccurrencesLimit = occurrencesLimit ?? null
@@ -262,6 +301,87 @@ function buildRecurringDates(startDate: string, frequency: RecurringFrequency, e
   }
 
   return dates
+}
+
+export function buildRecurringSchedule(
+  startDate: string,
+  frequency: RecurringFrequency,
+  endMode: RecurringEndMode,
+  endDate?: string | null,
+  occurrencesCount?: number | null
+) {
+  if (!startDate) {
+    throw new Error('A data inicial da recorrência é obrigatória.')
+  }
+
+  if (endMode === 'end_date') {
+    const normalizedEndDate = endDate ?? null
+
+    if (!normalizedEndDate) {
+      throw new Error('A data final da recorrência é obrigatória quando o modo Data final estiver selecionado.')
+    }
+
+    if (normalizedEndDate < startDate) {
+      throw new Error('A data final da recorrência deve ser maior ou igual à data inicial.')
+    }
+
+    return {
+      endMode,
+      dates: buildRecurringDates(startDate, frequency, normalizedEndDate, null),
+      ruleEndDate: normalizedEndDate,
+      ruleOccurrencesLimit: null
+    }
+  }
+
+  if (endMode === 'count') {
+    const normalizedCount = parseRecurringOccurrencesCount(occurrencesCount)
+    const dates = buildRecurringDates(startDate, frequency, null, normalizedCount)
+
+    return {
+      endMode,
+      dates,
+      ruleEndDate: dates[dates.length - 1] ?? startDate,
+      ruleOccurrencesLimit: normalizedCount
+    }
+  }
+
+  return {
+    endMode,
+    dates: buildRecurringDates(startDate, frequency, null, null),
+    ruleEndDate: null,
+    ruleOccurrencesLimit: null
+  }
+}
+
+function buildRecurringInstances(
+  userId: string,
+  recurrenceRuleId: string,
+  sourceTransactionId: string,
+  dates: string[],
+  payload: {
+    expectedValue: number
+    status: TransactionStatus
+    personId?: string | null
+    cardId?: string | null
+    accountId?: string | null
+    categoryId?: string | null
+  }
+) {
+  return dates.map(instanceDate => ({
+    user_id: userId,
+    recurrence_rule_id: recurrenceRuleId,
+    source_transaction_id: sourceTransactionId,
+    instance_date: instanceDate,
+    expected_value: payload.expectedValue,
+    real_value: payload.expectedValue,
+    is_checked: false,
+    checked_at: null,
+    status: payload.status,
+    person_id: normalizeOptionalId(payload.personId),
+    card_id: normalizeOptionalId(payload.cardId),
+    account_id: normalizeOptionalId(payload.accountId),
+    category_id: normalizeOptionalId(payload.categoryId)
+  }))
 }
 
 function getInstallmentNumber(startDate: string, instanceDate: string, installmentTotal: number) {
@@ -412,29 +532,22 @@ export function useTransactions() {
     const userId = await getUserId()
     const startDate = payload.recurring_start_date
     const frequency = payload.recurring_frequency ?? 'monthly'
-    const occurrencesLimit = payload.recurring_occurrences_limit ?? null
 
     if (!startDate) {
       throw new Error('A data inicial da recorrencia e obrigatoria.')
     }
 
-    const noEndDate = payload.recurring_no_end_date ?? true
-    const endDate = noEndDate ? null : (payload.recurring_end_date ?? null)
+    const endMode = payload.recurring_end_mode
+      ?? (payload.recurring_no_end_date === true ? 'no_end' : payload.recurring_occurrences_count != null || payload.recurring_occurrences_limit != null ? 'count' : 'end_date')
+    const recurringSchedule = buildRecurringSchedule(
+      startDate,
+      frequency,
+      endMode,
+      payload.recurring_end_date ?? null,
+      payload.recurring_occurrences_count ?? payload.recurring_occurrences_limit ?? null
+    )
 
-    if (!noEndDate && !endDate) {
-      throw new Error('A data final da recorrencia e obrigatoria quando a opcao sem data final estiver desativada.')
-    }
-
-    if (endDate && endDate < startDate) {
-      throw new Error('A data final da recorrencia deve ser maior ou igual a data inicial.')
-    }
-
-    if (occurrencesLimit != null && occurrencesLimit < 1) {
-      throw new Error('A quantidade de recorrencias deve ser maior ou igual a 1.')
-    }
-
-    const recurringDates = buildRecurringDates(startDate, frequency, endDate, occurrencesLimit)
-    if (!recurringDates.length) {
+    if (!recurringSchedule.dates.length) {
       throw new Error('Nenhuma instancia recorrente foi gerada para o periodo informado.')
     }
 
@@ -445,8 +558,8 @@ export function useTransactions() {
         frequency,
         interval_count: 1,
         start_date: startDate,
-        end_date: endDate,
-        occurrences_limit: occurrencesLimit,
+        end_date: recurringSchedule.ruleEndDate,
+        occurrences_limit: recurringSchedule.ruleOccurrencesLimit,
         edit_scope_default: 'series',
         is_active: true
       })
@@ -483,21 +596,20 @@ export function useTransactions() {
       throw transactionError
     }
 
-    const instances = recurringDates.map((instanceDate, index) => ({
-      user_id: userId,
-      recurrence_rule_id: recurrenceRule.id,
-      source_transaction_id: transactionData.id,
-      instance_date: instanceDate,
-      expected_value: payload.expected_value,
-      real_value: payload.expected_value,
-      is_checked: false,
-      checked_at: null,
-      status: payload.status ?? 'pending',
-      person_id: normalizeOptionalId(payload.person_id),
-      card_id: normalizeOptionalId(payload.card_id),
-      account_id: normalizeOptionalId(payload.account_id),
-      category_id: normalizeOptionalId(payload.category_id)
-    }))
+    const instances = buildRecurringInstances(
+      userId,
+      recurrenceRule.id,
+      transactionData.id,
+      recurringSchedule.dates,
+      {
+        expectedValue: payload.expected_value,
+        status: payload.status ?? 'pending',
+        personId: payload.person_id,
+        cardId: payload.card_id,
+        accountId: payload.account_id,
+        categoryId: payload.category_id
+      }
+    )
 
     const { error: instanceError } = await supabase
       .from('transaction_instances')
@@ -737,6 +849,18 @@ export function useTransactions() {
     }
   }
 
+  async function getRecurringConfiguration(sourceTransactionId: string) {
+    const { recurrenceRule } = await getRecurringContext(sourceTransactionId)
+
+    return {
+      start_date: recurrenceRule.start_date,
+      frequency: recurrenceRule.frequency,
+      end_mode: deriveRecurringEndMode(recurrenceRule.end_date, recurrenceRule.occurrences_limit),
+      end_date: recurrenceRule.end_date,
+      occurrences_count: recurrenceRule.occurrences_limit
+    } satisfies RecurringConfiguration
+  }
+
   async function updateRecurringTransaction(
     item: TransactionInstanceItem,
     payload: UpdateTransactionInstancePayload,
@@ -762,14 +886,15 @@ export function useTransactions() {
 
     if (scope === 'future') {
       const splitDate = maxIsoDate(item.instance_date, today)
-      const nextEndDate =
-        payload.recurring_no_end_date === true
-          ? null
-          : (payload.recurring_end_date ?? recurrenceRule.end_date)
-
-      if (nextEndDate && nextEndDate < splitDate) {
-        throw new Error('A data final da recorrencia deve ser maior ou igual a data de corte.')
-      }
+      const nextEndMode = payload.recurring_end_mode
+        ?? deriveRecurringEndMode(recurrenceRule.end_date, recurrenceRule.occurrences_limit)
+      const recurringSchedule = buildRecurringSchedule(
+        splitDate,
+        recurrenceRule.frequency,
+        nextEndMode,
+        payload.recurring_end_date ?? recurrenceRule.end_date,
+        payload.recurring_occurrences_count ?? recurrenceRule.occurrences_limit
+      )
 
       const { data: newRule, error: newRuleError } = await supabase
         .from('recurrence_rules')
@@ -778,8 +903,8 @@ export function useTransactions() {
           frequency: recurrenceRule.frequency,
           interval_count: recurrenceRule.interval_count,
           start_date: splitDate,
-          end_date: nextEndDate,
-          occurrences_limit: recurrenceRule.occurrences_limit,
+          end_date: recurringSchedule.ruleEndDate,
+          occurrences_limit: recurringSchedule.ruleOccurrencesLimit,
           edit_scope_default: 'series',
           is_active: true
         })
@@ -799,7 +924,7 @@ export function useTransactions() {
           title: payload.title.trim(),
           description: normalizedDescription,
           expected_value: payload.expected_value,
-          real_value: null,
+          real_value: payload.expected_value,
           due_date: splitDate,
           is_checked: false,
           checked_at: null,
@@ -824,7 +949,8 @@ export function useTransactions() {
       const { error: oldRuleUpdateError } = await supabase
         .from('recurrence_rules')
         .update({
-          end_date: cappedPreviousEndDate
+          end_date: cappedPreviousEndDate,
+          occurrences_limit: null
         })
         .eq('id', recurrenceRule.id)
 
@@ -832,23 +958,34 @@ export function useTransactions() {
         throw oldRuleUpdateError
       }
 
-      const { error: futureInstancesError } = await supabase
+      const { error: deleteFutureInstancesError } = await supabase
         .from('transaction_instances')
-        .update({
-          recurrence_rule_id: newRule.id,
-          source_transaction_id: newSourceTransaction.id,
-          expected_value: payload.expected_value,
-          real_value: payload.real_value ?? null,
-          is_checked: payload.is_checked,
-          checked_at: checkedAt,
-          status: payload.status,
-          person_id: normalizedPersonId,
-          card_id: normalizedCardId,
-          account_id: normalizedAccountId,
-          category_id: normalizedCategoryId
-        })
+        .delete()
         .eq('recurrence_rule_id', recurrenceRule.id)
         .gte('instance_date', splitDate)
+
+      if (deleteFutureInstancesError) {
+        throw deleteFutureInstancesError
+      }
+
+      const futureInstances = buildRecurringInstances(
+        sourceTransaction.user_id,
+        newRule.id,
+        newSourceTransaction.id,
+        recurringSchedule.dates,
+        {
+          expectedValue: payload.expected_value,
+          status: payload.status,
+          personId: normalizedPersonId,
+          cardId: normalizedCardId,
+          accountId: normalizedAccountId,
+          categoryId: normalizedCategoryId
+        }
+      )
+
+      const { error: futureInstancesError } = await supabase
+        .from('transaction_instances')
+        .insert(futureInstances)
 
       if (futureInstancesError) {
         throw futureInstancesError
@@ -858,19 +995,22 @@ export function useTransactions() {
     }
 
     const applyFromDate = maxIsoDate(item.instance_date, today)
-    const nextEndDate =
-      payload.recurring_no_end_date === true
-        ? null
-        : (payload.recurring_end_date ?? recurrenceRule.end_date)
-
-    if (nextEndDate && nextEndDate < recurrenceRule.start_date) {
-      throw new Error('A data final da recorrencia deve ser maior ou igual a data inicial da regra.')
-    }
+    const nextEndMode = payload.recurring_end_mode
+      ?? deriveRecurringEndMode(recurrenceRule.end_date, recurrenceRule.occurrences_limit)
+    const recurringSchedule = buildRecurringSchedule(
+      applyFromDate,
+      recurrenceRule.frequency,
+      nextEndMode,
+      payload.recurring_end_date ?? recurrenceRule.end_date,
+      payload.recurring_occurrences_count ?? recurrenceRule.occurrences_limit
+    )
+    const canPersistOccurrencesLimit = applyFromDate === recurrenceRule.start_date
 
     const { error: recurrenceRuleError } = await supabase
       .from('recurrence_rules')
       .update({
-        end_date: nextEndDate,
+        end_date: recurringSchedule.ruleEndDate,
+        occurrences_limit: canPersistOccurrencesLimit ? recurringSchedule.ruleOccurrencesLimit : null,
         is_active: true
       })
       .eq('id', recurrenceRule.id)
@@ -897,21 +1037,34 @@ export function useTransactions() {
       throw sourceTransactionError
     }
 
-    const { error: seriesInstancesError } = await supabase
+    const { error: deleteSeriesInstancesError } = await supabase
       .from('transaction_instances')
-      .update({
-        expected_value: payload.expected_value,
-        real_value: payload.real_value ?? null,
-        is_checked: payload.is_checked,
-        checked_at: checkedAt,
-        status: payload.status,
-        person_id: normalizedPersonId,
-        card_id: normalizedCardId,
-        account_id: normalizedAccountId,
-        category_id: normalizedCategoryId
-      })
+      .delete()
       .eq('recurrence_rule_id', recurrenceRule.id)
       .gte('instance_date', applyFromDate)
+
+    if (deleteSeriesInstancesError) {
+      throw deleteSeriesInstancesError
+    }
+
+    const seriesInstances = buildRecurringInstances(
+      sourceTransaction.user_id,
+      recurrenceRule.id,
+      sourceTransaction.id,
+      recurringSchedule.dates,
+      {
+        expectedValue: payload.expected_value,
+        status: payload.status,
+        personId: normalizedPersonId,
+        cardId: normalizedCardId,
+        accountId: normalizedAccountId,
+        categoryId: normalizedCategoryId
+      }
+    )
+
+    const { error: seriesInstancesError } = await supabase
+      .from('transaction_instances')
+      .insert(seriesInstances)
 
     if (seriesInstancesError) {
       throw seriesInstancesError
@@ -1143,6 +1296,7 @@ export function useTransactions() {
     createSingleTransaction,
     createTransaction: createSingleTransaction,
     deleteTransactionInstance,
+    getRecurringConfiguration,
     listFilterOptions,
     listManualInstances,
     updateRecurringTransaction,
