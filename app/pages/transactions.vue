@@ -103,7 +103,6 @@ const formDescription = ref('')
 const formStatus = ref<TransactionStatus>('pending')
 
 const columns = [
-  { key: 'checked_toggle', label: 'Conferido', align: 'center' as const },
   { key: 'instance_date', label: 'Data' },
   { key: 'description_text', label: 'Descricao' },
   { key: 'person_name', label: 'Responsavel' },
@@ -111,6 +110,8 @@ const columns = [
   { key: 'card_name', label: 'Cartao' },
   { key: 'expected_value', label: 'Previsto', align: 'right' as const },
   { key: 'real_value_input', label: 'Realizado', align: 'right' as const },
+  { key: 'status_select', label: 'Status' },
+  { key: 'checked_toggle', label: 'Conferido', align: 'center' as const },
   { key: 'actions', label: 'Acoes', align: 'right' as const }
 ]
 
@@ -696,7 +697,7 @@ onMounted(async () => {
           <AppButton label="Novo" size="sm" @click="openCreateModal" />
         </div>
 
-        <div class="mx-auto w-full max-w-xl">
+        <div class="w-full max-w-xl">
           <AppInput v-model="searchDescription" label="Pesquisar descrição" placeholder="Digite parte da descrição" />
         </div>
       </div>
@@ -805,22 +806,45 @@ onMounted(async () => {
             />
           </template>
 
+          <template #cell-status_select="{ row }">
+            <select
+              class="h-9 w-36 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
+              :value="(row as TransactionInstanceItem).status"
+              @change="changeStatus((row as TransactionInstanceItem), ($event.target as HTMLSelectElement).value as TransactionStatus)"
+            >
+              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
+            </select>
+          </template>
+
           <template #cell-actions="{ row }">
             <div class="flex justify-end gap-2">
-              <AppButton size="sm" variant="ghost" label="Editar" @click="openEditModal(row as TransactionInstanceItem)" />
-              <AppButton
-                v-if="(row as TransactionInstanceItem).status !== 'canceled'"
-                size="sm"
-                variant="danger"
-                label="Cancelar"
-                @click="changeStatus(row as TransactionInstanceItem, 'canceled')"
-              />
               <AppButton
                 size="sm"
+                variant="ghost"
+                aria-label="Editar lancamento"
+                title="Editar"
+                @click="openEditModal(row as TransactionInstanceItem)"
+              >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="m16.5 3.5 4 4L7 21H3v-4z" />
+                </svg>
+              </AppButton>
+              <AppButton
+                size="sm"
                 variant="danger"
-                label="Deletar"
+                aria-label="Deletar lancamento"
+                title="Deletar"
                 @click="openDeleteModal(row as TransactionInstanceItem)"
-              />
+              >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                </svg>
+              </AppButton>
             </div>
           </template>
         </AppTable>

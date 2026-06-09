@@ -110,6 +110,8 @@ export function useAuth() {
         await ensureProfileIfAuthenticated(data.user.id)
       }
 
+      touchLastActivity()
+
       authMessage.value = 'Logged in successfully.'
     } catch (err) {
       authError.value = err instanceof Error ? err.message : 'Unknown login error'
@@ -131,6 +133,7 @@ export function useAuth() {
         throw error
       }
 
+      clearLastActivity()
       authMessage.value = 'Logged out successfully.'
       await navigateTo('/login')
     } catch (err) {

@@ -29,7 +29,8 @@ export default defineNuxtConfig({
     adminEmail: process.env.ADMIN_EMAIL || '',
     public: {
       adminEmail: process.env.ADMIN_EMAIL || '',
-      appEnv: process.env.NUXT_PUBLIC_APP_ENV || process.env.NODE_ENV || 'development'
+      appEnv: process.env.NUXT_PUBLIC_APP_ENV || process.env.NODE_ENV || 'development',
+      sessionInactivityDays: Number(process.env.NUXT_PUBLIC_SESSION_INACTIVITY_DAYS || 7)
     }
   },
   compatibilityDate: '2025-07-15',
