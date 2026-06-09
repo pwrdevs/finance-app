@@ -129,6 +129,16 @@ function formatCurrency(value: number) {
   return formatBRL(value)
 }
 
+function formatDateBr(value: string) {
+  const [year, month, day] = value.split('-')
+
+  if (!year || !month || !day) {
+    return value
+  }
+
+  return `${day}/${month}/${year}`
+}
+
 async function fetchSummary() {
   if (!session.value?.user?.id) {
     return
@@ -309,6 +319,10 @@ watch(
 
     <AppCard title="Ultimos lancamentos" :subtitle="`${launchRows.length} registro(s) no mes selecionado`">
       <AppTable :columns="columns" :rows="launchRows" empty-message="Nenhum lancamento encontrado para este periodo.">
+        <template #cell-instance_date="{ value }">
+          {{ formatDateBr(String(value)) }}
+        </template>
+
         <template #cell-type="{ row }">
           <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="(row as any).type_label === 'Receita' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
             {{ (row as any).type_label }}
