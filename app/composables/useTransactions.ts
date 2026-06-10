@@ -1000,7 +1000,6 @@ export function useTransactions() {
     }
 
     const groupId = generateGroupId()
-    const parcelValues = splitInstallmentValues(payload.expected_value, installmentTotal)
 
     const { data: transactionData, error: transactionError } = await supabase
       .from('transactions')
@@ -1032,12 +1031,12 @@ export function useTransactions() {
       throw transactionError
     }
 
-    const instances = parcelValues.map((parcelValue, index) => ({
+    const instances = Array.from({ length: installmentTotal }, (_, index) => ({
       user_id: userId,
       source_transaction_id: transactionData.id,
       instance_date: addMonthsKeepingDay(startDate, index),
-      expected_value: parcelValue,
-      real_value: parcelValue,
+      expected_value: payload.expected_value,
+      real_value: payload.expected_value,
       is_checked: false,
       checked_at: null,
       status: 'pending' as const,
@@ -1063,7 +1062,6 @@ export function useTransactions() {
 
     const reimbursementStartDate = reimbursementPayload.receivedDate ?? startDate
     const reimbursementGroupSeed = generateGroupId()
-    const reimbursementValues = splitInstallmentValues(reimbursementPayload.expectedValue, installmentTotal)
 
     const { data: reimbursementTransaction, error: reimbursementTransactionError } = await supabase
       .from('transactions')
@@ -1095,12 +1093,12 @@ export function useTransactions() {
       throw reimbursementTransactionError
     }
 
-    const reimbursementInstances = reimbursementValues.map((parcelValue, index) => ({
+    const reimbursementInstances = Array.from({ length: installmentTotal }, (_, index) => ({
       user_id: userId,
       source_transaction_id: reimbursementTransaction.id,
       instance_date: addMonthsKeepingDay(reimbursementStartDate, index),
-      expected_value: parcelValue,
-      real_value: parcelValue,
+      expected_value: reimbursementPayload.expectedValue,
+      real_value: reimbursementPayload.expectedValue,
       is_checked: false,
       checked_at: null,
       status: 'pending' as const,
