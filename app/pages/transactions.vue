@@ -83,9 +83,11 @@ const realValueDrafts = ref<Record<string, string>>({})
 const isModalOpen = ref(false)
 const isExportPreviewOpen = ref(false)
 const isScopeModalOpen = ref(false)
+const isDeleteConfirmModalOpen = ref(false)
 const exportPreviewRef = ref<HTMLElement | null>(null)
 const editingRow = ref<TransactionInstanceItem | null>(null)
 const scopeTargetRow = ref<TransactionInstanceItem | null>(null)
+const pendingDeleteRow = ref<TransactionInstanceItem | null>(null)
 const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | null>(null)
 
 const formTitle = ref('')
@@ -193,20 +195,27 @@ const scopeModalTitle = computed(() => {
   }
 
   if (scopeModalMode.value === 'delete') {
-    return 'Como deseja cancelar este lancamento?'
+    return 'Como deseja excluir este lancamento?'
   }
 
   return 'Como deseja aplicar esta alteracao?'
 })
 const scopeModalSingleLabel = computed(() => {
   if (scopeModalMode.value === 'cancel') return 'Cancelar apenas este'
-  if (scopeModalMode.value === 'delete') return 'Cancelar apenas este'
+  if (scopeModalMode.value === 'delete') return 'Excluir apenas este'
   return 'Apenas este lancamento'
 })
 const scopeModalFutureLabel = computed(() => {
   if (scopeModalMode.value === 'cancel') return 'Cancelar este e os proximos'
-  if (scopeModalMode.value === 'delete') return 'Cancelar este e os proximos'
+  if (scopeModalMode.value === 'delete') return 'Excluir este e os proximos'
   return 'Este e os proximos'
+})
+const deleteConfirmDescription = computed(() => {
+  if (!pendingDeleteRow.value) {
+    return 'Esta acao nao pode ser desfeita.'
+  }
+
+  return `Confirma a exclusao do lancamento \"${pendingDeleteRow.value.title}\" em ${formatDateBr(pendingDeleteRow.value.instance_date)}? Esta acao nao pode ser desfeita.`
 })
 const selectedCardLabel = computed(() => {
   if (cardFilter.value === 'all') return 'Todos'
@@ -417,6 +426,17 @@ function closeScopeDecisionModal() {
   pendingScopedEdit.value = null
   scopeModalError.value = ''
   scopeModalSaving.value = false
+}
+
+function openDeleteConfirmModal(row: TransactionInstanceItem) {
+  pendingDeleteRow.value = row
+  pageError.value = ''
+  isDeleteConfirmModalOpen.value = true
+}
+
+function closeDeleteConfirmModal() {
+  isDeleteConfirmModalOpen.value = false
+  pendingDeleteRow.value = null
 }
 
 function getDaysDiff(fromDate: string, toDate: string) {
@@ -852,7 +872,16 @@ async function handleDeleteClick(row: TransactionInstanceItem) {
     return
   }
 
-  await deleteSingleTransaction(row)
+  openDeleteConfirmModal(row)
+}
+
+async function confirmDeleteSingleTransaction() {
+  if (!pendingDeleteRow.value) {
+    return
+  }
+
+  await deleteSingleTransaction(pendingDeleteRow.value)
+  closeDeleteConfirmModal()
 }
 
 function parseOptionalNumber(value: string) {
@@ -2032,5 +2061,19 @@ onMounted(async () => {
         </div>
       </Transition>
     </Teleport>
+
+    <AppModal
+      v-model="isDeleteConfirmModalOpen"
+      title="Confirmar exclusao"
+      :description="deleteConfirmDescription"
+      max-width-class="max-w-md"
+    >
+      <template #footer>
+        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          <AppButton label="Voltar" variant="ghost" :disabled="rowActionBusy" block @click="closeDeleteConfirmModal" />
+          <AppButton label="Excluir" variant="danger" :disabled="rowActionBusy" block @click="confirmDeleteSingleTransaction" />
+        </div>
+      </template>
+    </AppModal>
   </section>
 </template>

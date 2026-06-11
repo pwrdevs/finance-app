@@ -130,11 +130,13 @@ const launchRows = computed(() => {
 })
 
 const cardStatementRows = computed(() => {
-  const cardMap = new Map(cards.value.map(card => [card.id, card.name]))
+  const cardMap = new Map(cards.value.map(card => [card.id, card]))
 
   return summary.value.cardStatements.map((statement) => ({
     ...statement,
-    card_name: cardMap.get(statement.card_id) || 'Cartao nao encontrado'
+    card_name: cardMap.get(statement.card_id)?.name || 'Cartao nao encontrado',
+    card_closing_day: cardMap.get(statement.card_id)?.closing_day ?? null,
+    card_due_day: cardMap.get(statement.card_id)?.due_day ?? null
   }))
 })
 
@@ -145,30 +147,6 @@ const projectedBalance = computed(() => accumulatedProjection.value.selectedMont
 const selectedMonthProjection = computed(() => accumulatedProjection.value.months.at(-1) ?? null)
 
 const requiredContribution = computed(() => accumulatedProjection.value.requiredContribution)
-
-const requiredContributionMessage = computed(() => {
-  if (requiredContribution.value > 0) {
-    return `Para manter o saldo positivo até ${selectedPeriodLabel.value}, injete pelo menos ${formatCurrency(requiredContribution.value)}.`
-  }
-
-  return `Seu saldo permanece positivo até ${selectedPeriodLabel.value}.`
-})
-
-const riskForecast = computed(() => {
-  if (accumulatedProjection.value.firstNegativeMonthLabel && requiredContribution.value > 0) {
-    return {
-      tone: 'danger',
-      message: `⚠️ Seu saldo ficou negativo em ${accumulatedProjection.value.firstNegativeMonthLabel}.`,
-      details: `Menor saldo acumulado: ${formatCurrency(accumulatedProjection.value.minimumAccumulatedBalance)}. Aporte necessário: ${formatCurrency(requiredContribution.value)}.`
-    }
-  }
-
-  return {
-    tone: 'safe',
-    message: '✅ Nenhum risco financeiro identificado no período analisado.',
-    details: `Menor saldo acumulado: ${formatCurrency(accumulatedProjection.value.minimumAccumulatedBalance)}.`
-  }
-})
 
 const chartData = computed(() => {
   const months = accumulatedProjection.value.months
@@ -408,23 +386,6 @@ watch(
       </AppCard>
     </div>
 
-    <AppCard title="Previsão de caixa" :subtitle="riskForecast.message">
-      <div
-        class="rounded-2xl border px-4 py-4"
-        :class="riskForecast.tone === 'safe'
-          ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800'
-          : riskForecast.tone === 'warning'
-            ? 'border-amber-200 bg-amber-50/70 text-amber-800'
-            : 'border-rose-200 bg-rose-50/70 text-rose-800'"
-      >
-        <p class="text-sm font-semibold">{{ riskForecast.message }}</p>
-        <p class="mt-2 text-xs opacity-80">{{ riskForecast.details }}</p>
-        <p class="mt-2 text-xs opacity-80">
-          {{ requiredContributionMessage }}
-        </p>
-      </div>
-    </AppCard>
-
     <AppCard title="Projeção Financeira" subtitle="Estimativa futura baseada em lançamentos únicos, parcelados e recorrentes.">
       <div class="grid gap-4 md:grid-cols-3">
         <article class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
@@ -606,6 +567,14 @@ watch(
           <div class="mt-2 flex items-end justify-between gap-3">
             <p class="text-lg font-semibold text-foreground">{{ formatCurrency(statement.totalExpense) }}</p>
             <p class="text-xs text-muted">{{ statement.transactionCount }} despesa(s)</p>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <p class="rounded-lg bg-slate-100/70 px-2 py-1 text-slate-700">
+              Fechamento: <span class="font-semibold">{{ statement.card_closing_day == null ? '--' : `${String(statement.card_closing_day).padStart(2, '0')}` }}</span>
+            </p>
+            <p class="rounded-lg bg-slate-100/70 px-2 py-1 text-slate-700">
+              Vencimento: <span class="font-semibold">{{ statement.card_due_day == null ? '--' : `${String(statement.card_due_day).padStart(2, '0')}` }}</span>
+            </p>
           </div>
         </article>
       </div>
