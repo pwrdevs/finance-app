@@ -42,6 +42,7 @@ const exportingImage = ref(false)
 const scopeModalSaving = ref(false)
 const rowActionBusy = ref(false)
 const FILTERS_STORAGE_KEY = 'pwrdevs.finance.transactions.filters'
+type QuickPaymentFilter = 'all' | 'account' | 'cards' | `card:${string}`
 const pageError = ref('')
 const modalError = ref('')
 const scopeModalError = ref('')
@@ -55,6 +56,7 @@ const cardFilter = ref('all')
 const personFilter = ref('all')
 const categoryFilter = ref('all')
 const accountFilter = ref('all')
+const quickPaymentFilter = ref<QuickPaymentFilter>('all')
 const quickTypeFilter = ref<'all' | TransactionType>('all')
 const statusFilter = ref<'all' | TransactionStatus>('all')
 const reimbursementLinkFilter = ref<'all' | 'normal' | 'linked'>('all')
@@ -71,6 +73,9 @@ const { month: initialDraftMonth, year: initialDraftYear } = parseMonthYear(mont
 const draftFilterMonth = ref(String(initialDraftMonth).padStart(2, '0'))
 const draftFilterYear = ref(String(initialDraftYear))
 const draftAllPeriods = ref(false)
+const route = useRoute()
+const router = useRouter()
+const openTransactionModalSignal = useState<number>('transactions-open-modal-signal', () => 0)
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
@@ -184,6 +189,7 @@ const paymentMethodOptions = computed(() => {
   const cardOptions = cards.value.map(entry => ({ value: `card:${entry.id}`, label: `Cartao - ${entry.name}` }))
   return [...accountOptions, ...cardOptions]
 })
+const activeCardsForQuickFilter = computed(() => cards.value.filter(entry => entry.is_active))
 
 const shouldAskScopeForEdit = computed(() => {
   const originType = editingRow.value?.origin_type
@@ -261,6 +267,7 @@ interface PersistedTransactionFilters {
   category_filter: string
   account_filter: string
   payment_method_filter?: 'all' | 'account' | 'card'
+  quick_payment_filter?: string
   quick_type_filter?: 'all' | TransactionType
   status_filter: 'all' | TransactionStatus
   reimbursement_link_filter: 'all' | 'normal' | 'linked'
@@ -281,6 +288,30 @@ function isValidReimbursementLinkFilter(value: string): value is 'all' | 'normal
 
 function isValidQuickTypeFilter(value: string): value is 'all' | TransactionType {
   return value === 'all' || value === 'income' || value === 'expense'
+}
+
+function normalizeQuickPaymentFilter(value: string, allowedCardIds: string[]): QuickPaymentFilter {
+  if (value === 'all' || value === 'account' || value === 'cards') {
+    return value
+  }
+
+  if (value.startsWith('card:')) {
+    const cardId = value.slice(5)
+    if (allowedCardIds.includes(cardId)) {
+      return value as QuickPaymentFilter
+    }
+  }
+
+  return 'all'
+}
+
+function getQuickPaymentFilterLabel(value: QuickPaymentFilter) {
+  if (value === 'all') return 'Todos'
+  if (value === 'account') return 'Conta'
+  if (value === 'cards') return 'Cartoes'
+
+  const cardId = value.slice(5)
+  return cards.value.find(entry => entry.id === cardId)?.name ?? 'Cartao'
 }
 
 function pickPersistedOption(value: string, allowedIds: string[]) {
@@ -312,7 +343,8 @@ function saveFiltersToStorage() {
     person_filter: personFilter.value,
     category_filter: categoryFilter.value,
     account_filter: accountFilter.value,
-    payment_method_filter: cardFilter.value !== 'all' ? 'card' : accountFilter.value !== 'all' ? 'account' : 'all',
+    payment_method_filter: quickPaymentFilter.value === 'account' ? 'account' : quickPaymentFilter.value === 'cards' || quickPaymentFilter.value.startsWith('card:') ? 'card' : 'all',
+    quick_payment_filter: quickPaymentFilter.value,
     quick_type_filter: quickTypeFilter.value,
     status_filter: statusFilter.value,
     reimbursement_link_filter: reimbursementLinkFilter.value,
@@ -350,12 +382,22 @@ function restoreFiltersFromStorage() {
     const validQuickType = typeof parsed.quick_type_filter === 'string' && isValidQuickTypeFilter(parsed.quick_type_filter)
       ? parsed.quick_type_filter
       : 'all'
+    const fallbackQuickPayment = parsed.payment_method_filter === 'account'
+      ? 'account'
+      : parsed.payment_method_filter === 'card'
+        ? 'cards'
+        : 'all'
+    const quickPaymentRaw = typeof parsed.quick_payment_filter === 'string'
+      ? parsed.quick_payment_filter
+      : fallbackQuickPayment
+    const validQuickPayment = normalizeQuickPaymentFilter(quickPaymentRaw, cards.value.map(entry => entry.id))
 
     periodFilter.value = validPeriod
     cardFilter.value = pickPersistedOption(String(parsed.card_filter ?? 'all'), cards.value.map(entry => entry.id))
     personFilter.value = pickPersistedOption(String(parsed.person_filter ?? 'all'), people.value.map(entry => entry.id))
     categoryFilter.value = pickPersistedOption(String(parsed.category_filter ?? 'all'), categories.value.map(entry => entry.id))
     accountFilter.value = pickPersistedOption(String(parsed.account_filter ?? 'all'), accounts.value.map(entry => entry.id))
+    quickPaymentFilter.value = validQuickPayment
     quickTypeFilter.value = validQuickType
     statusFilter.value = validStatus
     reimbursementLinkFilter.value = validReimbursementFilter
@@ -390,6 +432,75 @@ function restoreFiltersFromStorage() {
 function clearPersistedFiltersOnly() {
   removePersistedFilters()
   filtersModalError.value = ''
+}
+
+function syncQuickPaymentFilterFromCurrentFilters() {
+  if (cardFilter.value !== 'all') {
+    quickPaymentFilter.value = `card:${cardFilter.value}`
+    return
+  }
+
+  if (accountFilter.value !== 'all') {
+    quickPaymentFilter.value = 'account'
+    return
+  }
+
+  if (quickPaymentFilter.value.startsWith('card:')) {
+    quickPaymentFilter.value = 'cards'
+  }
+}
+
+function applyQuickPaymentFilter(filter: QuickPaymentFilter) {
+  quickPaymentFilter.value = filter
+  reimbursementLinkFilter.value = 'all'
+
+  if (filter === 'all') {
+    cardFilter.value = 'all'
+    accountFilter.value = 'all'
+    return
+  }
+
+  if (filter === 'account') {
+    cardFilter.value = 'all'
+    accountFilter.value = 'all'
+    return
+  }
+
+  if (filter === 'cards') {
+    cardFilter.value = 'all'
+    accountFilter.value = 'all'
+    return
+  }
+
+  const cardId = filter.slice(5)
+  cardFilter.value = cardId
+  accountFilter.value = 'all'
+}
+
+function applyQuickReimbursementFilter() {
+  quickPaymentFilter.value = 'all'
+  cardFilter.value = 'all'
+  accountFilter.value = 'all'
+  reimbursementLinkFilter.value = 'linked'
+}
+
+function applyQuickAllFilters() {
+  quickPaymentFilter.value = 'all'
+  cardFilter.value = 'all'
+  accountFilter.value = 'all'
+  reimbursementLinkFilter.value = 'all'
+}
+
+async function consumeNewLaunchQuery() {
+  if (route.query.new !== '1') {
+    return
+  }
+
+  openCreateModal()
+
+  const nextQuery = { ...route.query }
+  delete nextQuery.new
+  await router.replace({ query: nextQuery })
 }
 
 const expectedValueLabel = computed(() => {
@@ -537,6 +648,21 @@ const filteredRows = computed(() => {
   const normalizedSearch = searchDescription.value.trim().toLowerCase()
 
   return rows.value
+    .filter((row) => {
+      if (quickPaymentFilter.value === 'account') {
+        return Boolean(row.account_id)
+      }
+
+      if (quickPaymentFilter.value === 'cards') {
+        return Boolean(row.card_id)
+      }
+
+      if (quickPaymentFilter.value.startsWith('card:')) {
+        return row.card_id === quickPaymentFilter.value.slice(5)
+      }
+
+      return true
+    })
     .filter((row) => quickTypeFilter.value === 'all' || row.type === quickTypeFilter.value)
     .filter((row) => personFilter.value === 'all' || row.person_id === personFilter.value)
     .filter((row) => cardFilter.value === 'all' || row.card_id === cardFilter.value)
@@ -908,6 +1034,7 @@ async function clearFilters() {
   personFilter.value = 'all'
   categoryFilter.value = 'all'
   accountFilter.value = 'all'
+  quickPaymentFilter.value = 'all'
   quickTypeFilter.value = 'all'
   statusFilter.value = 'all'
   reimbursementLinkFilter.value = 'all'
@@ -971,6 +1098,7 @@ async function applyFilters() {
   personFilter.value = draftPersonFilter.value
   categoryFilter.value = draftCategoryFilter.value
   accountFilter.value = draftAccountFilter.value
+  syncQuickPaymentFilterFromCurrentFilters()
   statusFilter.value = draftStatusFilter.value
   reimbursementLinkFilter.value = draftReimbursementLinkFilter.value
   saveFiltersToStorage()
@@ -1442,7 +1570,7 @@ watch(searchDescription, () => {
 })
 
 watch(
-  [periodFilter, cardFilter, personFilter, categoryFilter, accountFilter, quickTypeFilter, statusFilter, reimbursementLinkFilter],
+  [periodFilter, cardFilter, personFilter, categoryFilter, accountFilter, quickPaymentFilter, quickTypeFilter, statusFilter, reimbursementLinkFilter],
   () => {
     if (skipSearchPersistence.value) {
       return
@@ -1452,10 +1580,27 @@ watch(
   }
 )
 
+watch(
+  () => route.query.new,
+  async () => {
+    await consumeNewLaunchQuery()
+  }
+)
+
+watch(openTransactionModalSignal, (nextValue, prevValue) => {
+  if (nextValue === prevValue || !nextValue) {
+    return
+  }
+
+  openCreateModal()
+})
+
 onMounted(async () => {
   await fetchOptions()
   restoreFiltersFromStorage()
+  syncQuickPaymentFilterFromCurrentFilters()
   await fetchRows()
+  await consumeNewLaunchQuery()
 })
 </script>
 
@@ -1488,6 +1633,56 @@ onMounted(async () => {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Pagamento rápido</span>
+          <div class="w-full overflow-x-auto pb-1">
+            <div class="flex min-w-max items-center gap-2 pr-2">
+              <button
+                type="button"
+                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
+                :class="quickPaymentFilter === 'all' && reimbursementLinkFilter === 'all' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+                @click="applyQuickAllFilters"
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
+                :class="quickPaymentFilter === 'account' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+                @click="applyQuickPaymentFilter('account')"
+              >
+                Conta
+              </button>
+              <button
+                type="button"
+                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
+                :class="quickPaymentFilter === 'cards' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+                @click="applyQuickPaymentFilter('cards')"
+              >
+                Cartões
+              </button>
+              <button
+                v-for="entry in activeCardsForQuickFilter"
+                :key="`quick-card-${entry.id}`"
+                type="button"
+                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
+                :class="quickPaymentFilter === `card:${entry.id}` ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+                @click="applyQuickPaymentFilter(`card:${entry.id}`)"
+              >
+                {{ entry.name }}
+              </button>
+              <button
+                type="button"
+                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
+                :class="reimbursementLinkFilter === 'linked' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+                @click="applyQuickReimbursementFilter"
+              >
+                Reembolso
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Tipo rápido</span>
           <AppButton
             label="Todos"
@@ -1507,6 +1702,12 @@ onMounted(async () => {
             :variant="quickTypeFilter === 'expense' ? 'secondary' : 'ghost'"
             @click="quickTypeFilter = 'expense'"
           />
+          <span
+            v-if="quickPaymentFilter !== 'all' || reimbursementLinkFilter === 'linked'"
+            class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-medium text-muted"
+          >
+            {{ reimbursementLinkFilter === 'linked' ? 'Pagamento rápido: Reembolso' : `Pagamento rápido: ${getQuickPaymentFilterLabel(quickPaymentFilter)}` }}
+          </span>
           <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">
             Total filtrado: {{ formatCurrency(filteredTotalValue) }}
           </span>

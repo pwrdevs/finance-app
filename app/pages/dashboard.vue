@@ -332,56 +332,68 @@ watch(
 
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <AppCard>
-        <div class="flex min-h-[12rem] flex-col justify-between">
-          <div>
+        <div class="grid min-h-[13rem] grid-rows-[auto_1fr_auto] gap-3">
+          <div class="min-h-[2.75rem]">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Entradas</p>
-            <p class="mt-3 text-2xl font-semibold text-emerald-700 sm:text-3xl">{{ formatCurrency(summary.totalIncome) }}</p>
           </div>
-          <p class="text-sm text-muted">Total de receitas no período selecionado.</p>
+          <div class="flex min-h-[3.5rem] items-center">
+            <p class="text-2xl font-semibold text-emerald-700 sm:text-3xl">{{ formatCurrency(summary.totalIncome) }}</p>
+          </div>
+          <p class="min-h-[2.5rem] text-sm leading-5 text-muted">Total de receitas no período selecionado.</p>
         </div>
       </AppCard>
 
       <AppCard>
-        <div class="flex min-h-[12rem] flex-col justify-between">
-          <div>
+        <div class="grid min-h-[13rem] grid-rows-[auto_1fr_auto] gap-3">
+          <div class="min-h-[2.75rem]">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Saídas</p>
-            <p class="mt-3 text-2xl font-semibold text-rose-700 sm:text-3xl">{{ formatCurrency(summary.totalExpense) }}</p>
           </div>
-          <p class="text-sm text-muted">Total de despesas no período selecionado.</p>
+          <div class="flex min-h-[3.5rem] items-center">
+            <p class="text-2xl font-semibold text-rose-700 sm:text-3xl">{{ formatCurrency(summary.totalExpense) }}</p>
+          </div>
+          <p class="min-h-[2.5rem] text-sm leading-5 text-muted">Total de despesas no período selecionado.</p>
         </div>
       </AppCard>
 
       <AppCard>
-        <div class="flex min-h-[12rem] flex-col justify-between gap-4">
-          <div>
+        <div class="grid min-h-[13rem] grid-rows-[auto_1fr_auto] gap-3">
+          <div class="min-h-[2.75rem]">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Saldo do período</p>
             <span class="mt-2 inline-flex w-fit rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Principal</span>
           </div>
-          <p class="text-2xl font-semibold sm:text-3xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-            {{ formatCurrency(summary.monthlyBalance) }}
-          </p>
-          <p class="text-sm text-muted">Entradas menos saídas no período selecionado.</p>
+          <div class="flex min-h-[3.5rem] items-center">
+            <p class="text-2xl font-semibold sm:text-3xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+              {{ formatCurrency(summary.monthlyBalance) }}
+            </p>
+          </div>
+          <p class="min-h-[2.5rem] text-sm leading-5 text-muted">Entradas menos saídas no período selecionado.</p>
         </div>
       </AppCard>
 
       <AppCard>
-        <div class="flex min-h-[12rem] flex-col justify-between gap-4">
-          <div>
+        <div class="grid min-h-[13rem] grid-rows-[auto_1fr_auto] gap-3">
+          <div class="min-h-[2.75rem]">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Saldo Projetado</p>
             <span class="mt-2 inline-flex w-fit rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Projeto</span>
           </div>
-          <p class="text-2xl font-semibold text-foreground sm:text-3xl">{{ formatCurrency(projectedBalance) }}</p>
-          <p class="text-sm text-muted">Baseado em entradas e saídas previstas até este período.</p>
+          <div class="flex min-h-[3.5rem] items-center">
+            <p class="text-2xl font-semibold text-foreground sm:text-3xl">{{ formatCurrency(projectedBalance) }}</p>
+          </div>
+          <p class="min-h-[2.5rem] text-sm leading-5 text-muted">Baseado em entradas e saídas previstas até este período.</p>
         </div>
       </AppCard>
 
       <AppCard>
-        <div class="flex min-h-[12rem] flex-col justify-between gap-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Aporte necessário</p>
-          <p class="text-2xl font-semibold sm:text-3xl" :class="requiredContribution > 0 ? 'text-amber-700' : 'text-emerald-700'">
-            {{ formatCurrency(requiredContribution) }}
-          </p>
-          <p class="text-sm text-muted">{{ requiredContribution > 0 ? 'Para manter o saldo positivo no período acumulado.' : 'Nenhum aporte necessário no período.' }}</p>
+        <div class="grid min-h-[13rem] grid-rows-[auto_1fr_auto] gap-3">
+          <div class="min-h-[2.75rem]">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Aporte necessário</p>
+          </div>
+          <div class="flex min-h-[3.5rem] items-center">
+            <p class="text-2xl font-semibold sm:text-3xl" :class="requiredContribution > 0 ? 'text-amber-700' : 'text-emerald-700'">
+              {{ formatCurrency(requiredContribution) }}
+            </p>
+          </div>
+          <p class="min-h-[2.5rem] text-sm leading-5 text-muted">{{ requiredContribution > 0 ? 'Para manter o saldo positivo no período acumulado.' : 'Nenhum aporte necessário no período.' }}</p>
         </div>
       </AppCard>
     </div>

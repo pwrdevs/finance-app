@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppHeader from '~/components/layout/AppHeader.vue'
+import AppFloatingActionButton from '~/components/common/AppFloatingActionButton.vue'
 
 const { isAdmin } = useAccess()
 
@@ -30,5 +31,7 @@ const sidebarLinks = computed(() => {
         <slot />
       </div>
     </main>
+
+    <AppFloatingActionButton />
   </div>
 </template>
