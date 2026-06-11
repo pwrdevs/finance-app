@@ -40,6 +40,7 @@ const saving = ref(false)
 const exportingPdf = ref(false)
 const exportingImage = ref(false)
 const scopeModalSaving = ref(false)
+const rowActionBusy = ref(false)
 const FILTERS_STORAGE_KEY = 'pwrdevs.finance.transactions.filters'
 const pageError = ref('')
 const modalError = ref('')
@@ -244,10 +245,12 @@ const pendingScopedEdit = ref<PendingScopedEdit | null>(null)
 
 interface PersistedTransactionFilters {
   period_filter: string | 'all'
+  all_periods?: boolean
   card_filter: string
   person_filter: string
   category_filter: string
   account_filter: string
+  payment_method_filter?: 'all' | 'account' | 'card'
   status_filter: 'all' | TransactionStatus
   reimbursement_link_filter: 'all' | 'normal' | 'linked'
   search_description: string
@@ -289,10 +292,12 @@ function saveFiltersToStorage() {
 
   const payload: PersistedTransactionFilters = {
     period_filter: periodFilter.value,
+    all_periods: periodFilter.value === 'all',
     card_filter: cardFilter.value,
     person_filter: personFilter.value,
     category_filter: categoryFilter.value,
     account_filter: accountFilter.value,
+    payment_method_filter: cardFilter.value !== 'all' ? 'card' : accountFilter.value !== 'all' ? 'account' : 'all',
     status_filter: statusFilter.value,
     reimbursement_link_filter: reimbursementLinkFilter.value,
     search_description: searchDescription.value.trim()
@@ -316,7 +321,8 @@ function restoreFiltersFromStorage() {
 
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedTransactionFilters>
-    const validPeriod = parsed.period_filter === 'all'
+    const hasAllPeriodsFlag = parsed.all_periods === true
+    const validPeriod = hasAllPeriodsFlag || parsed.period_filter === 'all'
       ? 'all'
       : (typeof parsed.period_filter === 'string' && isValidMonthYear(parsed.period_filter) ? parsed.period_filter : monthYear.value)
     const validStatus = typeof parsed.status_filter === 'string' && isValidStatusFilter(parsed.status_filter)
@@ -365,6 +371,26 @@ function clearPersistedFiltersOnly() {
   removePersistedFilters()
   filtersModalError.value = ''
 }
+
+const expectedValueLabel = computed(() => {
+  if (formOriginType.value === 'recurring') {
+    return 'Valor por ocorrencia'
+  }
+
+  if (showInstallmentSelector.value && Number(formInstallmentTotal.value) > 1) {
+    return 'Valor da parcela'
+  }
+
+  return 'Valor'
+})
+
+const expectedValueHelpText = computed(() => {
+  if (showInstallmentSelector.value && Number(formInstallmentTotal.value) > 1) {
+    return 'Informe o valor de cada parcela. O sistema criara uma ocorrencia por parcela.'
+  }
+
+  return ''
+})
 
 function openScopeDecisionModal(mode: 'edit' | 'cancel' | 'delete', row?: TransactionInstanceItem) {
   scopeModalMode.value = mode
@@ -790,16 +816,23 @@ async function openEditModal(row: TransactionInstanceItem) {
 
 async function deleteSingleTransaction(row: TransactionInstanceItem) {
   pageError.value = ''
+  rowActionBusy.value = true
 
   try {
     await removeTransactionInstance(row, 'single')
     await fetchRows()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel excluir o lancamento.'
+  } finally {
+    rowActionBusy.value = false
   }
 }
 
 async function handleDeleteClick(row: TransactionInstanceItem) {
+  if (rowActionBusy.value || scopeModalSaving.value) {
+    return
+  }
+
   if (row.origin_type === 'recurring' || row.origin_type === 'installment') {
     openScopeDecisionModal('delete', row)
     return
@@ -826,7 +859,7 @@ function parseMonthYear(value: string) {
   return { month, year }
 }
 
-function clearFilters() {
+async function clearFilters() {
   skipSearchPersistence.value = true
   cardFilter.value = 'all'
   personFilter.value = 'all'
@@ -848,9 +881,10 @@ function clearFilters() {
   draftStatusFilter.value = 'all'
   draftReimbursementLinkFilter.value = 'all'
   removePersistedFilters()
-  nextTick(() => {
-    skipSearchPersistence.value = false
-  })
+  await fetchRows()
+  isFiltersModalOpen.value = false
+  await nextTick()
+  skipSearchPersistence.value = false
 }
 
 function openFiltersModal() {
@@ -942,6 +976,10 @@ function onRealDraftInput(rowId: string, value: string) {
 }
 
 async function saveInlineRealValue(row: TransactionInstanceItem) {
+  if (rowActionBusy.value) {
+    return
+  }
+
   const rawValue = getRealDraftValue(row).trim()
   const parsedReal = rawValue === '' ? null : Number(rawValue)
 
@@ -953,6 +991,7 @@ async function saveInlineRealValue(row: TransactionInstanceItem) {
   if (row.real_value === parsedReal) return
 
   pageError.value = ''
+  rowActionBusy.value = true
 
   try {
     await updateTransactionInstance(
@@ -979,6 +1018,8 @@ async function saveInlineRealValue(row: TransactionInstanceItem) {
     await fetchRows()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel salvar o valor realizado.'
+  } finally {
+    rowActionBusy.value = false
   }
 }
 
@@ -1193,17 +1234,28 @@ async function submitForm() {
 }
 
 async function toggleChecked(row: TransactionInstanceItem) {
+  if (rowActionBusy.value) {
+    return
+  }
+
   pageError.value = ''
+  rowActionBusy.value = true
 
   try {
     await setChecked(row, !row.is_checked)
     await fetchRows()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar a conferencia.'
+  } finally {
+    rowActionBusy.value = false
   }
 }
 
 async function changeStatus(row: TransactionInstanceItem, nextStatus: TransactionStatus) {
+  if (rowActionBusy.value) {
+    return
+  }
+
   pageError.value = ''
 
   if ((row.origin_type === 'recurring' || row.origin_type === 'installment') && nextStatus === 'canceled') {
@@ -1211,11 +1263,15 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
     return
   }
 
+  rowActionBusy.value = true
+
   try {
     await setStatus(row, nextStatus)
     await fetchRows()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar o status.'
+  } finally {
+    rowActionBusy.value = false
   }
 }
 
@@ -1261,6 +1317,7 @@ async function applyScopedCancel(row: TransactionInstanceItem, scope: DeleteRecu
 async function confirmScopeDecision(scope: DeleteRecurringScope) {
   scopeModalError.value = ''
   scopeModalSaving.value = true
+  rowActionBusy.value = true
 
   try {
     if (scopeModalMode.value === 'edit') {
@@ -1292,6 +1349,7 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
     scopeModalError.value = err instanceof Error ? err.message : 'Nao foi possivel aplicar a acao no escopo selecionado.'
   } finally {
     scopeModalSaving.value = false
+    rowActionBusy.value = false
   }
 }
 
@@ -1338,6 +1396,17 @@ watch(searchDescription, () => {
 
   saveFiltersToStorage()
 })
+
+watch(
+  [periodFilter, cardFilter, personFilter, categoryFilter, accountFilter, statusFilter, reimbursementLinkFilter],
+  () => {
+    if (skipSearchPersistence.value) {
+      return
+    }
+
+    saveFiltersToStorage()
+  }
+)
 
 onMounted(async () => {
   await fetchOptions()
@@ -1620,6 +1689,7 @@ onMounted(async () => {
               type="checkbox"
               class="h-4 w-4 rounded border-border"
               :checked="Boolean((row as TransactionInstanceItem).is_checked)"
+              :disabled="rowActionBusy"
               @change="toggleChecked(row as TransactionInstanceItem)"
             />
           </template>
@@ -1633,6 +1703,7 @@ onMounted(async () => {
               class="h-9 w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs text-foreground"
               :value="getRealDraftValue(row as TransactionInstanceItem)"
               type="number"
+              :disabled="rowActionBusy"
               @input="onRealDraftInput((row as TransactionInstanceItem).id, ($event.target as HTMLInputElement).value)"
               @blur="saveInlineRealValue(row as TransactionInstanceItem)"
               @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
@@ -1643,6 +1714,7 @@ onMounted(async () => {
             <select
               class="h-9 w-36 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
               :value="(row as TransactionInstanceItem).status"
+              :disabled="rowActionBusy"
               @change="changeStatus((row as TransactionInstanceItem), ($event.target as HTMLSelectElement).value as TransactionStatus)"
             >
               <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
@@ -1675,6 +1747,7 @@ onMounted(async () => {
                 variant="ghost"
                 aria-label="Editar lancamento"
                 title="Editar"
+                :disabled="rowActionBusy"
                 @click="openEditModal(row as TransactionInstanceItem)"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1687,6 +1760,7 @@ onMounted(async () => {
                 variant="danger"
                 aria-label="Deletar lancamento"
                 title="Deletar"
+                :disabled="rowActionBusy"
                 @click="handleDeleteClick(row as TransactionInstanceItem)"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1725,9 +1799,12 @@ onMounted(async () => {
         <section class="space-y-3 rounded-xl border border-border p-3">
           <p class="text-sm font-semibold text-foreground">2) Valores</p>
           <div class="grid gap-4 sm:grid-cols-2">
-            <AppInput v-model="formExpectedValue" label="Valor previsto" type="number" placeholder="0.00" required />
+            <AppInput v-model="formExpectedValue" :label="expectedValueLabel" type="number" placeholder="0.00" required />
             <AppInput v-model="formRealValue" label="Valor realizado (edicao)" type="number" placeholder="Sera igual ao previsto na criacao" />
           </div>
+          <p v-if="expectedValueHelpText" class="text-xs text-muted">
+            {{ expectedValueHelpText }}
+          </p>
         </section>
 
         <section class="space-y-3 rounded-xl border border-border p-3">
