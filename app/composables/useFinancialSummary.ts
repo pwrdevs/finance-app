@@ -64,6 +64,8 @@ export interface AccumulatedBalanceMonth {
   year: number
   monthKey: string
   monthLabel: string
+  income: number
+  expense: number
   monthBalance: number
   accumulatedBalance: number
 }
@@ -111,10 +113,10 @@ function addMonths(year: number, month: number, offset: number) {
 }
 
 function toMonthLabel(year: number, month: number) {
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('pt-BR', {
-    month: 'short',
-    year: 'numeric'
-  })
+  const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  const monthLabel = monthNames[month - 1] || String(month)
+  const yearSuffix = String(year).slice(-2)
+  return `${monthLabel}/${yearSuffix}`
 }
 
 function resolveInstanceValue(expectedValue: number, realValue: number | null) {
@@ -294,7 +296,7 @@ export function useFinancialSummary() {
     const initialBalance = ((accountRows ?? []) as AccountBalanceRecord[])
       .reduce((sum, account) => sum + toNumber(account.initial_balance), 0)
 
-    const monthBalanceMap = new Map<string, number>()
+    const monthBalanceMap = new Map<string, { income: number; expense: number }>()
     const records = (instanceRows ?? []) as Array<{
       instance_date: string
       expected_value: number
@@ -312,8 +314,12 @@ export function useFinancialSummary() {
       const value = resolveInstanceValue(toNumber(record.expected_value), record.real_value == null ? null : Number(record.real_value))
       const signedValue = type === 'income' ? value : -value
       const key = toMonthKeyFromDate(record.instance_date)
+      const current = monthBalanceMap.get(key) || { income: 0, expense: 0 }
 
-      monthBalanceMap.set(key, (monthBalanceMap.get(key) ?? 0) + signedValue)
+      monthBalanceMap.set(key, {
+        income: current.income + (type === 'income' ? value : 0),
+        expense: current.expense + (type === 'expense' ? value : 0)
+      })
     }
 
     let runningBalance = initialBalance
@@ -322,7 +328,8 @@ export function useFinancialSummary() {
     for (let index = 0; index < projectionMonths; index += 1) {
       const position = addMonths(startYear, startMonth, index)
       const monthKey = toMonthKey(position.year, position.month)
-      const monthBalance = monthBalanceMap.get(monthKey) ?? 0
+      const monthEntry = monthBalanceMap.get(monthKey) ?? { income: 0, expense: 0 }
+      const monthBalance = monthEntry.income - monthEntry.expense
       runningBalance += monthBalance
 
       months.push({
@@ -330,6 +337,8 @@ export function useFinancialSummary() {
         year: position.year,
         monthKey,
         monthLabel: toMonthLabel(position.year, position.month),
+        income: monthEntry.income,
+        expense: monthEntry.expense,
         monthBalance,
         accumulatedBalance: runningBalance
       })

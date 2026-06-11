@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import AppCard from '~/components/common/AppCard.vue'
-import AppTable from '~/components/common/AppTable.vue'
 import type { CardItem } from '~/composables/useMasterData'
 import type { TransactionType } from '~/composables/useTransactions'
 import { formatBRL } from '~/utils/currency'
@@ -104,6 +103,38 @@ const yearOptions = computed(() => {
   return [current - 2, current - 1, current, current + 1, current + 2].map(value => String(value))
 })
 
+const periodOptions = computed(() => {
+  return yearOptions.value.flatMap((year) => {
+    return monthOptions.map(month => ({
+      value: `${month.value}-${year}`,
+      label: `${month.label} ${year}`
+    }))
+  })
+})
+
+const selectedPeriod = computed({
+  get: () => `${selectedMonth.value}-${selectedYear.value}`,
+  set: (value: string) => {
+    const [month, year] = value.split('-')
+
+    if (!month || !year) {
+      return
+    }
+
+    selectedMonth.value = month
+    selectedYear.value = year
+  }
+})
+
+const selectedPeriodLabel = computed(() => {
+  const monthLabel = monthOptions.find(option => option.value === selectedMonth.value)?.label ?? selectedMonth.value
+  return `${monthLabel} ${selectedYear.value}`
+})
+
+const selectedMonthShortLabel = computed(() => {
+  return monthOptions.find(option => option.value === selectedMonth.value)?.label.slice(0, 3) ?? selectedMonth.value
+})
+
 const launchRows = computed(() => {
   return summary.value.recentLaunches.map((launch) => ({
     ...launch,
@@ -124,6 +155,89 @@ const cardStatementRows = computed(() => {
 })
 
 const projectionRows = computed(() => accumulatedProjection.value.months)
+
+const projectedBalance = computed(() => accumulatedProjection.value.firstMonthAccumulatedBalance)
+
+const selectedMonthProjection = computed(() => accumulatedProjection.value.months[0] ?? null)
+
+const riskForecast = computed(() => {
+  const threshold = 1000
+  const negativeMonth = accumulatedProjection.value.months.find(row => row.accumulatedBalance < 0)
+
+  if (negativeMonth) {
+    return {
+      tone: 'danger',
+      message: `⚠️ Seu saldo ficará negativo em ${negativeMonth.monthLabel}.`,
+      accent: negativeMonth.accumulatedBalance
+    }
+  }
+
+  const lowMonth = accumulatedProjection.value.months.find(row => row.accumulatedBalance < threshold)
+
+  if (lowMonth) {
+    return {
+      tone: 'warning',
+      message: `⚠️ Seu saldo ficará abaixo de ${formatCurrency(threshold)} em ${lowMonth.monthLabel}.`,
+      accent: lowMonth.accumulatedBalance
+    }
+  }
+
+  return {
+    tone: 'safe',
+    message: '✅ Nenhum risco financeiro identificado nos próximos 12 meses.',
+    accent: accumulatedProjection.value.months.at(-1)?.accumulatedBalance ?? accumulatedProjection.value.firstMonthAccumulatedBalance
+  }
+})
+
+const chartData = computed(() => {
+  const months = accumulatedProjection.value.months
+
+  if (!months.length) {
+    return {
+      path: '',
+      fillPath: '',
+      points: [] as Array<{ x: number; y: number; label: string; value: number }>,
+      min: 0,
+      max: 0
+    }
+  }
+
+  const width = 960
+  const height = 280
+  const paddingX = 36
+  const paddingY = 28
+  const usableWidth = width - paddingX * 2
+  const usableHeight = height - paddingY * 2
+  const values = months.map(item => item.accumulatedBalance)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const step = months.length > 1 ? usableWidth / (months.length - 1) : 0
+
+  const points = months.map((item, index) => {
+    const x = paddingX + (index * step)
+    const normalized = (item.accumulatedBalance - min) / range
+    const y = paddingY + (usableHeight - (normalized * usableHeight))
+
+    return {
+      x,
+      y,
+      label: item.monthLabel,
+      value: item.accumulatedBalance
+    }
+  })
+
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
+  const fillPath = `${path} L ${points[points.length - 1].x.toFixed(2)} ${height - paddingY} L ${points[0].x.toFixed(2)} ${height - paddingY} Z`
+
+  return {
+    path,
+    fillPath,
+    points,
+    min,
+    max
+  }
+})
 
 function formatCurrency(value: number) {
   return formatBRL(value)
@@ -191,166 +305,244 @@ watch(
 </script>
 
 <template>
-  <section class="space-y-6">
-    <AppCard title="Filtros" :subtitle="loading ? 'Carregando dados mensais...' : 'Selecione mes e ano para atualizar o resumo.'">
-      <div class="grid gap-4 md:grid-cols-2">
+  <section class="space-y-6 overflow-x-hidden">
+    <AppCard class="border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-surface to-surface">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Mes</label>
-          <select v-model="selectedMonth" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="option in monthOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Dashboard V2</p>
+          <div>
+            <h2 class="text-2xl font-semibold text-foreground sm:text-3xl">Visão financeira estratégica</h2>
+            <p class="mt-1 max-w-2xl text-sm text-muted">Acompanhe entradas, saídas, saldo acumulado e risco futuro sem ruído operacional.</p>
+          </div>
         </div>
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-foreground">Ano</label>
-          <select v-model="selectedYear" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-            <option v-for="option in yearOptions" :key="option" :value="option">{{ option }}</option>
+        <div class="w-full max-w-sm space-y-2 lg:w-[22rem]">
+          <label class="block text-sm font-medium text-foreground">Período</label>
+          <select
+            v-model="selectedPeriod"
+            class="h-12 w-full rounded-2xl border border-border bg-surface px-4 text-sm font-medium text-foreground shadow-sm outline-none transition focus:border-emerald-400"
+          >
+            <option v-for="option in periodOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
+          <p class="text-xs text-muted">{{ selectedPeriodLabel }}</p>
         </div>
       </div>
     </AppCard>
 
-    <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
+    <p v-if="pageError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{{ pageError }}</p>
 
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <AppCard title="Receitas (ativas)">
-        <p class="text-xl font-semibold text-emerald-700 sm:text-2xl">{{ formatCurrency(summary.totalIncome) }}</p>
+    <div class="grid gap-4 xl:grid-cols-4">
+      <AppCard class="xl:col-span-2 border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-surface to-surface">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Saldo do período</p>
+            <p class="mt-2 text-4xl font-semibold sm:text-5xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+              {{ formatCurrency(summary.monthlyBalance) }}
+            </p>
+            <p class="mt-2 text-sm text-muted">Entradas menos saídas no período selecionado.</p>
+          </div>
+          <span class="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Principal</span>
+        </div>
       </AppCard>
 
-      <AppCard title="Despesas (ativas)">
-        <p class="text-xl font-semibold text-rose-700 sm:text-2xl">{{ formatCurrency(summary.totalExpense) }}</p>
+      <AppCard class="xl:col-span-2 border-amber-200/70 bg-gradient-to-br from-amber-50 via-surface to-surface">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Saldo Projetado</p>
+            <p class="mt-2 text-4xl font-semibold sm:text-5xl text-foreground">{{ formatCurrency(projectedBalance) }}</p>
+            <p class="mt-2 text-sm text-muted">Baseado em entradas e saídas previstas até este período.</p>
+          </div>
+          <span class="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Projeto</span>
+        </div>
       </AppCard>
 
-      <AppCard title="Saldo do mes (ativo)">
-        <p class="text-xl font-semibold sm:text-2xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-          {{ formatCurrency(summary.monthlyBalance) }}
-        </p>
+      <AppCard>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Entradas</p>
+        <p class="mt-3 text-3xl font-semibold text-emerald-700 sm:text-4xl">{{ formatCurrency(summary.totalIncome) }}</p>
       </AppCard>
 
-      <AppCard title="Conferidos (ativos)">
-        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ formatCurrency(summary.checkedTotal) }}</p>
-      </AppCard>
-
-      <AppCard title="Pendentes (ativos)">
-        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ formatCurrency(summary.pendingTotal) }}</p>
-      </AppCard>
-
-      <AppCard title="Total cancelado">
-        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ formatCurrency(summary.canceledTotal) }}</p>
-      </AppCard>
-
-      <AppCard title="Lancamentos ativos">
-        <p class="text-xl font-semibold text-foreground sm:text-2xl">{{ summary.numberOfTransactions }}</p>
+      <AppCard>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Saídas</p>
+        <p class="mt-3 text-3xl font-semibold text-rose-700 sm:text-4xl">{{ formatCurrency(summary.totalExpense) }}</p>
       </AppCard>
     </div>
 
-    <AppCard title="Resumo de fatura por cartao" subtitle="Somente despesas ativas com valor efetivo.">
-      <div v-if="cardStatementRows.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <article
-          v-for="statement in cardStatementRows"
-          :key="statement.card_id"
-          class="rounded-2xl border border-border bg-primary-light/20 p-4"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-sm font-semibold text-foreground">{{ statement.card_name }}</p>
-              <p class="text-xs text-muted">{{ statement.transactionCount }} despesa(s) no mes selecionado</p>
-            </div>
-            <span class="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Cartao</span>
-          </div>
-          <p class="mt-4 text-2xl font-semibold text-foreground">{{ formatCurrency(statement.totalExpense) }}</p>
-        </article>
+    <AppCard title="Previsão de caixa" :subtitle="riskForecast.message">
+      <div
+        class="rounded-2xl border px-4 py-4"
+        :class="riskForecast.tone === 'safe'
+          ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800'
+          : riskForecast.tone === 'warning'
+            ? 'border-amber-200 bg-amber-50/70 text-amber-800'
+            : 'border-rose-200 bg-rose-50/70 text-rose-800'"
+      >
+        <p class="text-sm font-semibold">{{ riskForecast.message }}</p>
+        <p class="mt-2 text-xs opacity-80">
+          Referência acumulada: {{ formatCurrency(riskForecast.accent) }}
+        </p>
       </div>
-
-      <p v-else class="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted">
-        Nenhuma despesa em cartao encontrada para este mes.
-      </p>
     </AppCard>
 
-    <AppCard title="Projecao de saldo acumulado" subtitle="12 meses com base em saldos iniciais e movimentos efetivos das instancias.">
+    <AppCard title="Projeção Financeira" subtitle="Estimativa futura baseada em lançamentos únicos, parcelados e recorrentes.">
       <div class="grid gap-4 md:grid-cols-3">
-        <article class="rounded-2xl border border-border bg-primary-light/20 p-4">
+        <article class="rounded-2xl border border-border bg-surface/60 p-4">
           <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo inicial</p>
           <p class="mt-3 text-2xl font-semibold" :class="accumulatedProjection.initialBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
             {{ formatCurrency(accumulatedProjection.initialBalance) }}
           </p>
         </article>
 
-        <article class="rounded-2xl border border-border bg-primary-light/20 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo do mes</p>
-          <p class="mt-1 text-xs text-muted">{{ monthOptions.find(item => item.value === selectedMonth)?.label }} {{ selectedYear }}</p>
-          <p class="mt-2 text-2xl font-semibold" :class="accumulatedProjection.firstMonthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-            {{ formatCurrency(accumulatedProjection.firstMonthBalance) }}
+        <article class="rounded-2xl border border-border bg-surface/60 p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo do período</p>
+          <p class="mt-1 text-xs text-muted">{{ selectedPeriodLabel }}</p>
+          <p class="mt-2 text-2xl font-semibold" :class="selectedMonthProjection?.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+            {{ formatCurrency(selectedMonthProjection?.monthBalance ?? 0) }}
           </p>
         </article>
 
-        <article class="rounded-2xl border border-border bg-primary-light/20 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo acumulado</p>
-          <p class="mt-1 text-xs text-muted">Apos o mes selecionado</p>
-          <p class="mt-2 text-2xl font-semibold" :class="accumulatedProjection.firstMonthAccumulatedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-            {{ formatCurrency(accumulatedProjection.firstMonthAccumulatedBalance) }}
+        <article class="rounded-2xl border border-border bg-surface/60 p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo acumulado projetado</p>
+          <p class="mt-1 text-xs text-muted">Saldo inicial + soma dos saldos mensais até o período selecionado</p>
+          <p class="mt-2 text-2xl font-semibold" :class="projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+            {{ formatCurrency(projectedBalance) }}
           </p>
         </article>
       </div>
 
-      <div class="mt-4 hidden overflow-x-auto md:block">
-        <table class="min-w-full text-sm">
-          <thead>
-            <tr class="border-b border-border text-left text-xs uppercase tracking-[0.12em] text-muted">
-              <th class="px-3 py-2">Mes</th>
-              <th class="px-3 py-2 text-right">Saldo do mes</th>
-              <th class="px-3 py-2 text-right">Acumulado</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in projectionRows" :key="row.monthKey" class="border-b border-border/80">
-              <td class="px-3 py-2 font-medium text-foreground">{{ row.monthLabel }}</td>
-              <td class="px-3 py-2 text-right font-semibold" :class="row.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-                {{ formatCurrency(row.monthBalance) }}
-              </td>
-              <td class="px-3 py-2 text-right font-semibold" :class="row.accumulatedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-                {{ formatCurrency(row.accumulatedBalance) }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="mt-6 rounded-3xl border border-border bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 text-slate-100 shadow-panel">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold">Gráfico de evolução financeira</p>
+            <p class="text-xs text-slate-300">Saldo acumulado ao longo dos próximos 12 meses.</p>
+          </div>
+          <p class="text-xs text-slate-300">{{ selectedPeriodLabel }}</p>
+        </div>
+
+        <div v-if="chartData.points.length" class="overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-3">
+          <svg viewBox="0 0 960 280" class="h-64 w-full">
+            <defs>
+              <linearGradient id="balanceLineGradient" x1="0%" x2="100%" y1="0%" y2="0%">
+                <stop offset="0%" stop-color="#22c55e" />
+                <stop offset="100%" stop-color="#84cc16" />
+              </linearGradient>
+              <linearGradient id="balanceAreaGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+                <stop offset="0%" stop-color="#22c55e" stop-opacity="0.28" />
+                <stop offset="100%" stop-color="#22c55e" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+
+            <line
+              v-for="tick in [0, 1, 2, 3]"
+              :key="tick"
+              :x1="36"
+              :x2="924"
+              :y1="28 + (224 / 3) * tick"
+              :y2="28 + (224 / 3) * tick"
+              stroke="rgba(255,255,255,0.08)"
+              stroke-width="1"
+            />
+
+            <path :d="chartData.fillPath" fill="url(#balanceAreaGradient)" />
+            <path :d="chartData.path" fill="none" stroke="url(#balanceLineGradient)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+
+            <g v-for="point in chartData.points" :key="point.label">
+              <circle :cx="point.x" :cy="point.y" r="4.5" fill="#f8fafc" stroke="#16a34a" stroke-width="3" />
+              <text :x="point.x" y="262" text-anchor="middle" class="fill-slate-300 text-[11px] font-medium">{{ point.label }}</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="mt-6 space-y-4">
+        <div class="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p class="text-sm font-semibold text-foreground">Resumo executivo da projeção</p>
+            <p class="text-xs text-muted">Saldo acumulado projetado = saldo inicial + soma dos saldos mensais até o período selecionado.</p>
+          </div>
+          <p class="text-xs text-muted">Atualizado para {{ selectedPeriodLabel }}</p>
+        </div>
+
+        <div class="overflow-hidden rounded-2xl border border-border bg-surface/70">
+          <div class="hidden md:block">
+            <table class="min-w-full text-sm">
+              <thead class="bg-primary-light/20 text-left text-xs uppercase tracking-[0.12em] text-muted">
+                <tr>
+                  <th class="px-4 py-3">Mês</th>
+                  <th class="px-4 py-3 text-right">Entradas</th>
+                  <th class="px-4 py-3 text-right">Saídas</th>
+                  <th class="px-4 py-3 text-right">Saldo do mês</th>
+                  <th class="px-4 py-3 text-right">Saldo acumulado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in projectionRows" :key="row.monthKey" class="border-t border-border/80">
+                  <td class="px-4 py-3 font-medium text-foreground">{{ row.monthLabel }}</td>
+                  <td class="px-4 py-3 text-right font-semibold text-emerald-700">{{ formatCurrency(row.income) }}</td>
+                  <td class="px-4 py-3 text-right font-semibold text-rose-700">{{ formatCurrency(row.expense) }}</td>
+                  <td class="px-4 py-3 text-right font-semibold" :class="row.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+                    {{ formatCurrency(row.monthBalance) }}
+                  </td>
+                  <td class="px-4 py-3 text-right font-semibold" :class="row.accumulatedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+                    {{ formatCurrency(row.accumulatedBalance) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="grid gap-3 p-3 md:hidden">
+            <article
+              v-for="row in projectionRows"
+              :key="row.monthKey"
+              class="rounded-2xl border border-border bg-surface p-4 shadow-sm"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-foreground">{{ row.monthLabel }}</p>
+                  <p class="text-xs text-muted">Saldo acumulado</p>
+                </div>
+                <p class="text-base font-semibold" :class="row.accumulatedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+                  {{ formatCurrency(row.accumulatedBalance) }}
+                </p>
+              </div>
+              <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p class="text-muted">Entradas</p>
+                  <p class="font-semibold text-emerald-700">{{ formatCurrency(row.income) }}</p>
+                </div>
+                <div>
+                  <p class="text-muted">Saídas</p>
+                  <p class="font-semibold text-rose-700">{{ formatCurrency(row.expense) }}</p>
+                </div>
+                <div class="col-span-2">
+                  <p class="text-muted">Saldo do mês</p>
+                  <p class="font-semibold" :class="row.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">{{ formatCurrency(row.monthBalance) }}</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
       </div>
     </AppCard>
 
-    <AppCard title="Ultimos lancamentos" :subtitle="`${launchRows.length} registro(s) no mes selecionado`">
-      <AppTable :columns="columns" :rows="launchRows" empty-message="Nenhum lancamento encontrado para este periodo.">
-        <template #cell-instance_date="{ value }">
-          {{ formatDateBr(String(value)) }}
-        </template>
+    <AppCard title="Resumo de cartões" subtitle="Fatura estimada pelos lançamentos de despesa ativos do período selecionado.">
+      <div v-if="cardStatementRows.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <article
+          v-for="statement in cardStatementRows"
+          :key="statement.card_id"
+          class="rounded-2xl border border-border bg-surface px-4 py-3"
+        >
+          <p class="text-sm font-semibold text-foreground">{{ statement.card_name }}</p>
+          <div class="mt-2 flex items-end justify-between gap-3">
+            <p class="text-lg font-semibold text-foreground">{{ formatCurrency(statement.totalExpense) }}</p>
+            <p class="text-xs text-muted">{{ statement.transactionCount }} despesa(s)</p>
+          </div>
+        </article>
+      </div>
 
-        <template #cell-type="{ row }">
-          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="(row as any).type_label === 'Receita' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
-            {{ (row as any).type_label }}
-          </span>
-        </template>
-
-        <template #cell-expected_value="{ value }">
-          {{ formatCurrency(Number(value)) }}
-        </template>
-
-        <template #cell-real_value="{ value }">
-          {{ value == null ? '-' : formatCurrency(Number(value)) }}
-        </template>
-
-        <template #cell-effective_value="{ value }">
-          {{ formatCurrency(Number(value)) }}
-        </template>
-
-        <template #cell-status="{ row }">
-          {{ (row as any).status_label }}
-        </template>
-
-        <template #cell-checked_badge="{ value }">
-          <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="value === 'Conferido' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
-            {{ value }}
-          </span>
-        </template>
-      </AppTable>
+      <p v-else class="rounded-2xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted">
+        Nenhuma despesa em cartao encontrada para este mes.
+      </p>
     </AppCard>
   </section>
 </template>
