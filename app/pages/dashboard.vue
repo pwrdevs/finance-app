@@ -177,7 +177,7 @@ const chartData = computed(() => {
     return {
       path: '',
       fillPath: '',
-      points: [] as Array<{ x: number; y: number; label: string; value: number }>,
+      points: [] as Array<{ x: number; y: number; labelY: number; label: string; value: number; showValue: boolean }>,
       min: 0,
       max: 0
     }
@@ -194,18 +194,39 @@ const chartData = computed(() => {
   const max = Math.max(...values)
   const range = max - min || 1
   const step = months.length > 1 ? usableWidth / (months.length - 1) : 0
+  let lastLabelY: number | null = null
 
   const points = months.map((item, index) => {
     const x = paddingX + (index * step)
     const normalized = (item.accumulatedBalance - min) / range
     const y = paddingY + (usableHeight - (normalized * usableHeight))
+    const showValue = true
+    let labelY = y - 10
+
+    // Avoid stacked text collisions when adjacent points are too close.
+    if (showValue && !isMobileChart.value && lastLabelY !== null && Math.abs(labelY - lastLabelY) < 14) {
+      labelY = y + 16
+    }
+
+    if (labelY < 14) {
+      labelY = y + 16
+    }
+
+    if (labelY > (height - 18)) {
+      labelY = y - 10
+    }
+
+    if (showValue) {
+      lastLabelY = labelY
+    }
 
     return {
       x,
       y,
+      labelY,
       label: item.monthLabel,
       value: item.accumulatedBalance,
-      showValue: index === 0 || index === months.length - 1 || (index % (isMobileChart.value ? 4 : 2) === 0)
+      showValue
     }
   })
 
@@ -333,48 +354,56 @@ watch(
 
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <AppCard>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Entradas</p>
-        <p class="mt-3 text-3xl font-semibold text-emerald-700 sm:text-4xl">{{ formatCurrency(summary.totalIncome) }}</p>
+        <div class="flex min-h-[12rem] flex-col justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Entradas</p>
+            <p class="mt-3 text-2xl font-semibold text-emerald-700 sm:text-3xl">{{ formatCurrency(summary.totalIncome) }}</p>
+          </div>
+          <p class="text-sm text-muted">Total de receitas no período selecionado.</p>
+        </div>
       </AppCard>
 
       <AppCard>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Saídas</p>
-        <p class="mt-3 text-3xl font-semibold text-rose-700 sm:text-4xl">{{ formatCurrency(summary.totalExpense) }}</p>
+        <div class="flex min-h-[12rem] flex-col justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Saídas</p>
+            <p class="mt-3 text-2xl font-semibold text-rose-700 sm:text-3xl">{{ formatCurrency(summary.totalExpense) }}</p>
+          </div>
+          <p class="text-sm text-muted">Total de despesas no período selecionado.</p>
+        </div>
       </AppCard>
 
       <AppCard>
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex min-h-[12rem] flex-col justify-between gap-4">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Saldo do período</p>
-            <p class="mt-2 text-3xl font-semibold sm:text-4xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-              {{ formatCurrency(summary.monthlyBalance) }}
-            </p>
-            <p class="mt-2 text-sm text-muted">Entradas menos saídas no período selecionado.</p>
+            <span class="mt-2 inline-flex w-fit rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Principal</span>
           </div>
-          <span class="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Principal</span>
+          <p class="text-2xl font-semibold sm:text-3xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+            {{ formatCurrency(summary.monthlyBalance) }}
+          </p>
+          <p class="text-sm text-muted">Entradas menos saídas no período selecionado.</p>
         </div>
       </AppCard>
 
       <AppCard>
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex min-h-[12rem] flex-col justify-between gap-4">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Saldo Projetado</p>
-            <p class="mt-2 text-3xl font-semibold sm:text-4xl text-foreground">{{ formatCurrency(projectedBalance) }}</p>
-            <p class="mt-2 text-sm text-muted">Baseado em entradas e saídas previstas até este período.</p>
+            <span class="mt-2 inline-flex w-fit rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Projeto</span>
           </div>
-          <span class="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Projeto</span>
+          <p class="text-2xl font-semibold text-foreground sm:text-3xl">{{ formatCurrency(projectedBalance) }}</p>
+          <p class="text-sm text-muted">Baseado em entradas e saídas previstas até este período.</p>
         </div>
       </AppCard>
 
       <AppCard>
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Aporte necessário</p>
-            <p class="mt-2 text-3xl font-semibold sm:text-4xl" :class="requiredContribution > 0 ? 'text-amber-700' : 'text-emerald-700'">
-              {{ formatCurrency(requiredContribution) }}
-            </p>
-            <p class="mt-2 text-sm text-muted">{{ requiredContribution > 0 ? 'Para manter o saldo positivo no período acumulado.' : 'Nenhum aporte necessário no período.' }}</p>
-          </div>
+        <div class="flex min-h-[12rem] flex-col justify-between gap-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Aporte necessário</p>
+          <p class="text-2xl font-semibold sm:text-3xl" :class="requiredContribution > 0 ? 'text-amber-700' : 'text-emerald-700'">
+            {{ formatCurrency(requiredContribution) }}
+          </p>
+          <p class="text-sm text-muted">{{ requiredContribution > 0 ? 'Para manter o saldo positivo no período acumulado.' : 'Nenhum aporte necessário no período.' }}</p>
         </div>
       </AppCard>
     </div>
@@ -398,27 +427,46 @@ watch(
 
     <AppCard title="Projeção Financeira" subtitle="Estimativa futura baseada em lançamentos únicos, parcelados e recorrentes.">
       <div class="grid gap-4 md:grid-cols-3">
-        <article class="rounded-2xl border border-border bg-surface/60 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo inicial</p>
-          <p class="mt-3 text-2xl font-semibold" :class="accumulatedProjection.initialBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-            {{ formatCurrency(accumulatedProjection.initialBalance) }}
-          </p>
+        <article class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
+          <div class="flex min-h-[10.5rem] flex-col justify-between gap-3">
+            <div class="flex items-start justify-between gap-3">
+              <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo inicial</p>
+              <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">Base</span>
+            </div>
+            <p class="text-2xl font-semibold" :class="accumulatedProjection.initialBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+              {{ formatCurrency(accumulatedProjection.initialBalance) }}
+            </p>
+            <p class="text-xs text-muted">Saldo antes da janela de análise.</p>
+          </div>
         </article>
 
-        <article class="rounded-2xl border border-border bg-surface/60 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo do período</p>
-          <p class="mt-1 text-xs text-muted">{{ selectedPeriodLabel }}</p>
-          <p class="mt-2 text-2xl font-semibold" :class="selectedMonthProjection?.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-            {{ formatCurrency(selectedMonthProjection?.monthBalance ?? 0) }}
-          </p>
+        <article class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
+          <div class="flex min-h-[10.5rem] flex-col justify-between gap-3">
+            <div class="flex items-start justify-between gap-3">
+              <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo do período</p>
+              <span class="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Mês</span>
+            </div>
+            <div>
+              <p class="text-xs text-muted">{{ selectedPeriodLabel }}</p>
+              <p class="mt-2 text-2xl font-semibold" :class="selectedMonthProjection?.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+                {{ formatCurrency(selectedMonthProjection?.monthBalance ?? 0) }}
+              </p>
+            </div>
+            <p class="text-xs text-muted">Entradas menos saídas do período selecionado.</p>
+          </div>
         </article>
 
-        <article class="rounded-2xl border border-border bg-surface/60 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo acumulado projetado</p>
-          <p class="mt-1 text-xs text-muted">Acumulado de {{ accumulatedProjection.analysisStartLabel || selectedPeriodLabel }} até {{ accumulatedProjection.analysisEndLabel || selectedPeriodLabel }}</p>
-          <p class="mt-2 text-2xl font-semibold" :class="projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-            {{ formatCurrency(projectedBalance) }}
-          </p>
+        <article class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
+          <div class="flex min-h-[10.5rem] flex-col justify-between gap-3">
+            <div class="flex items-start justify-between gap-3">
+              <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo acumulado projetado</p>
+              <span class="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Acumulado</span>
+            </div>
+            <p class="text-2xl font-semibold" :class="projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+              {{ formatCurrency(projectedBalance) }}
+            </p>
+            <p class="text-xs text-muted">Acumulado de {{ accumulatedProjection.analysisStartLabel || selectedPeriodLabel }} até {{ accumulatedProjection.analysisEndLabel || selectedPeriodLabel }}.</p>
+          </div>
         </article>
       </div>
 
@@ -463,7 +511,7 @@ watch(
               <text
                 v-if="point.showValue"
                 :x="point.x"
-                :y="point.y - 10"
+                :y="point.labelY"
                 text-anchor="middle"
                 class="fill-slate-100 text-[10px] font-semibold"
               >
