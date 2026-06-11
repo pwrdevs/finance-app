@@ -5,7 +5,6 @@ import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import {
-  RECURRING_FREQUENCIES,
   type DeleteRecurringScope,
   type RecurringEndMode,
   type RecurringFrequency,
@@ -89,29 +88,22 @@ const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | null>(null)
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
-const formType = ref<TransactionType>('expense')
 const formExpectedValue = ref('')
 const formRealValue = ref('')
-const formDueDate = ref('')
-const formInstanceDate = ref('')
+const formPurchaseDate = ref('')
 const formInstallmentTotal = ref('2')
-const formInstallmentStartDate = ref('')
 const formRecurringStartDate = ref('')
 const formRecurringEndDate = ref('')
-const formRecurringNoEndDate = ref(true)
 const formRecurringFrequency = ref<RecurringFrequency>('monthly')
-const formRecurringEndingMode = ref<RecurringEndMode>('no_end')
+const formRecurringEndingMode = ref<RecurringEndMode>('count')
 const formRecurringOccurrences = ref('12')
 const formPersonId = ref('')
-const formAccountId = ref('')
-const formCardId = ref('')
+const formPaymentMethod = ref('')
 const formCategoryId = ref('')
 const formDescription = ref('')
-const formStatus = ref<TransactionStatus>('pending')
 const formGenerateReimbursement = ref(false)
 const formReimbursementPersonId = ref('')
 const formReimbursementAccountId = ref('')
-const formReimbursementCategoryId = ref('')
 const formReimbursementDescription = ref('')
 const formReimbursementValue = ref('')
 const formReimbursementDate = ref('')
@@ -132,17 +124,9 @@ const columns = [
 ]
 
 const originTypeOptions = [
-  { value: 'single', label: 'Lancamento unico' },
-  { value: 'installment', label: 'Compra parcelada' },
-  { value: 'recurring', label: 'Lancamento recorrente mensal' }
+  { value: 'single', label: 'Compra unica' },
+  { value: 'recurring', label: 'Compra recorrente' }
 ] as const
-
-const recurringFrequencyLabelMap: Record<RecurringFrequency, string> = {
-  daily: 'Diario',
-  weekly: 'Semanal',
-  monthly: 'Mensal',
-  yearly: 'Anual'
-}
 
 const filterMonthOptions = [
   { value: '01', label: 'Janeiro' },
@@ -185,7 +169,17 @@ const peopleMap = computed(() => new Map(people.value.map(entry => [entry.id, en
 const accountsMap = computed(() => new Map(accounts.value.map(entry => [entry.id, entry.name])))
 const cardsMap = computed(() => new Map(cards.value.map(entry => [entry.id, entry.name])))
 const categoriesMap = computed(() => new Map(categories.value.map(entry => [entry.id, entry.name])))
-const incomeCategories = computed(() => categories.value.filter(entry => entry.type === 'income'))
+const selectedCategory = computed(() => categories.value.find(entry => entry.id === formCategoryId.value) ?? null)
+const selectedCategoryType = computed<TransactionType | null>(() => selectedCategory.value?.type ?? null)
+const canGenerateReimbursement = computed(() => selectedCategoryType.value === 'expense')
+const selectedCard = computed(() => cards.value.find(entry => entry.id === getCardIdFromPaymentMethod(formPaymentMethod.value)) ?? null)
+const showInstallmentSelector = computed(() => !editingRow.value && formOriginType.value === 'single' && Boolean(selectedCard.value))
+
+const paymentMethodOptions = computed(() => {
+  const accountOptions = accounts.value.map(entry => ({ value: `account:${entry.id}`, label: `Conta - ${entry.name}` }))
+  const cardOptions = cards.value.map(entry => ({ value: `card:${entry.id}`, label: `Cartao - ${entry.name}` }))
+  return [...accountOptions, ...cardOptions]
+})
 
 const shouldAskScopeForEdit = computed(() => {
   const originType = editingRow.value?.origin_type
@@ -540,6 +534,71 @@ function applyReimbursementDefaults() {
   }
 }
 
+function getPaymentMethodParts(value: string) {
+  const [kind, id] = value.split(':')
+
+  if (!kind || !id) {
+    return { kind: null, id: null }
+  }
+
+  if (kind !== 'account' && kind !== 'card') {
+    return { kind: null, id: null }
+  }
+
+  return { kind, id }
+}
+
+function getAccountIdFromPaymentMethod(value: string) {
+  const parsed = getPaymentMethodParts(value)
+  return parsed.kind === 'account' ? parsed.id : null
+}
+
+function getCardIdFromPaymentMethod(value: string) {
+  const parsed = getPaymentMethodParts(value)
+  return parsed.kind === 'card' ? parsed.id : null
+}
+
+function getNextBillingLabel(referenceDate: string, closingDay: number | null) {
+  const [yearText, monthText, dayText] = referenceDate.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+
+  if (!year || !month || !day) {
+    return '-'
+  }
+
+  let targetYear = year
+  let targetMonth = month
+
+  if (closingDay && day > closingDay) {
+    targetMonth += 1
+    if (targetMonth > 12) {
+      targetMonth = 1
+      targetYear += 1
+    }
+  }
+
+  const monthLabel = new Date(Date.UTC(targetYear, targetMonth - 1, 1)).toLocaleString('pt-BR', { month: 'long' })
+  return `${monthLabel.charAt(0).toUpperCase()}${monthLabel.slice(1)}/${targetYear}`
+}
+
+const cardInfoReferenceDate = computed(() => {
+  if (formOriginType.value === 'recurring') {
+    return formRecurringStartDate.value
+  }
+
+  return formPurchaseDate.value
+})
+
+const nextCardBillingLabel = computed(() => {
+  if (!selectedCard.value || !cardInfoReferenceDate.value) {
+    return '-'
+  }
+
+  return getNextBillingLabel(cardInfoReferenceDate.value, selectedCard.value.closing_day)
+})
+
 function formatCurrency(value: number | null) {
   return formatBRLOrDash(value)
 }
@@ -661,29 +720,22 @@ function resetForm() {
   editingRow.value = null
   formTitle.value = ''
   formOriginType.value = 'single'
-  formType.value = 'expense'
   formExpectedValue.value = ''
   formRealValue.value = ''
-  formDueDate.value = `${monthYear.value}-01`
-  formInstanceDate.value = `${monthYear.value}-01`
-  formInstallmentTotal.value = '2'
-  formInstallmentStartDate.value = `${monthYear.value}-01`
+  formPurchaseDate.value = `${monthYear.value}-01`
+  formInstallmentTotal.value = '1'
   formRecurringStartDate.value = `${monthYear.value}-01`
   formRecurringEndDate.value = ''
-  formRecurringNoEndDate.value = true
   formRecurringFrequency.value = 'monthly'
-  formRecurringEndingMode.value = 'no_end'
+  formRecurringEndingMode.value = 'count'
   formRecurringOccurrences.value = '12'
   formPersonId.value = ''
-  formAccountId.value = ''
-  formCardId.value = ''
+  formPaymentMethod.value = ''
   formCategoryId.value = ''
   formDescription.value = ''
-  formStatus.value = 'pending'
   formGenerateReimbursement.value = false
   formReimbursementPersonId.value = ''
   formReimbursementAccountId.value = ''
-  formReimbursementCategoryId.value = ''
   formReimbursementDescription.value = ''
   formReimbursementValue.value = ''
   formReimbursementDate.value = ''
@@ -693,30 +745,23 @@ function resetForm() {
 function fillFormFromRow(row: TransactionInstanceItem) {
   editingRow.value = row
   formTitle.value = row.title
-  formOriginType.value = row.origin_type
-  formType.value = row.type
+  formOriginType.value = row.origin_type === 'recurring' ? 'recurring' : 'single'
   formExpectedValue.value = String(row.expected_value)
   formRealValue.value = row.real_value == null ? '' : String(row.real_value)
-  formDueDate.value = row.due_date
-  formInstanceDate.value = row.instance_date
+  formPurchaseDate.value = row.instance_date
   formInstallmentTotal.value = String(row.installment_total ?? 2)
-  formInstallmentStartDate.value = row.instance_date
   formRecurringStartDate.value = row.due_date
   formRecurringEndDate.value = ''
-  formRecurringNoEndDate.value = false
   formRecurringFrequency.value = 'monthly'
-  formRecurringEndingMode.value = 'end_date'
+  formRecurringEndingMode.value = 'count'
   formRecurringOccurrences.value = '12'
   formPersonId.value = row.person_id ?? ''
-  formAccountId.value = row.account_id ?? ''
-  formCardId.value = row.card_id ?? ''
+  formPaymentMethod.value = row.card_id ? `card:${row.card_id}` : row.account_id ? `account:${row.account_id}` : ''
   formCategoryId.value = row.category_id ?? ''
   formDescription.value = row.description ?? ''
-  formStatus.value = row.status
   formGenerateReimbursement.value = false
   formReimbursementPersonId.value = ''
   formReimbursementAccountId.value = ''
-  formReimbursementCategoryId.value = ''
   formReimbursementDescription.value = ''
   formReimbursementValue.value = ''
   formReimbursementDate.value = ''
@@ -735,7 +780,7 @@ async function openEditModal(row: TransactionInstanceItem) {
     const recurringConfig = await getRecurringConfiguration(row.source_transaction_id)
     formRecurringStartDate.value = recurringConfig.start_date
     formRecurringFrequency.value = recurringConfig.frequency
-    formRecurringEndingMode.value = recurringConfig.end_mode
+    formRecurringEndingMode.value = recurringConfig.end_mode === 'no_end' ? 'count' : recurringConfig.end_mode
     formRecurringEndDate.value = recurringConfig.end_date || ''
     formRecurringOccurrences.value = recurringConfig.occurrences_count == null ? '12' : String(recurringConfig.occurrences_count)
   }
@@ -957,9 +1002,32 @@ async function submitForm() {
     return
   }
 
+  if (!formCategoryId.value) {
+    modalError.value = 'Categoria obrigatoria.'
+    return
+  }
+
+  if (!selectedCategoryType.value) {
+    modalError.value = 'Categoria invalida.'
+    return
+  }
+
+  if (!formPaymentMethod.value) {
+    modalError.value = 'Forma de pagamento obrigatoria.'
+    return
+  }
+
+  const accountId = getAccountIdFromPaymentMethod(formPaymentMethod.value)
+  const cardId = getCardIdFromPaymentMethod(formPaymentMethod.value)
+
+  if (!accountId && !cardId) {
+    modalError.value = 'Forma de pagamento invalida.'
+    return
+  }
+
   let parsedReimbursementValue: number | null = null
 
-  if (!editingRow.value && formType.value === 'expense' && formGenerateReimbursement.value) {
+  if (!editingRow.value && canGenerateReimbursement.value && formGenerateReimbursement.value) {
     const reimbursementRaw = formReimbursementValue.value.trim()
     parsedReimbursementValue = reimbursementRaw ? Number(reimbursementRaw) : parsedExpected
 
@@ -968,40 +1036,19 @@ async function submitForm() {
       return
     }
 
-    if (!formReimbursementCategoryId.value) {
-      modalError.value = 'Categoria da entrada vinculada obrigatoria.'
-      return
-    }
-
-    const selectedIncomeCategory = incomeCategories.value.find(entry => entry.id === formReimbursementCategoryId.value)
-
-    if (!selectedIncomeCategory) {
-      modalError.value = 'Categoria da entrada vinculada deve ser do tipo receita.'
-      return
-    }
   }
 
-  if (formOriginType.value === 'single' && (!formDueDate.value || !formInstanceDate.value)) {
-    modalError.value = 'Vencimento e data do lancamento sao obrigatorios.'
+  if (formOriginType.value === 'single' && !formPurchaseDate.value) {
+    modalError.value = 'Data da compra obrigatoria.'
     return
   }
 
   const parsedInstallmentTotal = Number(formInstallmentTotal.value)
   const parsedRecurringOccurrences = Number(formRecurringOccurrences.value)
 
-  if (formOriginType.value === 'installment') {
-    if (!Number.isInteger(parsedInstallmentTotal) || parsedInstallmentTotal < 2) {
-      modalError.value = 'Quantidade de parcelas deve ser inteira e maior ou igual a 2.'
-      return
-    }
-
-    if (!formCardId.value) {
-      modalError.value = 'Cartao obrigatorio para lancamento parcelado.'
-      return
-    }
-
-    if (!formInstallmentStartDate.value) {
-      modalError.value = 'Data inicial do parcelamento obrigatoria.'
+  if (showInstallmentSelector.value) {
+    if (!Number.isInteger(parsedInstallmentTotal) || parsedInstallmentTotal < 1 || parsedInstallmentTotal > 24) {
+      modalError.value = 'Parcelas devem estar entre 1 e 24.'
       return
     }
   }
@@ -1026,7 +1073,18 @@ async function submitForm() {
       modalError.value = 'Quantidade de recorrências deve ser um número inteiro maior ou igual a 1.'
       return
     }
+
+    if (formRecurringEndingMode.value !== 'count' && formRecurringEndingMode.value !== 'end_date') {
+      modalError.value = 'Escolha Quantidade ou Data final para encerrar a recorrencia.'
+      return
+    }
   }
+
+  const resolvedType = selectedCategoryType.value
+  const resolvedOriginType = formOriginType.value === 'single' && cardId && parsedInstallmentTotal > 1
+    ? 'installment'
+    : formOriginType.value
+  const purchaseDate = formPurchaseDate.value
 
   saving.value = true
 
@@ -1034,22 +1092,22 @@ async function submitForm() {
     if (editingRow.value) {
       const editPayload = {
         title: formTitle.value,
-        type: formType.value,
+        type: resolvedType,
         expected_value: parsedExpected,
         real_value: parsedReal,
-        due_date: formDueDate.value,
-        instance_date: formInstanceDate.value,
+        due_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : purchaseDate,
+        instance_date: purchaseDate,
         person_id: formPersonId.value || null,
-        account_id: formAccountId.value || null,
-        card_id: formCardId.value || null,
+        account_id: accountId,
+        card_id: cardId,
         category_id: formCategoryId.value || null,
         description: formDescription.value,
-        status: formStatus.value,
+        status: editingRow.value.status,
         is_checked: editingRow.value.is_checked,
         recurring_end_mode: formRecurringEndingMode.value,
         recurring_end_date: formRecurringEndingMode.value === 'end_date' ? (formRecurringEndDate.value || null) : null,
         recurring_occurrences_count: formRecurringEndingMode.value === 'count' ? parsedRecurringOccurrences : null,
-        recurring_no_end_date: formRecurringEndingMode.value === 'no_end'
+        recurring_no_end_date: false
       }
 
       if (shouldAskScopeForEdit.value) {
@@ -1083,21 +1141,21 @@ async function submitForm() {
       )
     } else {
       await createTransaction({
-        origin_type: formOriginType.value,
+        origin_type: resolvedOriginType,
         title: formTitle.value,
-        type: formType.value,
+        type: resolvedType,
         expected_value: parsedExpected,
         real_value: parsedExpected,
-        due_date: formOriginType.value === 'single' ? formDueDate.value : formInstallmentStartDate.value,
-        instance_date: formOriginType.value === 'single' ? formInstanceDate.value : formInstallmentStartDate.value,
-        installment_total: formOriginType.value === 'installment' ? parsedInstallmentTotal : undefined,
-        installment_start_date: formOriginType.value === 'installment' ? formInstallmentStartDate.value : undefined,
+        due_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : purchaseDate,
+        instance_date: purchaseDate,
+        installment_total: resolvedOriginType === 'installment' ? parsedInstallmentTotal : undefined,
+        installment_start_date: resolvedOriginType === 'installment' ? purchaseDate : undefined,
         recurring_start_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : undefined,
         recurring_end_mode: formOriginType.value === 'recurring' ? formRecurringEndingMode.value : undefined,
         recurring_end_date: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'end_date'
           ? (formRecurringEndDate.value || null)
           : null,
-        recurring_no_end_date: formOriginType.value === 'recurring' ? formRecurringEndingMode.value === 'no_end' : undefined,
+        recurring_no_end_date: false,
         recurring_frequency: formOriginType.value === 'recurring' ? formRecurringFrequency.value : undefined,
         recurring_occurrences_count: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'count'
           ? parsedRecurringOccurrences
@@ -1106,18 +1164,17 @@ async function submitForm() {
           ? parsedRecurringOccurrences
           : null,
         person_id: formPersonId.value || null,
-        account_id: formAccountId.value || null,
-        card_id: formCardId.value || null,
+        account_id: accountId,
+        card_id: cardId,
         category_id: formCategoryId.value || null,
         description: formDescription.value,
         status: 'pending',
         is_checked: false,
-        reimbursement: !editingRow.value && formType.value === 'expense' && formGenerateReimbursement.value
+        reimbursement: !editingRow.value && canGenerateReimbursement.value && formGenerateReimbursement.value
           ? {
               enabled: true,
               person_id: formReimbursementPersonId.value || null,
               account_id: formReimbursementAccountId.value || null,
-              category_id: formReimbursementCategoryId.value || null,
               description: formReimbursementDescription.value.trim() || `Reembolso - ${formTitle.value.trim()}`,
               expected_value: parsedReimbursementValue ?? parsedExpected,
               received_date: formReimbursementDate.value || null
@@ -1238,9 +1295,15 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
   }
 }
 
-watch(formType, (nextType) => {
-  if (nextType !== 'expense') {
+watch(canGenerateReimbursement, (enabled) => {
+  if (!enabled) {
     formGenerateReimbursement.value = false
+  }
+})
+
+watch(formPaymentMethod, () => {
+  if (!showInstallmentSelector.value) {
+    formInstallmentTotal.value = '1'
   }
 })
 
@@ -1652,17 +1715,9 @@ onMounted(async () => {
           <AppInput v-model="formTitle" label="Descricao" placeholder="Ex.: Mercado" required />
 
           <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Origem</label>
+            <label class="block text-sm font-medium text-foreground">Tipo do lancamento</label>
             <select v-model="formOriginType" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
               <option v-for="entry in originTypeOptions" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Tipo financeiro</label>
-            <select v-model="formType" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="income">Receita</option>
-              <option value="expense">Despesa</option>
             </select>
           </div>
         </section>
@@ -1687,59 +1742,54 @@ onMounted(async () => {
             </div>
 
             <div class="space-y-2">
-              <label class="block text-sm font-medium text-foreground">Conta</label>
-              <select v-model="formAccountId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                <option value="">Nenhuma</option>
-                <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-              </select>
-            </div>
-
-            <div class="space-y-2">
-              <label class="block text-sm font-medium text-foreground">Cartao</label>
-              <select v-model="formCardId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                <option value="">Nenhum</option>
-                <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-              </select>
-            </div>
-
-            <div class="space-y-2">
               <label class="block text-sm font-medium text-foreground">Categoria</label>
-              <select v-model="formCategoryId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                <option value="">Nenhuma</option>
+              <select v-model="formCategoryId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground" required>
+                <option value="">Selecione</option>
                 <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Forma de pagamento</label>
+              <select v-model="formPaymentMethod" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground" required>
+                <option value="">Selecione</option>
+                <option v-for="entry in paymentMethodOptions" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
               </select>
             </div>
           </div>
 
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Status</label>
-            <select v-model="formStatus" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
-            </select>
+          <p v-if="selectedCategoryType" class="text-xs text-muted">
+            Tipo financeiro definido automaticamente pela categoria: <strong>{{ selectedCategoryType === 'income' ? 'Receita' : 'Despesa' }}</strong>
+          </p>
+
+          <div v-if="selectedCard" class="rounded-xl border border-border bg-surface px-3 py-3 text-sm text-foreground">
+            <p class="font-semibold">{{ selectedCard.name }}</p>
+            <p class="mt-1 text-xs text-muted">Fechamento: dia {{ selectedCard.closing_day ?? '-' }} · Vencimento: dia {{ selectedCard.due_day ?? '-' }}</p>
+            <p class="mt-1 text-xs text-muted">Proxima cobranca: {{ nextCardBillingLabel }}</p>
           </div>
         </section>
 
         <section class="space-y-3 rounded-xl border border-border p-3">
-          <p class="text-sm font-semibold text-foreground">4) Repeticao / Parcelamento</p>
+          <p class="text-sm font-semibold text-foreground">4) Datas e repeticao</p>
 
           <div v-if="formOriginType === 'single'" class="grid gap-4 sm:grid-cols-2">
-            <AppInput v-model="formDueDate" label="Data de vencimento" type="date" required />
-            <AppInput v-model="formInstanceDate" label="Data da instancia" type="date" required />
+            <AppInput v-model="formPurchaseDate" label="Data da compra" type="date" required />
           </div>
 
-          <div v-else-if="formOriginType === 'installment'" class="grid gap-4 sm:grid-cols-2">
-            <AppInput v-model="formInstallmentTotal" label="Quantidade de parcelas" type="number" placeholder="2" required />
-            <AppInput v-model="formInstallmentStartDate" label="Data inicial do parcelamento" type="date" required />
+          <div v-if="showInstallmentSelector" class="grid gap-4 sm:grid-cols-2">
+            <AppInput v-model="formInstallmentTotal" label="Parcelas" type="number" placeholder="1 a 24" required />
           </div>
 
-          <div v-else class="space-y-3 rounded-xl border border-border p-3">
+          <div v-if="formOriginType === 'recurring'" class="space-y-3 rounded-xl border border-border p-3">
             <div class="grid gap-4 sm:grid-cols-2">
               <AppInput v-model="formRecurringStartDate" label="Data inicial" type="date" required />
 
               <div class="space-y-2">
                 <label class="block text-sm font-medium text-foreground">Frequencia</label>
                 <select v-model="formRecurringFrequency" :disabled="Boolean(editingRow)" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:opacity-60">
-                  <option v-for="entry in RECURRING_FREQUENCIES" :key="entry" :value="entry">{{ recurringFrequencyLabelMap[entry] }}</option>
+                  <option value="weekly">Semanal</option>
+                  <option value="monthly">Mensal</option>
+                  <option value="yearly">Anual</option>
                 </select>
               </div>
             </div>
@@ -1747,8 +1797,7 @@ onMounted(async () => {
             <div class="space-y-2">
               <label class="block text-sm font-medium text-foreground">Encerrar recorrência por</label>
               <select v-model="formRecurringEndingMode" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                <option value="no_end">Sem data final</option>
-                <option value="count">Quantidade de vezes</option>
+                <option value="count">Quantidade</option>
                 <option value="end_date">Data final</option>
               </select>
             </div>
@@ -1768,10 +1817,6 @@ onMounted(async () => {
               placeholder="Ex.: 4"
             />
 
-            <p v-if="formRecurringEndingMode === 'no_end'" class="text-xs text-muted">
-              O MVP gera até 12 meses futuros para recorrências sem data final.
-            </p>
-
             <p v-if="editingRow" class="text-xs text-muted">
               A frequência permanece travada na edição para evitar distorcer instâncias recorrentes já geradas.
             </p>
@@ -1782,12 +1827,12 @@ onMounted(async () => {
         <section class="space-y-3 rounded-xl border border-border p-3">
           <p class="text-sm font-semibold text-foreground">5) Reembolso / Repasse</p>
 
-          <label v-if="!editingRow && formType === 'expense'" class="flex items-center gap-2 text-sm text-foreground">
+          <label v-if="!editingRow && canGenerateReimbursement" class="flex items-center gap-2 text-sm text-foreground">
             <input v-model="formGenerateReimbursement" type="checkbox" class="h-4 w-4 rounded border-border" />
             Gerar entrada de reembolso/repasse
           </label>
 
-          <div v-if="!editingRow && formType === 'expense' && formGenerateReimbursement" class="grid gap-4 sm:grid-cols-2">
+          <div v-if="!editingRow && canGenerateReimbursement && formGenerateReimbursement" class="grid gap-4 sm:grid-cols-2">
             <div class="space-y-2">
               <label class="block text-sm font-medium text-foreground">Responsavel pela entrada</label>
               <select v-model="formReimbursementPersonId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
@@ -1801,14 +1846,6 @@ onMounted(async () => {
               <select v-model="formReimbursementAccountId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
                 <option value="">Nenhuma</option>
                 <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-              </select>
-            </div>
-
-            <div class="space-y-2">
-              <label class="block text-sm font-medium text-foreground">Categoria da entrada</label>
-              <select v-model="formReimbursementCategoryId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-                <option value="">Selecione</option>
-                <option v-for="entry in incomeCategories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
               </select>
             </div>
 

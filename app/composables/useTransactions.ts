@@ -207,6 +207,55 @@ interface NormalizedReimbursementPayload {
   receivedDate: string | null
 }
 
+async function resolveCategoryType(
+  supabase: ReturnType<typeof useSupabaseClient>,
+  userId: string,
+  categoryId: string | null
+) {
+  if (!categoryId) {
+    throw new Error('Categoria obrigatoria para definir o tipo financeiro do lancamento.')
+  }
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, type')
+    .eq('user_id', userId)
+    .eq('id', categoryId)
+    .single<{ id: string, type: TransactionType }>()
+
+  if (error || !data) {
+    throw new Error('Categoria invalida para definir o tipo financeiro do lancamento.')
+  }
+
+  return data.type
+}
+
+async function resolveDefaultIncomeCategoryId(
+  supabase: ReturnType<typeof useSupabaseClient>,
+  userId: string
+) {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, name')
+    .eq('user_id', userId)
+    .eq('type', 'income')
+    .eq('is_active', true)
+    .order('name', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  const options = data ?? []
+
+  if (!options.length) {
+    throw new Error('Nenhuma categoria de receita ativa encontrada para a entrada vinculada.')
+  }
+
+  const reimbursementByName = options.find(entry => /reembolso|repasse/i.test(String(entry.name ?? '')))
+  return reimbursementByName?.id ?? options[0]?.id
+}
+
 async function assertIncomeCategory(
   supabase: ReturnType<typeof useSupabaseClient>,
   userId: string,
@@ -242,10 +291,7 @@ async function resolveReimbursementPayload(
   }
 
   const categoryId = normalizeOptionalId(payload.reimbursement.category_id)
-
-  if (!categoryId) {
-    throw new Error('Categoria da entrada vinculada obrigatoria.')
-  }
+    ?? await resolveDefaultIncomeCategoryId(supabase, userId)
 
   await assertIncomeCategory(supabase, userId, categoryId)
 
@@ -323,17 +369,6 @@ function addMonthsKeepingDay(dateText: string, monthOffset: number) {
   const isoDay = String(clampedDay).padStart(2, '0')
 
   return `${isoYear}-${isoMonth}-${isoDay}`
-}
-
-function splitInstallmentValues(totalValue: number, installmentTotal: number) {
-  const totalCents = Math.round(totalValue * 100)
-  const baseCents = Math.floor(totalCents / installmentTotal)
-  const remainder = totalCents - (baseCents * installmentTotal)
-
-  const centsValues = new Array(installmentTotal).fill(baseCents)
-  centsValues[installmentTotal - 1] = centsValues[installmentTotal - 1] + remainder
-
-  return centsValues.map(value => value / 100)
 }
 
 function shiftDays(dateText: string, dayOffset: number) {
@@ -665,6 +700,7 @@ export function useTransactions() {
 
   async function createRecurringTransaction(payload: CreateSingleTransactionPayload) {
     const userId = await getUserId()
+    const resolvedType = await resolveCategoryType(supabase, userId, normalizeOptionalId(payload.category_id))
     const startDate = payload.recurring_start_date
     const frequency = payload.recurring_frequency ?? 'monthly'
 
@@ -712,7 +748,7 @@ export function useTransactions() {
       .from('transactions')
       .insert({
         user_id: userId,
-        type: payload.type,
+        type: resolvedType,
         origin_type: 'recurring',
         title: payload.title.trim(),
         description: normalizeOptionalText(payload.description),
@@ -863,8 +899,9 @@ export function useTransactions() {
     }
 
     const userId = await getUserId()
-  const reimbursementPayload = await resolveReimbursementPayload(supabase, userId, payload)
-  const reimbursementGroupId = reimbursementPayload ? generateGroupId() : null
+    const resolvedType = await resolveCategoryType(supabase, userId, normalizeOptionalId(payload.category_id))
+    const reimbursementPayload = await resolveReimbursementPayload(supabase, userId, payload)
+    const reimbursementGroupId = reimbursementPayload ? generateGroupId() : null
     const isChecked = false
     const checkedAt = null
 
@@ -876,7 +913,7 @@ export function useTransactions() {
       .from('transactions')
       .insert({
         user_id: userId,
-        type: payload.type,
+        type: resolvedType,
         origin_type: payload.origin_type,
         title: payload.title.trim(),
         description: normalizeOptionalText(payload.description),
@@ -982,6 +1019,7 @@ export function useTransactions() {
 
   async function createInstallmentTransaction(payload: CreateSingleTransactionPayload) {
     const userId = await getUserId()
+    const resolvedType = await resolveCategoryType(supabase, userId, normalizeOptionalId(payload.category_id))
     const reimbursementPayload = await resolveReimbursementPayload(supabase, userId, payload)
     const reimbursementGroupId = reimbursementPayload ? generateGroupId() : null
     const installmentTotal = payload.installment_total ?? 0
@@ -1005,7 +1043,7 @@ export function useTransactions() {
       .from('transactions')
       .insert({
         user_id: userId,
-        type: payload.type,
+        type: resolvedType,
         origin_type: 'installment',
         title: payload.title.trim(),
         description: normalizeOptionalText(payload.description),
