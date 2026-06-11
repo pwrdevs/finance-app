@@ -55,6 +55,7 @@ const cardFilter = ref('all')
 const personFilter = ref('all')
 const categoryFilter = ref('all')
 const accountFilter = ref('all')
+const quickTypeFilter = ref<'all' | TransactionType>('all')
 const statusFilter = ref<'all' | TransactionStatus>('all')
 const reimbursementLinkFilter = ref<'all' | 'normal' | 'linked'>('all')
 const searchDescription = ref('')
@@ -251,6 +252,7 @@ interface PersistedTransactionFilters {
   category_filter: string
   account_filter: string
   payment_method_filter?: 'all' | 'account' | 'card'
+  quick_type_filter?: 'all' | TransactionType
   status_filter: 'all' | TransactionStatus
   reimbursement_link_filter: 'all' | 'normal' | 'linked'
   search_description: string
@@ -266,6 +268,10 @@ function isValidStatusFilter(value: string): value is 'all' | TransactionStatus 
 
 function isValidReimbursementLinkFilter(value: string): value is 'all' | 'normal' | 'linked' {
   return value === 'all' || value === 'normal' || value === 'linked'
+}
+
+function isValidQuickTypeFilter(value: string): value is 'all' | TransactionType {
+  return value === 'all' || value === 'income' || value === 'expense'
 }
 
 function pickPersistedOption(value: string, allowedIds: string[]) {
@@ -298,6 +304,7 @@ function saveFiltersToStorage() {
     category_filter: categoryFilter.value,
     account_filter: accountFilter.value,
     payment_method_filter: cardFilter.value !== 'all' ? 'card' : accountFilter.value !== 'all' ? 'account' : 'all',
+    quick_type_filter: quickTypeFilter.value,
     status_filter: statusFilter.value,
     reimbursement_link_filter: reimbursementLinkFilter.value,
     search_description: searchDescription.value.trim()
@@ -331,12 +338,16 @@ function restoreFiltersFromStorage() {
     const validReimbursementFilter = typeof parsed.reimbursement_link_filter === 'string' && isValidReimbursementLinkFilter(parsed.reimbursement_link_filter)
       ? parsed.reimbursement_link_filter
       : 'all'
+    const validQuickType = typeof parsed.quick_type_filter === 'string' && isValidQuickTypeFilter(parsed.quick_type_filter)
+      ? parsed.quick_type_filter
+      : 'all'
 
     periodFilter.value = validPeriod
     cardFilter.value = pickPersistedOption(String(parsed.card_filter ?? 'all'), cards.value.map(entry => entry.id))
     personFilter.value = pickPersistedOption(String(parsed.person_filter ?? 'all'), people.value.map(entry => entry.id))
     categoryFilter.value = pickPersistedOption(String(parsed.category_filter ?? 'all'), categories.value.map(entry => entry.id))
     accountFilter.value = pickPersistedOption(String(parsed.account_filter ?? 'all'), accounts.value.map(entry => entry.id))
+    quickTypeFilter.value = validQuickType
     statusFilter.value = validStatus
     reimbursementLinkFilter.value = validReimbursementFilter
     searchDescription.value = typeof parsed.search_description === 'string' ? parsed.search_description : ''
@@ -506,6 +517,7 @@ const filteredRows = computed(() => {
   const normalizedSearch = searchDescription.value.trim().toLowerCase()
 
   return rows.value
+    .filter((row) => quickTypeFilter.value === 'all' || row.type === quickTypeFilter.value)
     .filter((row) => personFilter.value === 'all' || row.person_id === personFilter.value)
     .filter((row) => cardFilter.value === 'all' || row.card_id === cardFilter.value)
     .filter((row) => accountFilter.value === 'all' || row.account_id === accountFilter.value)
@@ -543,6 +555,8 @@ const filteredRows = computed(() => {
       checked_toggle: row.is_checked
     }))
 })
+
+  const filteredTotalValue = computed(() => filteredRows.value.reduce((sum, row) => sum + getEffectiveValue(row as TransactionInstanceItem), 0))
 
 function applyReimbursementDefaults() {
   if (!formReimbursementDescription.value.trim()) {
@@ -643,7 +657,7 @@ function getEffectiveValue(row: TransactionInstanceItem) {
   return row.real_value ?? row.expected_value
 }
 
-const exportTotalEffective = computed(() => filteredRows.value.reduce((sum, row) => sum + getEffectiveValue(row), 0))
+const exportTotalEffective = computed(() => filteredTotalValue.value)
 
 function openExportPreview() {
   if (!filteredRows.value.length) {
@@ -865,6 +879,7 @@ async function clearFilters() {
   personFilter.value = 'all'
   categoryFilter.value = 'all'
   accountFilter.value = 'all'
+  quickTypeFilter.value = 'all'
   statusFilter.value = 'all'
   reimbursementLinkFilter.value = 'all'
   searchDescription.value = ''
@@ -1398,7 +1413,7 @@ watch(searchDescription, () => {
 })
 
 watch(
-  [periodFilter, cardFilter, personFilter, categoryFilter, accountFilter, statusFilter, reimbursementLinkFilter],
+  [periodFilter, cardFilter, personFilter, categoryFilter, accountFilter, quickTypeFilter, statusFilter, reimbursementLinkFilter],
   () => {
     if (skipSearchPersistence.value) {
       return
@@ -1441,6 +1456,31 @@ onMounted(async () => {
 
         <div class="w-full max-w-xl">
           <AppInput v-model="searchDescription" label="Pesquisar descrição" placeholder="Digite parte da descrição" />
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Tipo rápido</span>
+          <AppButton
+            label="Todos"
+            size="sm"
+            :variant="quickTypeFilter === 'all' ? 'secondary' : 'ghost'"
+            @click="quickTypeFilter = 'all'"
+          />
+          <AppButton
+            label="Entrada"
+            size="sm"
+            :variant="quickTypeFilter === 'income' ? 'secondary' : 'ghost'"
+            @click="quickTypeFilter = 'income'"
+          />
+          <AppButton
+            label="Saída"
+            size="sm"
+            :variant="quickTypeFilter === 'expense' ? 'secondary' : 'ghost'"
+            @click="quickTypeFilter = 'expense'"
+          />
+          <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">
+            Total filtrado: {{ formatCurrency(filteredTotalValue) }}
+          </span>
         </div>
       </div>
     </AppCard>

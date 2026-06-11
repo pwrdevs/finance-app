@@ -103,36 +103,9 @@ const yearOptions = computed(() => {
   return [current - 2, current - 1, current, current + 1, current + 2].map(value => String(value))
 })
 
-const periodOptions = computed(() => {
-  return yearOptions.value.flatMap((year) => {
-    return monthOptions.map(month => ({
-      value: `${month.value}-${year}`,
-      label: `${month.label} ${year}`
-    }))
-  })
-})
-
-const selectedPeriod = computed({
-  get: () => `${selectedMonth.value}-${selectedYear.value}`,
-  set: (value: string) => {
-    const [month, year] = value.split('-')
-
-    if (!month || !year) {
-      return
-    }
-
-    selectedMonth.value = month
-    selectedYear.value = year
-  }
-})
-
 const selectedPeriodLabel = computed(() => {
   const monthLabel = monthOptions.find(option => option.value === selectedMonth.value)?.label ?? selectedMonth.value
   return `${monthLabel} ${selectedYear.value}`
-})
-
-const selectedMonthShortLabel = computed(() => {
-  return monthOptions.find(option => option.value === selectedMonth.value)?.label.slice(0, 3) ?? selectedMonth.value
 })
 
 const launchRows = computed(() => {
@@ -306,7 +279,7 @@ watch(
 
 <template>
   <section class="space-y-6 overflow-x-hidden">
-    <AppCard class="border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-surface to-surface">
+    <AppCard>
       <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div class="space-y-2">
           <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Dashboard V2</p>
@@ -316,14 +289,22 @@ watch(
           </div>
         </div>
 
-        <div class="w-full max-w-sm space-y-2 lg:w-[22rem]">
+        <div class="w-full space-y-2 lg:w-auto">
           <label class="block text-sm font-medium text-foreground">Período</label>
-          <select
-            v-model="selectedPeriod"
-            class="h-12 w-full rounded-2xl border border-border bg-surface px-4 text-sm font-medium text-foreground shadow-sm outline-none transition focus:border-emerald-400"
-          >
-            <option v-for="option in periodOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
+          <div class="grid gap-2 sm:grid-cols-2 lg:w-[26rem]">
+            <select
+              v-model="selectedMonth"
+              class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-emerald-400"
+            >
+              <option v-for="option in monthOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+            <select
+              v-model="selectedYear"
+              class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-emerald-400"
+            >
+              <option v-for="option in yearOptions" :key="option" :value="option">{{ option }}</option>
+            </select>
+          </div>
           <p class="text-xs text-muted">{{ selectedPeriodLabel }}</p>
         </div>
       </div>
@@ -331,31 +312,7 @@ watch(
 
     <p v-if="pageError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{{ pageError }}</p>
 
-    <div class="grid gap-4 xl:grid-cols-4">
-      <AppCard class="xl:col-span-2 border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-surface to-surface">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Saldo do período</p>
-            <p class="mt-2 text-4xl font-semibold sm:text-5xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-              {{ formatCurrency(summary.monthlyBalance) }}
-            </p>
-            <p class="mt-2 text-sm text-muted">Entradas menos saídas no período selecionado.</p>
-          </div>
-          <span class="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Principal</span>
-        </div>
-      </AppCard>
-
-      <AppCard class="xl:col-span-2 border-amber-200/70 bg-gradient-to-br from-amber-50 via-surface to-surface">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Saldo Projetado</p>
-            <p class="mt-2 text-4xl font-semibold sm:text-5xl text-foreground">{{ formatCurrency(projectedBalance) }}</p>
-            <p class="mt-2 text-sm text-muted">Baseado em entradas e saídas previstas até este período.</p>
-          </div>
-          <span class="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Projeto</span>
-        </div>
-      </AppCard>
-
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <AppCard>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Entradas</p>
         <p class="mt-3 text-3xl font-semibold text-emerald-700 sm:text-4xl">{{ formatCurrency(summary.totalIncome) }}</p>
@@ -364,6 +321,30 @@ watch(
       <AppCard>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Saídas</p>
         <p class="mt-3 text-3xl font-semibold text-rose-700 sm:text-4xl">{{ formatCurrency(summary.totalExpense) }}</p>
+      </AppCard>
+
+      <AppCard>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Saldo do período</p>
+            <p class="mt-2 text-3xl font-semibold sm:text-4xl" :class="summary.monthlyBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
+              {{ formatCurrency(summary.monthlyBalance) }}
+            </p>
+            <p class="mt-2 text-sm text-muted">Entradas menos saídas no período selecionado.</p>
+          </div>
+          <span class="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Principal</span>
+        </div>
+      </AppCard>
+
+      <AppCard>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Saldo Projetado</p>
+            <p class="mt-2 text-3xl font-semibold sm:text-4xl text-foreground">{{ formatCurrency(projectedBalance) }}</p>
+            <p class="mt-2 text-sm text-muted">Baseado em entradas e saídas previstas até este período.</p>
+          </div>
+          <span class="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Projeto</span>
+        </div>
       </AppCard>
     </div>
 
