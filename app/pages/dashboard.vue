@@ -50,15 +50,26 @@ const accumulatedProjection = ref({
   initialBalance: 0,
   firstMonthBalance: 0,
   firstMonthAccumulatedBalance: 0,
+  selectedMonthBalance: 0,
+  selectedMonthAccumulatedBalance: 0,
+  minimumAccumulatedBalance: 0,
+  requiredContribution: 0,
+  firstNegativeMonthLabel: null as string | null,
+  analysisStartLabel: '',
+  analysisEndLabel: '',
   months: [] as Array<{
     month: number
     year: number
     monthKey: string
     monthLabel: string
+    income: number
+    expense: number
     monthBalance: number
     accumulatedBalance: number
   }>
 })
+
+const isMobileChart = ref(false)
 
 const statusLabelMap = {
   pending: 'Pendente',
@@ -129,36 +140,33 @@ const cardStatementRows = computed(() => {
 
 const projectionRows = computed(() => accumulatedProjection.value.months)
 
-const projectedBalance = computed(() => accumulatedProjection.value.firstMonthAccumulatedBalance)
+const projectedBalance = computed(() => accumulatedProjection.value.selectedMonthAccumulatedBalance)
 
-const selectedMonthProjection = computed(() => accumulatedProjection.value.months[0] ?? null)
+const selectedMonthProjection = computed(() => accumulatedProjection.value.months.at(-1) ?? null)
 
-const riskForecast = computed(() => {
-  const threshold = 1000
-  const negativeMonth = accumulatedProjection.value.months.find(row => row.accumulatedBalance < 0)
+const requiredContribution = computed(() => accumulatedProjection.value.requiredContribution)
 
-  if (negativeMonth) {
-    return {
-      tone: 'danger',
-      message: `⚠️ Seu saldo ficará negativo em ${negativeMonth.monthLabel}.`,
-      accent: negativeMonth.accumulatedBalance
-    }
+const requiredContributionMessage = computed(() => {
+  if (requiredContribution.value > 0) {
+    return `Para manter o saldo positivo até ${selectedPeriodLabel.value}, injete pelo menos ${formatCurrency(requiredContribution.value)}.`
   }
 
-  const lowMonth = accumulatedProjection.value.months.find(row => row.accumulatedBalance < threshold)
+  return `Seu saldo permanece positivo até ${selectedPeriodLabel.value}.`
+})
 
-  if (lowMonth) {
+const riskForecast = computed(() => {
+  if (accumulatedProjection.value.firstNegativeMonthLabel && requiredContribution.value > 0) {
     return {
-      tone: 'warning',
-      message: `⚠️ Seu saldo ficará abaixo de ${formatCurrency(threshold)} em ${lowMonth.monthLabel}.`,
-      accent: lowMonth.accumulatedBalance
+      tone: 'danger',
+      message: `⚠️ Seu saldo ficou negativo em ${accumulatedProjection.value.firstNegativeMonthLabel}.`,
+      details: `Menor saldo acumulado: ${formatCurrency(accumulatedProjection.value.minimumAccumulatedBalance)}. Aporte necessário: ${formatCurrency(requiredContribution.value)}.`
     }
   }
 
   return {
     tone: 'safe',
-    message: '✅ Nenhum risco financeiro identificado nos próximos 12 meses.',
-    accent: accumulatedProjection.value.months.at(-1)?.accumulatedBalance ?? accumulatedProjection.value.firstMonthAccumulatedBalance
+    message: '✅ Nenhum risco financeiro identificado no período analisado.',
+    details: `Menor saldo acumulado: ${formatCurrency(accumulatedProjection.value.minimumAccumulatedBalance)}.`
   }
 })
 
@@ -196,7 +204,8 @@ const chartData = computed(() => {
       x,
       y,
       label: item.monthLabel,
-      value: item.accumulatedBalance
+      value: item.accumulatedBalance,
+      showValue: index === 0 || index === months.length - 1 || (index % (isMobileChart.value ? 4 : 2) === 0)
     }
   })
 
@@ -260,8 +269,18 @@ async function fetchSummary() {
 }
 
 onMounted(async () => {
+  isMobileChart.value = window.innerWidth < 640
+  window.addEventListener('resize', handleViewportResize)
   await fetchSummary()
 })
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleViewportResize)
+})
+
+function handleViewportResize() {
+  isMobileChart.value = window.innerWidth < 640
+}
 
 watch([selectedMonth, selectedYear], async () => {
   await fetchSummary()
@@ -312,7 +331,7 @@ watch(
 
     <p v-if="pageError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{{ pageError }}</p>
 
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <AppCard>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Entradas</p>
         <p class="mt-3 text-3xl font-semibold text-emerald-700 sm:text-4xl">{{ formatCurrency(summary.totalIncome) }}</p>
@@ -346,6 +365,18 @@ watch(
           <span class="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Projeto</span>
         </div>
       </AppCard>
+
+      <AppCard>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Aporte necessário</p>
+            <p class="mt-2 text-3xl font-semibold sm:text-4xl" :class="requiredContribution > 0 ? 'text-amber-700' : 'text-emerald-700'">
+              {{ formatCurrency(requiredContribution) }}
+            </p>
+            <p class="mt-2 text-sm text-muted">{{ requiredContribution > 0 ? 'Para manter o saldo positivo no período acumulado.' : 'Nenhum aporte necessário no período.' }}</p>
+          </div>
+        </div>
+      </AppCard>
     </div>
 
     <AppCard title="Previsão de caixa" :subtitle="riskForecast.message">
@@ -358,8 +389,9 @@ watch(
             : 'border-rose-200 bg-rose-50/70 text-rose-800'"
       >
         <p class="text-sm font-semibold">{{ riskForecast.message }}</p>
+        <p class="mt-2 text-xs opacity-80">{{ riskForecast.details }}</p>
         <p class="mt-2 text-xs opacity-80">
-          Referência acumulada: {{ formatCurrency(riskForecast.accent) }}
+          {{ requiredContributionMessage }}
         </p>
       </div>
     </AppCard>
@@ -383,7 +415,7 @@ watch(
 
         <article class="rounded-2xl border border-border bg-surface/60 p-4">
           <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo acumulado projetado</p>
-          <p class="mt-1 text-xs text-muted">Saldo inicial + soma dos saldos mensais até o período selecionado</p>
+          <p class="mt-1 text-xs text-muted">Acumulado de {{ accumulatedProjection.analysisStartLabel || selectedPeriodLabel }} até {{ accumulatedProjection.analysisEndLabel || selectedPeriodLabel }}</p>
           <p class="mt-2 text-2xl font-semibold" :class="projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
             {{ formatCurrency(projectedBalance) }}
           </p>
@@ -394,9 +426,9 @@ watch(
         <div class="mb-4 flex items-center justify-between gap-3">
           <div>
             <p class="text-sm font-semibold">Gráfico de evolução financeira</p>
-            <p class="text-xs text-slate-300">Saldo acumulado ao longo dos próximos 12 meses.</p>
+            <p class="text-xs text-slate-300">Saldo acumulado dos últimos 12 meses até o período selecionado.</p>
           </div>
-          <p class="text-xs text-slate-300">{{ selectedPeriodLabel }}</p>
+          <p class="text-xs text-slate-300">Fechamento {{ selectedPeriodLabel }}: {{ formatCurrency(projectedBalance) }}</p>
         </div>
 
         <div v-if="chartData.points.length" class="overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-3">
@@ -428,6 +460,15 @@ watch(
 
             <g v-for="point in chartData.points" :key="point.label">
               <circle :cx="point.x" :cy="point.y" r="4.5" fill="#f8fafc" stroke="#16a34a" stroke-width="3" />
+              <text
+                v-if="point.showValue"
+                :x="point.x"
+                :y="point.y - 10"
+                text-anchor="middle"
+                class="fill-slate-100 text-[10px] font-semibold"
+              >
+                {{ formatCurrency(point.value) }}
+              </text>
               <text :x="point.x" y="262" text-anchor="middle" class="fill-slate-300 text-[11px] font-medium">{{ point.label }}</text>
             </g>
           </svg>
@@ -438,7 +479,7 @@ watch(
         <div class="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <p class="text-sm font-semibold text-foreground">Resumo executivo da projeção</p>
-            <p class="text-xs text-muted">Saldo acumulado projetado = saldo inicial + soma dos saldos mensais até o período selecionado.</p>
+            <p class="text-xs text-muted">Janela de exibição: últimos 12 meses até {{ selectedPeriodLabel }}. O acumulado considera todo o período desde o lançamento mais antigo.</p>
           </div>
           <p class="text-xs text-muted">Atualizado para {{ selectedPeriodLabel }}</p>
         </div>

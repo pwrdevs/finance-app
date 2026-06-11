@@ -74,6 +74,13 @@ export interface AccumulatedBalanceProjection {
   initialBalance: number
   firstMonthBalance: number
   firstMonthAccumulatedBalance: number
+  selectedMonthBalance: number
+  selectedMonthAccumulatedBalance: number
+  minimumAccumulatedBalance: number
+  requiredContribution: number
+  firstNegativeMonthLabel: string | null
+  analysisStartLabel: string
+  analysisEndLabel: string
   months: AccumulatedBalanceMonth[]
 }
 
@@ -260,18 +267,39 @@ export function useFinancialSummary() {
     await ensureAuthenticatedContext()
 
     const projectionMonths = 12
-    const { year: startYear, month: startMonth } = { year: filters.year, month: filters.month }
-    const endMonthPosition = addMonths(startYear, startMonth, projectionMonths)
-    const from = `${String(startYear).padStart(4, '0')}-${String(startMonth).padStart(2, '0')}-01`
-    const to = `${String(endMonthPosition.year).padStart(4, '0')}-${String(endMonthPosition.month).padStart(2, '0')}-01`
+    const selectedYear = filters.year
+    const selectedMonth = filters.month
+    const selectedFrom = `${String(selectedYear).padStart(4, '0')}-${String(selectedMonth).padStart(2, '0')}-01`
+    const selectedToPosition = addMonths(selectedYear, selectedMonth, 1)
+    const selectedTo = `${String(selectedToPosition.year).padStart(4, '0')}-${String(selectedToPosition.month).padStart(2, '0')}-01`
 
-    const [{ data: accountRows, error: accountError }, { data: instanceRows, error: instanceError }] = await Promise.all([
+    const [{ data: accountRows, error: accountError }, { data: oldestRows, error: oldestError }] = await Promise.all([
       supabase
         .from('accounts')
         .select('initial_balance'),
       supabase
         .from('transaction_instances')
-        .select(`
+        .select('instance_date')
+        .lt('instance_date', selectedTo)
+        .order('instance_date', { ascending: true })
+        .limit(1)
+    ])
+
+    if (accountError) {
+      throw accountError
+    }
+
+    if (oldestError) {
+      throw oldestError
+    }
+
+    const oldestDate = (oldestRows?.[0]?.instance_date as string | undefined) ?? null
+    const analysisStartMonthKey = oldestDate ? oldestDate.slice(0, 7) : selectedFrom.slice(0, 7)
+    const analysisFrom = `${analysisStartMonthKey}-01`
+
+    const { data: instanceRows, error: instanceError } = await supabase
+      .from('transaction_instances')
+      .select(`
           instance_date,
           expected_value,
           real_value,
@@ -280,14 +308,9 @@ export function useFinancialSummary() {
             type
           )
         `)
-        .gte('instance_date', from)
-        .lt('instance_date', to)
+        .gte('instance_date', analysisFrom)
+        .lt('instance_date', selectedTo)
         .order('instance_date', { ascending: true })
-    ])
-
-    if (accountError) {
-      throw accountError
-    }
 
     if (instanceError) {
       throw instanceError
@@ -312,7 +335,6 @@ export function useFinancialSummary() {
 
       const type = record.source_transaction?.type || 'expense'
       const value = resolveInstanceValue(toNumber(record.expected_value), record.real_value == null ? null : Number(record.real_value))
-      const signedValue = type === 'income' ? value : -value
       const key = toMonthKeyFromDate(record.instance_date)
       const current = monthBalanceMap.get(key) || { income: 0, expense: 0 }
 
@@ -322,17 +344,32 @@ export function useFinancialSummary() {
       })
     }
 
-    let runningBalance = initialBalance
-    const months: AccumulatedBalanceMonth[] = []
+    const [startYearText, startMonthText] = analysisStartMonthKey.split('-')
+    const startYear = Number(startYearText)
+    const startMonth = Number(startMonthText)
+    const totalMonths = Math.max(0, ((selectedYear - startYear) * 12) + (selectedMonth - startMonth))
 
-    for (let index = 0; index < projectionMonths; index += 1) {
+    const fullTimeline: AccumulatedBalanceMonth[] = []
+    let runningBalance = initialBalance
+    let minimumAccumulatedBalance = Number.POSITIVE_INFINITY
+    let firstNegativeMonthLabel: string | null = null
+
+    for (let index = 0; index <= totalMonths; index += 1) {
       const position = addMonths(startYear, startMonth, index)
       const monthKey = toMonthKey(position.year, position.month)
       const monthEntry = monthBalanceMap.get(monthKey) ?? { income: 0, expense: 0 }
       const monthBalance = monthEntry.income - monthEntry.expense
       runningBalance += monthBalance
 
-      months.push({
+      if (runningBalance < minimumAccumulatedBalance) {
+        minimumAccumulatedBalance = runningBalance
+      }
+
+      if (runningBalance < 0 && !firstNegativeMonthLabel) {
+        firstNegativeMonthLabel = toMonthLabel(position.year, position.month)
+      }
+
+      fullTimeline.push({
         month: position.month,
         year: position.year,
         monthKey,
@@ -344,10 +381,24 @@ export function useFinancialSummary() {
       })
     }
 
+    const months = fullTimeline.slice(-projectionMonths)
+    const selectedMonthEntry = fullTimeline.at(-1)
+    const selectedMonthBalance = selectedMonthEntry?.monthBalance ?? 0
+    const selectedMonthAccumulatedBalance = selectedMonthEntry?.accumulatedBalance ?? initialBalance
+    const safeMinimum = Number.isFinite(minimumAccumulatedBalance) ? minimumAccumulatedBalance : selectedMonthAccumulatedBalance
+    const requiredContribution = safeMinimum < 0 ? Math.abs(safeMinimum) : 0
+
     return {
       initialBalance,
-      firstMonthBalance: months[0]?.monthBalance ?? 0,
-      firstMonthAccumulatedBalance: months[0]?.accumulatedBalance ?? initialBalance,
+      firstMonthBalance: selectedMonthBalance,
+      firstMonthAccumulatedBalance: selectedMonthAccumulatedBalance,
+      selectedMonthBalance,
+      selectedMonthAccumulatedBalance,
+      minimumAccumulatedBalance: safeMinimum,
+      requiredContribution,
+      firstNegativeMonthLabel,
+      analysisStartLabel: toMonthLabel(startYear, startMonth),
+      analysisEndLabel: toMonthLabel(selectedYear, selectedMonth),
       months
     }
   }
