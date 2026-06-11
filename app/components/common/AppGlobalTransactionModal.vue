@@ -14,6 +14,7 @@ const loadingOptions = ref(false)
 const saving = ref(false)
 const modalError = ref('')
 const successMessage = ref('')
+let successToastTimeout: ReturnType<typeof setTimeout> | null = null
 
 const people = ref<PersonItem[]>([])
 const accounts = ref<AccountItem[]>([])
@@ -252,6 +253,28 @@ watch(openTransactionModalSignal, (nextValue, prevValue) => {
   }
 
   openModalFromFab()
+})
+
+watch(successMessage, (message) => {
+  if (successToastTimeout) {
+    clearTimeout(successToastTimeout)
+    successToastTimeout = null
+  }
+
+  if (!message) {
+    return
+  }
+
+  successToastTimeout = setTimeout(() => {
+    successMessage.value = ''
+    successToastTimeout = null
+  }, 3000)
+})
+
+onUnmounted(() => {
+  if (successToastTimeout) {
+    clearTimeout(successToastTimeout)
+  }
 })
 </script>
 
