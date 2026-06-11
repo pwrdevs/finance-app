@@ -228,6 +228,16 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString('pt-BR')
 }
 
+function getUserInitials(value: string) {
+  const normalized = value.trim()
+  if (!normalized) {
+    return 'U'
+  }
+
+  const pieces = normalized.split(/\s+/).slice(0, 2)
+  return pieces.map(piece => piece.charAt(0).toUpperCase()).join('')
+}
+
 onMounted(async () => {
   await fetchUsers()
 })
@@ -235,15 +245,25 @@ onMounted(async () => {
 
 <template>
   <section class="space-y-6">
-    <AppCard title="Novo usuário">
-      <div class="grid gap-3 md:grid-cols-3">
-        <AppInput v-model="fullName" label="Nome" placeholder="Nome completo" />
-        <AppInput v-model="email" label="E-mail" type="email" placeholder="email@dominio.com" />
-        <AppInput v-model="password" label="Senha temporária" type="password" placeholder="Mínimo 6 caracteres" />
-      </div>
+    <AppCard title="Novo usuário" subtitle="Cadastre um novo acesso com senha temporária para primeiro login.">
+      <div class="space-y-4">
+        <div class="rounded-2xl border border-border/80 bg-surface p-4 shadow-sm">
+          <div class="mb-3 flex items-center gap-2">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-light/45 text-xs font-semibold text-foreground">+</span>
+            <p class="text-sm font-semibold text-foreground">Dados de acesso</p>
+          </div>
 
-      <div class="mt-4">
-        <AppButton label="Criar usuário" :disabled="submitting" block @click="createUser" />
+          <div class="grid gap-3 md:grid-cols-3">
+            <AppInput v-model="fullName" label="Nome" placeholder="Nome completo" />
+            <AppInput v-model="email" label="E-mail" type="email" placeholder="email@dominio.com" />
+            <AppInput v-model="password" label="Senha temporária" type="password" placeholder="Mínimo 6 caracteres" />
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2 rounded-xl border border-border/80 bg-background/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-xs text-muted">Após criar, o usuário poderá alterar a senha no primeiro acesso.</p>
+          <AppButton :label="submitting ? 'Criando...' : 'Criar usuário'" :disabled="submitting" @click="createUser" />
+        </div>
       </div>
     </AppCard>
 
@@ -300,21 +320,40 @@ onMounted(async () => {
 
     <AppCard title="Usuários" :subtitle="loading ? 'Carregando...' : `${users.length} usuário(s)`">
       <div class="space-y-3">
-        <article v-for="user in users" :key="user.id" class="rounded-2xl border border-border bg-background px-4 py-3">
-          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p class="text-sm font-semibold text-foreground">{{ user.nome || user.email }}</p>
-              <p class="text-xs text-muted">{{ user.email }}</p>
-              <p class="mt-1 text-[11px] text-muted">Criado em: {{ formatDate(user.criadoEm) }} · Último login: {{ formatDate(user.ultimoLogin) }}</p>
+        <article
+          v-for="user in users"
+          :key="user.id"
+          class="rounded-2xl border border-border/80 bg-surface px-4 py-4 shadow-sm transition-colors hover:border-primary-dark/30"
+        >
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="flex items-start gap-3">
+              <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-light/45 text-sm font-semibold text-foreground">
+                {{ getUserInitials(user.nome || user.email) }}
+              </span>
+
+              <div class="space-y-2">
+                <div>
+                  <p class="text-sm font-semibold text-foreground">{{ user.nome || user.email }}</p>
+                  <p class="text-xs text-muted">{{ user.email }}</p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                  <span v-if="user.isProtected" class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                    Administrador principal
+                  </span>
+                  <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="user.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
+                    {{ user.ativo ? 'Ativo' : 'Inativo' }}
+                  </span>
+                </div>
+
+                <div class="grid gap-1 text-[11px] text-muted sm:grid-cols-2">
+                  <p class="rounded-lg bg-background/80 px-2 py-1">Criado em: {{ formatDate(user.criadoEm) }}</p>
+                  <p class="rounded-lg bg-background/80 px-2 py-1">Último login: {{ formatDate(user.ultimoLogin) }}</p>
+                </div>
+              </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-              <span v-if="user.isProtected" class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                Administrador principal
-              </span>
-              <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="user.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
-                {{ user.ativo ? 'Ativo' : 'Inativo' }}
-              </span>
+            <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:max-w-[25rem] lg:justify-end">
               <AppButton size="sm" variant="secondary" label="Editar" @click="openEditModal(user)" />
               <AppButton size="sm" variant="secondary" label="Resetar senha" @click="resetPassword(user)" />
               <AppButton
