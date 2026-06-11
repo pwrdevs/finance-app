@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppHeader from '~/components/layout/AppHeader.vue'
 import AppFloatingActionButton from '~/components/common/AppFloatingActionButton.vue'
+import AppGlobalTransactionModal from '~/components/common/AppGlobalTransactionModal.vue'
 
 const { isAdmin } = useAccess()
 
@@ -33,5 +34,6 @@ const sidebarLinks = computed(() => {
     </main>
 
     <AppFloatingActionButton />
+    <AppGlobalTransactionModal />
   </div>
 </template>

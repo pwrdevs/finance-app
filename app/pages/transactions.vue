@@ -75,7 +75,6 @@ const draftFilterYear = ref(String(initialDraftYear))
 const draftAllPeriods = ref(false)
 const route = useRoute()
 const router = useRouter()
-const openTransactionModalSignal = useState<number>('transactions-open-modal-signal', () => 0)
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
@@ -1586,14 +1585,6 @@ watch(
     await consumeNewLaunchQuery()
   }
 )
-
-watch(openTransactionModalSignal, (nextValue, prevValue) => {
-  if (nextValue === prevValue || !nextValue) {
-    return
-  }
-
-  openCreateModal()
-})
 
 onMounted(async () => {
   await fetchOptions()
