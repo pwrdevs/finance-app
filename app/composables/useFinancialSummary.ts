@@ -16,6 +16,10 @@ interface TransactionInstanceSummaryRecord {
   is_checked: boolean
   created_at: string
   card_id: string | null
+  card: {
+    closing_day: number | null
+    due_day: number | null
+  } | null
   source_transaction: SourceTransactionSummary | null
 }
 
@@ -130,6 +134,54 @@ function resolveInstanceValue(expectedValue: number, realValue: number | null) {
   return realValue == null ? expectedValue : realValue
 }
 
+function toDateParts(value: string) {
+  const [yearText, monthText, dayText] = value.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+
+  if (!year || !month || !day) {
+    throw new Error(`Data invalida: ${value}`)
+  }
+
+  return { year, month, day }
+}
+
+function getLastDayOfMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
+function formatDateYmd(year: number, month: number, day: number) {
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function getCardFinancialEffectiveDate(instanceDate: string, closingDay: number | null, dueDay: number | null) {
+  if (!closingDay || !dueDay) {
+    return instanceDate
+  }
+
+  const { year, month, day } = toDateParts(instanceDate)
+  const monthOffset = dueDay > closingDay
+    ? (day <= closingDay ? 0 : 1)
+    : 1
+
+  const target = addMonths(year, month, monthOffset)
+  const safeDay = Math.min(dueDay, getLastDayOfMonth(target.year, target.month))
+  return formatDateYmd(target.year, target.month, safeDay)
+}
+
+function resolveFinancialEffectiveDate(record: { instance_date: string; card_id: string | null; card: { closing_day: number | null; due_day: number | null } | null }) {
+  if (!record.card_id) {
+    return record.instance_date
+  }
+
+  return getCardFinancialEffectiveDate(
+    record.instance_date,
+    record.card?.closing_day ?? null,
+    record.card?.due_day ?? null
+  )
+}
+
 export function useFinancialSummary() {
   const supabase = useSupabaseClient()
   const session = useSupabaseSession()
@@ -159,7 +211,9 @@ export function useFinancialSummary() {
   async function getMonthlySummary(filters: FinancialSummaryFilters): Promise<MonthlyFinancialSummary> {
     await ensureAuthenticatedContext()
 
-    const { from, to } = getMonthRange(filters)
+    const { to } = getMonthRange(filters)
+    const previousMonthPosition = addMonths(filters.year, filters.month, -1)
+    const previousMonthStart = `${String(previousMonthPosition.year).padStart(4, '0')}-${String(previousMonthPosition.month).padStart(2, '0')}-01`
 
     const { data, error } = await supabase
       .from('transaction_instances')
@@ -172,6 +226,10 @@ export function useFinancialSummary() {
         is_checked,
         created_at,
         card_id,
+        card:card_id (
+          closing_day,
+          due_day
+        ),
         source_transaction:source_transaction_id (
           id,
           title,
@@ -179,7 +237,7 @@ export function useFinancialSummary() {
           description
         )
       `)
-      .gte('instance_date', from)
+      .gte('instance_date', previousMonthStart)
       .lt('instance_date', to)
       .order('instance_date', { ascending: false })
       .order('created_at', { ascending: false })
@@ -189,7 +247,10 @@ export function useFinancialSummary() {
     }
 
     const rows = (data ?? []) as TransactionInstanceSummaryRecord[]
-    const launches: MonthlyLaunchItem[] = rows.map((row) => ({
+    const selectedMonthKey = toMonthKey(filters.year, filters.month)
+    const rowsInFinancialMonth = rows.filter((row) => toMonthKeyFromDate(resolveFinancialEffectiveDate(row)) === selectedMonthKey)
+
+    const launches: MonthlyLaunchItem[] = rowsInFinancialMonth.map((row) => ({
       id: row.id,
       title: row.source_transaction?.title || 'Lancamento sem titulo',
       type: row.source_transaction?.type || 'expense',
@@ -226,7 +287,7 @@ export function useFinancialSummary() {
 
     const cardStatementsMap = new Map<string, { totalExpense: number; transactionCount: number }>()
 
-    for (const row of rows) {
+    for (const row of rowsInFinancialMonth) {
       if (row.status === 'canceled') {
         continue
       }
@@ -304,6 +365,11 @@ export function useFinancialSummary() {
           expected_value,
           real_value,
           status,
+          card_id,
+          card:card_id (
+            closing_day,
+            due_day
+          ),
           source_transaction:source_transaction_id (
             type
           )
@@ -326,6 +392,8 @@ export function useFinancialSummary() {
       real_value: number | null
       status: TransactionStatus
       source_transaction: { type: TransactionType } | null
+      card_id: string | null
+      card: { closing_day: number | null; due_day: number | null } | null
     }>
 
     for (const record of records) {
@@ -335,7 +403,14 @@ export function useFinancialSummary() {
 
       const type = record.source_transaction?.type || 'expense'
       const value = resolveInstanceValue(toNumber(record.expected_value), record.real_value == null ? null : Number(record.real_value))
-      const key = toMonthKeyFromDate(record.instance_date)
+      const financialEffectiveDate = resolveFinancialEffectiveDate(record)
+      const financialMonthKey = toMonthKeyFromDate(financialEffectiveDate)
+
+      if (financialMonthKey > toMonthKey(selectedYear, selectedMonth)) {
+        continue
+      }
+
+      const key = financialMonthKey
       const current = monthBalanceMap.get(key) || { income: 0, expense: 0 }
 
       monthBalanceMap.set(key, {
