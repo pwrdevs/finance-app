@@ -3,6 +3,7 @@ import AppButton from '~/components/common/AppButton.vue'
 import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composables/useMasterData'
+import type { RecurringEndMode, RecurringFrequency, TransactionOriginType } from '~/composables/useTransactions'
 
 const { createTransaction, listFilterOptions } = useTransactions()
 
@@ -20,8 +21,15 @@ const cards = ref<CardItem[]>([])
 const categories = ref<CategoryItem[]>([])
 
 const formTitle = ref('')
+const formOriginType = ref<TransactionOriginType>('single')
 const formExpectedValue = ref('')
 const formPurchaseDate = ref(new Date().toISOString().slice(0, 10))
+const formInstallmentTotal = ref('1')
+const formRecurringStartDate = ref(new Date().toISOString().slice(0, 10))
+const formRecurringFrequency = ref<RecurringFrequency>('monthly')
+const formRecurringEndingMode = ref<RecurringEndMode>('count')
+const formRecurringOccurrences = ref('12')
+const formRecurringEndDate = ref('')
 const formPersonId = ref('')
 const formCategoryId = ref('')
 const formPaymentMethod = ref('')
@@ -34,11 +42,41 @@ const paymentMethodOptions = computed(() => {
 })
 
 const selectedCategory = computed(() => categories.value.find(entry => entry.id === formCategoryId.value) ?? null)
+const selectedCard = computed(() => {
+  const payment = getPaymentMethodParts(formPaymentMethod.value)
+  return payment.kind === 'card' ? cards.value.find(entry => entry.id === payment.id) ?? null : null
+})
+const showInstallmentSelector = computed(() => formOriginType.value === 'single' && Boolean(selectedCard.value))
+const expectedValueLabel = computed(() => {
+  if (formOriginType.value === 'recurring') {
+    return 'Valor por ocorrencia'
+  }
+
+  if (showInstallmentSelector.value && Number(formInstallmentTotal.value) > 1) {
+    return 'Valor da parcela'
+  }
+
+  return 'Valor'
+})
+const expectedValueHelpText = computed(() => {
+  if (showInstallmentSelector.value && Number(formInstallmentTotal.value) > 1) {
+    return 'Informe o valor de cada parcela. O sistema criara uma ocorrencia por parcela.'
+  }
+
+  return ''
+})
 
 function resetForm() {
   formTitle.value = ''
+  formOriginType.value = 'single'
   formExpectedValue.value = ''
   formPurchaseDate.value = new Date().toISOString().slice(0, 10)
+  formInstallmentTotal.value = '1'
+  formRecurringStartDate.value = new Date().toISOString().slice(0, 10)
+  formRecurringFrequency.value = 'monthly'
+  formRecurringEndingMode.value = 'count'
+  formRecurringOccurrences.value = '12'
+  formRecurringEndDate.value = ''
   formPersonId.value = ''
   formCategoryId.value = ''
   formPaymentMethod.value = ''
@@ -106,11 +144,6 @@ async function submit() {
     return
   }
 
-  if (!formPurchaseDate.value) {
-    modalError.value = 'Data da compra obrigatoria.'
-    return
-  }
-
   if (!formCategoryId.value || !selectedCategory.value) {
     modalError.value = 'Categoria obrigatoria.'
     return
@@ -122,17 +155,73 @@ async function submit() {
     return
   }
 
+  const parsedInstallmentTotal = Number(formInstallmentTotal.value)
+  const parsedRecurringOccurrences = Number(formRecurringOccurrences.value)
+
+  if (showInstallmentSelector.value) {
+    if (!Number.isInteger(parsedInstallmentTotal) || parsedInstallmentTotal < 1 || parsedInstallmentTotal > 24) {
+      modalError.value = 'Parcelas devem estar entre 1 e 24.'
+      return
+    }
+  }
+
+  if (formOriginType.value === 'single' && !formPurchaseDate.value) {
+    modalError.value = 'Data da compra obrigatoria.'
+    return
+  }
+
+  if (formOriginType.value === 'recurring') {
+    if (!formRecurringStartDate.value) {
+      modalError.value = 'Data inicial da recorrencia obrigatoria.'
+      return
+    }
+
+    if (formRecurringEndingMode.value === 'end_date' && !formRecurringEndDate.value) {
+      modalError.value = 'Data final da recorrencia obrigatoria.'
+      return
+    }
+
+    if (formRecurringEndingMode.value === 'end_date' && formRecurringEndDate.value < formRecurringStartDate.value) {
+      modalError.value = 'Data final deve ser maior ou igual a data inicial da recorrencia.'
+      return
+    }
+
+    if (formRecurringEndingMode.value === 'count' && (!Number.isInteger(parsedRecurringOccurrences) || parsedRecurringOccurrences < 1)) {
+      modalError.value = 'Quantidade de recorrencias deve ser maior ou igual a 1.'
+      return
+    }
+  }
+
+  const resolvedOriginType = formOriginType.value === 'single' && payment.kind === 'card' && parsedInstallmentTotal > 1
+    ? 'installment'
+    : formOriginType.value
+
   saving.value = true
 
   try {
     await createTransaction({
-      origin_type: 'single',
+      origin_type: resolvedOriginType,
       title: formTitle.value.trim(),
       type: selectedCategory.value.type,
       expected_value: parsedExpectedValue,
       real_value: parsedExpectedValue,
-      due_date: formPurchaseDate.value,
-      instance_date: formPurchaseDate.value,
+      due_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : formPurchaseDate.value,
+      instance_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : formPurchaseDate.value,
+      installment_total: resolvedOriginType === 'installment' ? parsedInstallmentTotal : undefined,
+      installment_start_date: resolvedOriginType === 'installment' ? formPurchaseDate.value : undefined,
+      recurring_start_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : undefined,
+      recurring_end_mode: formOriginType.value === 'recurring' ? formRecurringEndingMode.value : undefined,
+      recurring_end_date: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'end_date'
+        ? formRecurringEndDate.value
+        : null,
+      recurring_no_end_date: false,
+      recurring_frequency: formOriginType.value === 'recurring' ? formRecurringFrequency.value : undefined,
+      recurring_occurrences_count: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'count'
+        ? parsedRecurringOccurrences
+        : null,
+      recurring_occurrences_limit: formOriginType.value === 'recurring' && formRecurringEndingMode.value === 'count'
+        ? parsedRecurringOccurrences
+        : null,
       person_id: formPersonId.value || null,
       account_id: payment.kind === 'account' ? payment.id : null,
       card_id: payment.kind === 'card' ? payment.id : null,
@@ -150,6 +239,12 @@ async function submit() {
     saving.value = false
   }
 }
+
+watch(formPaymentMethod, () => {
+  if (!showInstallmentSelector.value) {
+    formInstallmentTotal.value = '1'
+  }
+})
 
 watch(openTransactionModalSignal, (nextValue, prevValue) => {
   if (!nextValue || nextValue === prevValue) {
@@ -173,8 +268,33 @@ watch(openTransactionModalSignal, (nextValue, prevValue) => {
       <template v-else>
         <div class="grid gap-4 sm:grid-cols-2">
           <AppInput v-model="formTitle" label="Descricao" placeholder="Ex.: Mercado" required />
-          <AppInput v-model="formExpectedValue" label="Valor" type="number" placeholder="0.00" required />
-          <AppInput v-model="formPurchaseDate" label="Data da compra" type="date" required />
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Tipo do lancamento</label>
+            <select v-model="formOriginType" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="single">Compra unica</option>
+              <option value="recurring">Compra recorrente</option>
+            </select>
+          </div>
+
+          <AppInput v-model="formExpectedValue" :label="expectedValueLabel" type="number" placeholder="0.00" required />
+
+          <AppInput
+            v-if="formOriginType === 'single'"
+            v-model="formPurchaseDate"
+            label="Data da compra"
+            type="date"
+            required
+          />
+
+          <AppInput
+            v-if="showInstallmentSelector"
+            v-model="formInstallmentTotal"
+            label="Parcelas"
+            type="number"
+            placeholder="1 a 24"
+            required
+          />
 
           <div class="space-y-2">
             <label class="block text-sm font-medium text-foreground">Forma de pagamento</label>
@@ -199,6 +319,44 @@ watch(openTransactionModalSignal, (nextValue, prevValue) => {
               <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
             </select>
           </div>
+        </div>
+
+        <p v-if="expectedValueHelpText" class="text-xs text-muted">{{ expectedValueHelpText }}</p>
+
+        <div v-if="formOriginType === 'recurring'" class="grid gap-4 rounded-xl border border-border p-3 sm:grid-cols-2">
+          <AppInput v-model="formRecurringStartDate" label="Data inicial" type="date" required />
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">Frequencia</label>
+            <select v-model="formRecurringFrequency" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensal</option>
+              <option value="yearly">Anual</option>
+            </select>
+          </div>
+
+          <div class="space-y-2 sm:col-span-2">
+            <label class="block text-sm font-medium text-foreground">Encerrar recorrencia por</label>
+            <select v-model="formRecurringEndingMode" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+              <option value="count">Quantidade</option>
+              <option value="end_date">Data final</option>
+            </select>
+          </div>
+
+          <AppInput
+            v-if="formRecurringEndingMode === 'count'"
+            v-model="formRecurringOccurrences"
+            label="Quantidade de recorrencias"
+            type="number"
+            placeholder="Ex.: 12"
+          />
+
+          <AppInput
+            v-if="formRecurringEndingMode === 'end_date'"
+            v-model="formRecurringEndDate"
+            label="Data final"
+            type="date"
+          />
         </div>
 
         <AppInput v-model="formDescription" label="Observacoes" placeholder="Detalhes opcionais" />
