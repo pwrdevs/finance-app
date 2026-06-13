@@ -144,8 +144,6 @@ const projectionRows = computed(() => accumulatedProjection.value.months)
 
 const projectedBalance = computed(() => accumulatedProjection.value.selectedMonthAccumulatedBalance)
 
-const selectedMonthProjection = computed(() => accumulatedProjection.value.months.at(-1) ?? null)
-
 const requiredContribution = computed(() => accumulatedProjection.value.requiredContribution)
 
 const chartData = computed(() => {
@@ -399,48 +397,42 @@ watch(
     </div>
 
     <AppCard title="Projeção Financeira" subtitle="Estimativa futura baseada em lançamentos únicos, parcelados e recorrentes.">
-      <div class="grid gap-4 md:grid-cols-3">
-        <article class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
-          <div class="flex min-h-[10.5rem] flex-col justify-between gap-3">
-            <div class="flex items-start justify-between gap-3">
-              <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo inicial</p>
-              <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">Base</span>
-            </div>
-            <p class="text-2xl font-semibold" :class="accumulatedProjection.initialBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-              {{ formatCurrency(accumulatedProjection.initialBalance) }}
-            </p>
-            <p class="text-xs text-muted">Saldo antes da janela de análise.</p>
+      <div class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold text-foreground">Faturas do período</p>
+            <p class="text-xs text-muted">Resumo dos cartões ativos no mês selecionado.</p>
           </div>
-        </article>
+          <span class="rounded-full bg-primary-light/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground">
+            {{ cardStatementRows.length }} cartão(ões)
+          </span>
+        </div>
 
-        <article class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
-          <div class="flex min-h-[10.5rem] flex-col justify-between gap-3">
-            <div class="flex items-start justify-between gap-3">
-              <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo do período</p>
-              <span class="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Mês</span>
+        <div v-if="cardStatementRows.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <article
+            v-for="statement in cardStatementRows"
+            :key="statement.card_id"
+            class="rounded-2xl border border-border bg-surface px-4 py-3"
+          >
+            <p class="text-sm font-semibold text-foreground">{{ statement.card_name }}</p>
+            <div class="mt-2 flex items-end justify-between gap-3">
+              <p class="text-lg font-semibold text-foreground">{{ formatCurrency(statement.totalExpense) }}</p>
+              <p class="text-xs text-muted">{{ statement.transactionCount }} despesa(s)</p>
             </div>
-            <div>
-              <p class="text-xs text-muted">{{ selectedPeriodLabel }}</p>
-              <p class="mt-2 text-2xl font-semibold" :class="selectedMonthProjection?.monthBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-                {{ formatCurrency(selectedMonthProjection?.monthBalance ?? 0) }}
+            <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <p class="rounded-lg bg-slate-100/70 px-2 py-1 text-slate-700">
+                Fechamento: <span class="font-semibold">{{ statement.card_closing_day == null ? '--' : `${String(statement.card_closing_day).padStart(2, '0')}` }}</span>
+              </p>
+              <p class="rounded-lg bg-slate-100/70 px-2 py-1 text-slate-700">
+                Vencimento: <span class="font-semibold">{{ statement.card_due_day == null ? '--' : `${String(statement.card_due_day).padStart(2, '0')}` }}</span>
               </p>
             </div>
-            <p class="text-xs text-muted">Entradas menos saídas do período selecionado.</p>
-          </div>
-        </article>
+          </article>
+        </div>
 
-        <article class="rounded-2xl border border-border bg-surface/70 p-4 shadow-sm">
-          <div class="flex min-h-[10.5rem] flex-col justify-between gap-3">
-            <div class="flex items-start justify-between gap-3">
-              <p class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Saldo acumulado projetado</p>
-              <span class="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Acumulado</span>
-            </div>
-            <p class="text-2xl font-semibold" :class="projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'">
-              {{ formatCurrency(projectedBalance) }}
-            </p>
-            <p class="text-xs text-muted">Acumulado de {{ accumulatedProjection.analysisStartLabel || selectedPeriodLabel }} até {{ accumulatedProjection.analysisEndLabel || selectedPeriodLabel }}.</p>
-          </div>
-        </article>
+        <p v-else class="rounded-2xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted">
+          Nenhuma despesa em cartao encontrada para este mes.
+        </p>
       </div>
 
       <div class="mt-6 rounded-3xl border border-border bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 text-slate-100 shadow-panel">
@@ -568,32 +560,5 @@ watch(
       </div>
     </AppCard>
 
-    <AppCard title="Resumo de cartões" subtitle="Fatura estimada pelos lançamentos de despesa ativos do período selecionado.">
-      <div v-if="cardStatementRows.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <article
-          v-for="statement in cardStatementRows"
-          :key="statement.card_id"
-          class="rounded-2xl border border-border bg-surface px-4 py-3"
-        >
-          <p class="text-sm font-semibold text-foreground">{{ statement.card_name }}</p>
-          <div class="mt-2 flex items-end justify-between gap-3">
-            <p class="text-lg font-semibold text-foreground">{{ formatCurrency(statement.totalExpense) }}</p>
-            <p class="text-xs text-muted">{{ statement.transactionCount }} despesa(s)</p>
-          </div>
-          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <p class="rounded-lg bg-slate-100/70 px-2 py-1 text-slate-700">
-              Fechamento: <span class="font-semibold">{{ statement.card_closing_day == null ? '--' : `${String(statement.card_closing_day).padStart(2, '0')}` }}</span>
-            </p>
-            <p class="rounded-lg bg-slate-100/70 px-2 py-1 text-slate-700">
-              Vencimento: <span class="font-semibold">{{ statement.card_due_day == null ? '--' : `${String(statement.card_due_day).padStart(2, '0')}` }}</span>
-            </p>
-          </div>
-        </article>
-      </div>
-
-      <p v-else class="rounded-2xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted">
-        Nenhuma despesa em cartao encontrada para este mes.
-      </p>
-    </AppCard>
   </section>
 </template>
