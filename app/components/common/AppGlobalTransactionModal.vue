@@ -35,6 +35,12 @@ const formPersonId = ref('')
 const formCategoryId = ref('')
 const formPaymentMethod = ref('')
 const formDescription = ref('')
+const formGenerateReimbursement = ref(false)
+const formReimbursementPersonId = ref('')
+const formReimbursementAccountId = ref('')
+const formReimbursementDescription = ref('')
+const formReimbursementValue = ref('')
+const formReimbursementDate = ref('')
 
 const paymentMethodOptions = computed(() => {
   const accountOptions = accounts.value.map(entry => ({ value: `account:${entry.id}`, label: `Conta - ${entry.name}` }))
@@ -43,6 +49,7 @@ const paymentMethodOptions = computed(() => {
 })
 
 const selectedCategory = computed(() => categories.value.find(entry => entry.id === formCategoryId.value) ?? null)
+const canGenerateReimbursement = computed(() => selectedCategory.value?.type === 'expense')
 const selectedCard = computed(() => {
   const payment = getPaymentMethodParts(formPaymentMethod.value)
   return payment.kind === 'card' ? cards.value.find(entry => entry.id === payment.id) ?? null : null
@@ -82,7 +89,29 @@ function resetForm() {
   formCategoryId.value = ''
   formPaymentMethod.value = ''
   formDescription.value = ''
+  formGenerateReimbursement.value = false
+  formReimbursementPersonId.value = ''
+  formReimbursementAccountId.value = ''
+  formReimbursementDescription.value = ''
+  formReimbursementValue.value = ''
+  formReimbursementDate.value = ''
   modalError.value = ''
+}
+
+function applyReimbursementDefaults() {
+  if (!formReimbursementDescription.value.trim()) {
+    formReimbursementDescription.value = formTitle.value.trim()
+      ? `Reembolso - ${formTitle.value.trim()}`
+      : 'Reembolso'
+  }
+
+  if (!formReimbursementValue.value.trim() && formExpectedValue.value.trim()) {
+    formReimbursementValue.value = formExpectedValue.value
+  }
+
+  if (!formReimbursementPersonId.value) {
+    formReimbursementPersonId.value = formPersonId.value
+  }
 }
 
 async function loadOptionsIfNeeded() {
@@ -196,6 +225,17 @@ async function submit() {
   const resolvedOriginType = formOriginType.value === 'single' && payment.kind === 'card' && parsedInstallmentTotal > 1
     ? 'installment'
     : formOriginType.value
+  let parsedReimbursementValue: number | null = null
+
+  if (canGenerateReimbursement.value && formGenerateReimbursement.value) {
+    const reimbursementRaw = formReimbursementValue.value.trim()
+    parsedReimbursementValue = reimbursementRaw ? Number(reimbursementRaw) : parsedExpectedValue
+
+    if (Number.isNaN(parsedReimbursementValue) || parsedReimbursementValue <= 0) {
+      modalError.value = 'Valor da entrada vinculada deve ser maior que zero.'
+      return
+    }
+  }
 
   saving.value = true
 
@@ -229,7 +269,17 @@ async function submit() {
       category_id: formCategoryId.value,
       description: formDescription.value.trim() || null,
       status: 'pending',
-      is_checked: false
+      is_checked: false,
+      reimbursement: canGenerateReimbursement.value && formGenerateReimbursement.value
+        ? {
+            enabled: true,
+            person_id: formReimbursementPersonId.value || null,
+            account_id: formReimbursementAccountId.value || null,
+            description: formReimbursementDescription.value.trim() || `Reembolso - ${formTitle.value.trim()}`,
+            expected_value: parsedReimbursementValue ?? parsedExpectedValue,
+            received_date: formReimbursementDate.value || null
+          }
+        : null
     })
 
     closeModal()
@@ -244,6 +294,36 @@ async function submit() {
 watch(formPaymentMethod, () => {
   if (!showInstallmentSelector.value) {
     formInstallmentTotal.value = '1'
+  }
+})
+
+watch(canGenerateReimbursement, (enabled) => {
+  if (!enabled) {
+    formGenerateReimbursement.value = false
+  }
+})
+
+watch(formGenerateReimbursement, (enabled) => {
+  if (enabled) {
+    applyReimbursementDefaults()
+  }
+})
+
+watch(formPersonId, (nextPersonId) => {
+  if (formGenerateReimbursement.value && !formReimbursementPersonId.value) {
+    formReimbursementPersonId.value = nextPersonId
+  }
+})
+
+watch(formExpectedValue, () => {
+  if (formGenerateReimbursement.value && !formReimbursementValue.value.trim()) {
+    formReimbursementValue.value = formExpectedValue.value
+  }
+})
+
+watch(formTitle, () => {
+  if (formGenerateReimbursement.value && !formReimbursementDescription.value.trim()) {
+    applyReimbursementDefaults()
   }
 })
 
@@ -380,6 +460,39 @@ onUnmounted(() => {
             label="Data final"
             type="date"
           />
+        </div>
+
+        <div class="space-y-3 rounded-xl border border-border p-3">
+          <p class="text-sm font-semibold text-foreground">Reembolso / Repasse</p>
+
+          <label v-if="canGenerateReimbursement" class="flex items-center gap-2 text-sm text-foreground">
+            <input v-model="formGenerateReimbursement" type="checkbox" class="h-4 w-4 rounded border-border" />
+            Gerar entrada de reembolso/repasse
+          </label>
+
+          <p v-else class="text-xs text-muted">Disponível apenas para categorias de despesa.</p>
+
+          <div v-if="canGenerateReimbursement && formGenerateReimbursement" class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Responsavel pela entrada</label>
+              <select v-model="formReimbursementPersonId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhum</option>
+                <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-foreground">Conta de recebimento</label>
+              <select v-model="formReimbursementAccountId" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
+                <option value="">Nenhuma</option>
+                <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
+
+            <AppInput v-model="formReimbursementValue" label="Valor da entrada" type="number" placeholder="0.00" />
+            <AppInput v-model="formReimbursementDescription" label="Descricao da entrada" placeholder="Reembolso - Despesa" />
+            <AppInput v-model="formReimbursementDate" label="Data de recebimento (opcional)" type="date" />
+          </div>
         </div>
 
         <AppInput v-model="formDescription" label="Observacoes" placeholder="Detalhes opcionais" />
