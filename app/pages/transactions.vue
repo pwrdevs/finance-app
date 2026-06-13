@@ -17,7 +17,6 @@ import {
 } from '~/composables/useTransactions'
 import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composables/useMasterData'
 import { formatBRLOrDash } from '~/utils/currency'
-import { resolveFinancialEffectiveDate } from '~/utils/financialCompetence'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -651,33 +650,6 @@ function getInstallmentLabel(row: TransactionInstanceItem) {
   return '1/1'
 }
 
-function getFinancialMonthKeyFromDate(value: string) {
-  return value.slice(0, 7)
-}
-
-function getFinancialCompetenceLabel(value: string) {
-  const [yearText, monthText] = value.split('-')
-  const month = Number(monthText)
-  const year = Number(yearText)
-
-  if (!year || !month) {
-    return value
-  }
-
-  const shortMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-  const monthLabel = shortMonths[month - 1] ?? monthText
-  return `${monthLabel}/${String(year).slice(-2)}`
-}
-
-function getRowFinancialEffectiveDate(row: TransactionInstanceItem) {
-  return resolveFinancialEffectiveDate({
-    instance_date: row.instance_date,
-    card_id: row.card_id,
-    closing_day: row.card_closing_day,
-    due_day: row.card_due_day
-  })
-}
-
 const filteredRows = computed(() => {
   const normalizedSearch = searchDescription.value.trim().toLowerCase()
 
@@ -687,7 +659,7 @@ const filteredRows = computed(() => {
         return true
       }
 
-      return getFinancialMonthKeyFromDate(getRowFinancialEffectiveDate(row)) === selectedPeriodMonthKey.value
+      return row.financial_effective_date.slice(0, 7) === selectedPeriodMonthKey.value
     })
     .filter((row) => {
       if (quickPaymentFilter.value === 'account') {
@@ -728,8 +700,6 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
-      financial_effective_date: getRowFinancialEffectiveDate(row),
-      financial_competence_label: getFinancialCompetenceLabel(getRowFinancialEffectiveDate(row)),
       installment_label: getInstallmentLabel(row),
       description_text: row.description?.trim() ? `${row.title} - ${row.description}` : row.title,
       person_name: row.person_id ? (peopleMap.value.get(row.person_id) || '-') : '-',
@@ -1991,7 +1961,13 @@ onMounted(async () => {
                 v-if="(row as TransactionInstanceItem).card_id"
                 class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
               >
-                Competência: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
+                Fatura: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
+              </span>
+              <span
+                v-else-if="Boolean((row as TransactionInstanceItem).linked_financial_competence_label)"
+                class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
+              >
+                Vinculado à fatura: {{ (row as { linked_financial_competence_label?: string | null }).linked_financial_competence_label }}
               </span>
             </div>
           </template>

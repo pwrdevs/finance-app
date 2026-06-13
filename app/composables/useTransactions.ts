@@ -1,4 +1,5 @@
 import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composables/useMasterData'
+import { resolveFinancialEffectiveDate } from '~/utils/financialCompetence'
 
 export const TRANSACTION_TYPES = ['income', 'expense'] as const
 export type TransactionType = (typeof TRANSACTION_TYPES)[number]
@@ -99,6 +100,9 @@ export interface TransactionInstanceItem {
   recurring_occurrences_limit: number | null
   reimbursement_group_id: string | null
   reimbursement_role: ReimbursementRole | null
+  financial_effective_date: string
+  financial_competence_label: string
+  linked_financial_competence_label: string | null
 }
 
 export interface LinkedReimbursementPayload {
@@ -595,8 +599,111 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     recurring_end_date: source?.recurrence_rule?.end_date ?? null,
     recurring_occurrences_limit: source?.recurrence_rule?.occurrences_limit ?? null,
     reimbursement_group_id: source?.reimbursement_group_id ?? null,
-    reimbursement_role: source?.reimbursement_role ?? null
+    reimbursement_role: source?.reimbursement_role ?? null,
+    financial_effective_date: resolveFinancialEffectiveDate({
+      instance_date: record.instance_date,
+      card_id: record.card_id,
+      closing_day: record.card?.closing_day ?? null,
+      due_day: record.card?.due_day ?? null
+    }),
+    financial_competence_label: record.instance_date,
+    linked_financial_competence_label: null
   }
+}
+
+function getFinancialCompetenceLabel(value: string) {
+  const [yearText, monthText] = value.split('-')
+  const month = Number(monthText)
+  const year = Number(yearText)
+
+  if (!year || !month) {
+    return value
+  }
+
+  const shortMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  const monthLabel = shortMonths[month - 1] ?? monthText
+  return `${monthLabel}/${year}`
+}
+
+function pickOriginalForLinkedReimbursement(
+  reimbursementRow: TransactionInstanceItem,
+  originals: TransactionInstanceItem[]
+) {
+  if (!originals.length) {
+    return null
+  }
+
+  if (originals.length === 1) {
+    return originals[0]
+  }
+
+  const sameDate = originals.find(entry => entry.instance_date === reimbursementRow.instance_date)
+
+  if (sameDate) {
+    return sameDate
+  }
+
+  const targetDate = Date.parse(reimbursementRow.instance_date)
+
+  if (Number.isNaN(targetDate)) {
+    return originals[0]
+  }
+
+  let nearest = originals[0]
+  let nearestDiff = Number.POSITIVE_INFINITY
+
+  for (const entry of originals) {
+    const entryDate = Date.parse(entry.instance_date)
+
+    if (Number.isNaN(entryDate)) {
+      continue
+    }
+
+    const diff = Math.abs(entryDate - targetDate)
+
+    if (diff < nearestDiff) {
+      nearest = entry
+      nearestDiff = diff
+    }
+  }
+
+  return nearest
+}
+
+function applyFinancialCompetenceRules(items: TransactionInstanceItem[]) {
+  const originalsByReimbursementGroup = new Map<string, TransactionInstanceItem[]>()
+
+  for (const item of items) {
+    if (!item.reimbursement_group_id || item.reimbursement_role !== 'original') {
+      continue
+    }
+
+    const existing = originalsByReimbursementGroup.get(item.reimbursement_group_id) ?? []
+    existing.push(item)
+    originalsByReimbursementGroup.set(item.reimbursement_group_id, existing)
+  }
+
+  return items.map((item) => {
+    let financialEffectiveDate = item.financial_effective_date
+    let linkedFinancialCompetenceLabel: string | null = null
+
+    if (item.reimbursement_group_id && item.reimbursement_role === 'reimbursement') {
+      const originals = originalsByReimbursementGroup.get(item.reimbursement_group_id) ?? []
+      const linkedOriginal = pickOriginalForLinkedReimbursement(item, originals)
+
+      if (linkedOriginal?.card_id) {
+        financialEffectiveDate = linkedOriginal.financial_effective_date
+        linkedFinancialCompetenceLabel = getFinancialCompetenceLabel(financialEffectiveDate)
+      }
+    }
+
+    return {
+      ...item,
+      financial_effective_date: financialEffectiveDate,
+      financial_competence_label: getFinancialCompetenceLabel(financialEffectiveDate),
+      linked_financial_competence_label: linkedFinancialCompetenceLabel
+    }
+  })
 }
 
 export function useTransactions() {
@@ -704,8 +811,10 @@ export function useTransactions() {
       throw error
     }
 
-    const mapped = ((data ?? []) as TransactionInstanceRecord[])
-      .map(mapInstance)
+    const mapped = applyFinancialCompetenceRules(
+      ((data ?? []) as TransactionInstanceRecord[])
+        .map(mapInstance)
+    )
 
     return mapped
   }
