@@ -812,6 +812,69 @@ function formatDateBr(value: string) {
   return `${day}/${month}/${year}`
 }
 
+function getTodayIsoDate() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function getRowAlertLevel(row: TransactionInstanceItem) {
+  if (row.status === 'paid') {
+    return 'paid'
+  }
+
+  if (row.status === 'canceled') {
+    return 'none'
+  }
+
+  const dueDate = row.due_date || row.instance_date
+  const daysUntilDue = getDaysDiff(getTodayIsoDate(), dueDate)
+
+  if (daysUntilDue < 0) {
+    return 'overdue'
+  }
+
+  if (daysUntilDue <= 3) {
+    return 'due-soon'
+  }
+
+  return 'none'
+}
+
+function getRowAlertClass(row: TransactionInstanceItem) {
+  const level = getRowAlertLevel(row)
+
+  if (level === 'paid') {
+    return 'bg-emerald-500'
+  }
+
+  if (level === 'overdue') {
+    return 'bg-rose-500'
+  }
+
+  if (level === 'due-soon') {
+    return 'bg-amber-400'
+  }
+
+  return 'bg-slate-300/80'
+}
+
+function getRowAlertLabel(row: TransactionInstanceItem) {
+  const level = getRowAlertLevel(row)
+
+  if (level === 'paid') {
+    return 'Pago'
+  }
+
+  if (level === 'overdue') {
+    return 'Vencido'
+  }
+
+  if (level === 'due-soon') {
+    return 'Proximo do vencimento'
+  }
+
+  return 'Sem alerta'
+}
+
 function getEffectiveValue(row: TransactionInstanceItem) {
   return row.real_value ?? row.expected_value
 }
@@ -1133,6 +1196,19 @@ async function fetchRows() {
   }
 }
 
+function patchRowInState(rowId: string, patch: Partial<TransactionInstanceItem>) {
+  rows.value = rows.value.map((entry) => {
+    if (entry.id !== rowId) {
+      return entry
+    }
+
+    return {
+      ...entry,
+      ...patch
+    }
+  })
+}
+
 async function fetchOptions() {
   try {
     const options = await listFilterOptions()
@@ -1420,11 +1496,20 @@ async function toggleChecked(row: TransactionInstanceItem) {
 
   pageError.value = ''
   rowActionBusy.value = true
+  const nextChecked = !row.is_checked
+
+  patchRowInState(row.id, {
+    is_checked: nextChecked,
+    checked_at: nextChecked ? new Date().toISOString() : null
+  })
 
   try {
-    await setChecked(row, !row.is_checked)
-    await fetchRows()
+    await setChecked(row, nextChecked)
   } catch (err) {
+    patchRowInState(row.id, {
+      is_checked: row.is_checked,
+      checked_at: row.checked_at
+    })
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar a conferencia.'
   } finally {
     rowActionBusy.value = false
@@ -1444,11 +1529,16 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
   }
 
   rowActionBusy.value = true
+  patchRowInState(row.id, {
+    status: nextStatus
+  })
 
   try {
     await setStatus(row, nextStatus)
-    await fetchRows()
   } catch (err) {
+    patchRowInState(row.id, {
+      status: row.status
+    })
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar o status.'
   } finally {
     rowActionBusy.value = false
@@ -1950,8 +2040,16 @@ onMounted(async () => {
     <AppCard title="Tabela de lançamentos" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
       <div class="overflow-x-auto">
         <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhum lançamento encontrado.">
-          <template #cell-instance_date="{ value }">
-            {{ formatDateBr(String(value)) }}
+          <template #cell-instance_date="{ row, value }">
+            <div class="flex items-center gap-2">
+              <span
+                class="h-2.5 w-2.5 rounded-full"
+                :class="getRowAlertClass(row as TransactionInstanceItem)"
+                :title="getRowAlertLabel(row as TransactionInstanceItem)"
+                aria-hidden="true"
+              />
+              <span>{{ formatDateBr(String(value)) }}</span>
+            </div>
           </template>
 
           <template #cell-card_name="{ row }">
@@ -1961,13 +2059,13 @@ onMounted(async () => {
                 v-if="(row as TransactionInstanceItem).card_id"
                 class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
               >
-                Fatura: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
+                FATURA: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
               </span>
               <span
                 v-else-if="Boolean((row as TransactionInstanceItem).linked_financial_competence_label)"
                 class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
               >
-                Vinculado à fatura: {{ (row as { linked_financial_competence_label?: string | null }).linked_financial_competence_label }}
+                FATURA: {{ (row as { linked_financial_competence_label?: string | null }).linked_financial_competence_label }}
               </span>
             </div>
           </template>
