@@ -17,6 +17,7 @@ import {
 } from '~/composables/useTransactions'
 import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composables/useMasterData'
 import { formatBRLOrDash } from '~/utils/currency'
+import { resolveFinancialEffectiveDate } from '~/utils/financialCompetence'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -164,6 +165,13 @@ const selectedPeriodLabel = computed(() => {
   const [year, month] = periodFilter.value.split('-')
   const monthOption = filterMonthOptions.find(entry => entry.value === month)
   return monthOption ? `${monthOption.label}/${year}` : periodFilter.value
+})
+const selectedPeriodMonthKey = computed(() => {
+  if (periodFilter.value === 'all') {
+    return null
+  }
+
+  return periodFilter.value
 })
 
 const transactionStatusLabelMap: Record<TransactionStatus, string> = {
@@ -643,10 +651,44 @@ function getInstallmentLabel(row: TransactionInstanceItem) {
   return '1/1'
 }
 
+function getFinancialMonthKeyFromDate(value: string) {
+  return value.slice(0, 7)
+}
+
+function getFinancialCompetenceLabel(value: string) {
+  const [yearText, monthText] = value.split('-')
+  const month = Number(monthText)
+  const year = Number(yearText)
+
+  if (!year || !month) {
+    return value
+  }
+
+  const shortMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  const monthLabel = shortMonths[month - 1] ?? monthText
+  return `${monthLabel}/${String(year).slice(-2)}`
+}
+
+function getRowFinancialEffectiveDate(row: TransactionInstanceItem) {
+  return resolveFinancialEffectiveDate({
+    instance_date: row.instance_date,
+    card_id: row.card_id,
+    closing_day: row.card_closing_day,
+    due_day: row.card_due_day
+  })
+}
+
 const filteredRows = computed(() => {
   const normalizedSearch = searchDescription.value.trim().toLowerCase()
 
   return rows.value
+    .filter((row) => {
+      if (!selectedPeriodMonthKey.value) {
+        return true
+      }
+
+      return getFinancialMonthKeyFromDate(getRowFinancialEffectiveDate(row)) === selectedPeriodMonthKey.value
+    })
     .filter((row) => {
       if (quickPaymentFilter.value === 'account') {
         return Boolean(row.account_id)
@@ -686,6 +728,8 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
+      financial_effective_date: getRowFinancialEffectiveDate(row),
+      financial_competence_label: getFinancialCompetenceLabel(getRowFinancialEffectiveDate(row)),
       installment_label: getInstallmentLabel(row),
       description_text: row.description?.trim() ? `${row.title} - ${row.description}` : row.title,
       person_name: row.person_id ? (peopleMap.value.get(row.person_id) || '-') : '-',
@@ -1111,12 +1155,7 @@ async function fetchRows() {
   pageError.value = ''
 
   try {
-    if (periodFilter.value === 'all') {
-      rows.value = await listManualInstances({})
-    } else {
-      const period = parseMonthYear(periodFilter.value)
-      rows.value = await listManualInstances(period)
-    }
+    rows.value = await listManualInstances({})
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel carregar os lancamentos.'
   } finally {
@@ -1943,6 +1982,18 @@ onMounted(async () => {
         <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhum lançamento encontrado.">
           <template #cell-instance_date="{ value }">
             {{ formatDateBr(String(value)) }}
+          </template>
+
+          <template #cell-card_name="{ row }">
+            <div class="space-y-1">
+              <p>{{ (row as { card_name: string }).card_name }}</p>
+              <span
+                v-if="(row as TransactionInstanceItem).card_id"
+                class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
+              >
+                Competência: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
+              </span>
+            </div>
           </template>
 
           <template #cell-checked_toggle="{ row }">

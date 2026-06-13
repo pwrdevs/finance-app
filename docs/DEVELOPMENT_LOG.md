@@ -253,3 +253,8 @@
 - 2026-06-11: Cards executivos principais da Dashboard foram realinhados com estrutura de linhas consistentes (topo/valor/descrição), altura mínima padronizada e badges sem impacto no baseline dos valores para melhorar equilíbrio visual no desktop e manter empilhamento limpo no mobile.
 - 2026-06-11: `Resumo de cartões` ampliado com dados de cadastro (`fechamento` e `vencimento` da fatura) em cada card, mantendo fallback visual para cartões sem configuração.
 - 2026-06-11: Build de produção executado com sucesso após as melhorias de UX (mantida apenas a advertência conhecida de sourcemap do Nuxt module-preload-polyfill).
+- 2026-06-12: Regra de competência financeira aplicada também em `/transactions` quando o filtro de período está ativo (sem migration): lançamentos em conta continuam por `instance_date`, enquanto lançamentos em cartão passam a considerar competência da fatura (`closing_day`/`due_day`), inclusive em filtros rápidos e totais da lista.
+- 2026-06-12: Helper de competência extraído para util compartilhado em `app/utils/financialCompetence.ts`, reutilizado por Dashboard e Lançamentos para evitar duplicidade de regra.
+- 2026-06-12: Tabela de `/transactions` recebeu indicação discreta de competência para linhas de cartão (`Competência: MMM/AA`) mantendo a coluna Data com a data da compra.
+- 2026-06-12: `listManualInstances` passou a carregar metadados de cartão (`closing_day`, `due_day`) junto com cada linha para cálculo consistente de competência sem depender apenas dos filtros de cadastro ativo.
+- 2026-06-12: Build de produção validado com sucesso após o ajuste de competência em Lançamentos (mantida somente a advertência conhecida de sourcemap do Nuxt module-preload-polyfill).

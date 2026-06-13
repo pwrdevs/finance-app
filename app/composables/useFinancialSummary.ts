@@ -1,4 +1,5 @@
 import type { TransactionStatus, TransactionType } from '~/composables/useTransactions'
+import { resolveFinancialEffectiveDate as resolveFinancialEffectiveDateShared } from '~/utils/financialCompetence'
 
 interface SourceTransactionSummary {
   id: string
@@ -134,52 +135,13 @@ function resolveInstanceValue(expectedValue: number, realValue: number | null) {
   return realValue == null ? expectedValue : realValue
 }
 
-function toDateParts(value: string) {
-  const [yearText, monthText, dayText] = value.split('-')
-  const year = Number(yearText)
-  const month = Number(monthText)
-  const day = Number(dayText)
-
-  if (!year || !month || !day) {
-    throw new Error(`Data invalida: ${value}`)
-  }
-
-  return { year, month, day }
-}
-
-function getLastDayOfMonth(year: number, month: number) {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate()
-}
-
-function formatDateYmd(year: number, month: number, day: number) {
-  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-}
-
-function getCardFinancialEffectiveDate(instanceDate: string, closingDay: number | null, dueDay: number | null) {
-  if (!closingDay || !dueDay) {
-    return instanceDate
-  }
-
-  const { year, month, day } = toDateParts(instanceDate)
-  const monthOffset = dueDay > closingDay
-    ? (day <= closingDay ? 0 : 1)
-    : 1
-
-  const target = addMonths(year, month, monthOffset)
-  const safeDay = Math.min(dueDay, getLastDayOfMonth(target.year, target.month))
-  return formatDateYmd(target.year, target.month, safeDay)
-}
-
 function resolveFinancialEffectiveDate(record: { instance_date: string; card_id: string | null; card: { closing_day: number | null; due_day: number | null } | null }) {
-  if (!record.card_id) {
-    return record.instance_date
-  }
-
-  return getCardFinancialEffectiveDate(
-    record.instance_date,
-    record.card?.closing_day ?? null,
-    record.card?.due_day ?? null
-  )
+  return resolveFinancialEffectiveDateShared({
+    instance_date: record.instance_date,
+    card_id: record.card_id,
+    closing_day: record.card?.closing_day ?? null,
+    due_day: record.card?.due_day ?? null
+  })
 }
 
 export function useFinancialSummary() {

@@ -56,6 +56,10 @@ interface TransactionInstanceRecord {
   status: TransactionStatus
   person_id: string | null
   card_id: string | null
+  card: {
+    closing_day: number | null
+    due_day: number | null
+  } | null
   account_id: string | null
   category_id: string | null
   created_at: string
@@ -80,6 +84,8 @@ export interface TransactionInstanceItem {
   status: TransactionStatus
   person_id: string | null
   card_id: string | null
+  card_closing_day: number | null
+  card_due_day: number | null
   account_id: string | null
   category_id: string | null
   created_at: string
@@ -575,6 +581,8 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     status: record.status,
     person_id: record.person_id,
     card_id: record.card_id,
+    card_closing_day: record.card?.closing_day ?? null,
+    card_due_day: record.card?.due_day ?? null,
     account_id: record.account_id,
     category_id: record.category_id,
     created_at: record.created_at,
@@ -653,6 +661,10 @@ export function useTransactions() {
         status,
         person_id,
         card_id,
+        card:card_id (
+          closing_day,
+          due_day
+        ),
         account_id,
         category_id,
         created_at,
