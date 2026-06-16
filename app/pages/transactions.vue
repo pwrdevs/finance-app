@@ -1382,6 +1382,9 @@ async function submitForm() {
     ? 'installment'
     : formOriginType.value
   const purchaseDate = formPurchaseDate.value
+  const instanceDate = formOriginType.value === 'recurring'
+    ? formRecurringStartDate.value
+    : purchaseDate
 
   saving.value = true
 
@@ -1393,7 +1396,7 @@ async function submitForm() {
         expected_value: parsedExpected,
         real_value: parsedReal,
         due_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : purchaseDate,
-        instance_date: purchaseDate,
+        instance_date: instanceDate,
         person_id: formPersonId.value || null,
         account_id: accountId,
         card_id: cardId,
@@ -1444,7 +1447,7 @@ async function submitForm() {
         expected_value: parsedExpected,
         real_value: parsedExpected,
         due_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : purchaseDate,
-        instance_date: purchaseDate,
+        instance_date: instanceDate,
         installment_total: resolvedOriginType === 'installment' ? parsedInstallmentTotal : undefined,
         installment_start_date: resolvedOriginType === 'installment' ? purchaseDate : undefined,
         recurring_start_date: formOriginType.value === 'recurring' ? formRecurringStartDate.value : undefined,

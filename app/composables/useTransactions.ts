@@ -1423,10 +1423,26 @@ export function useTransactions() {
     }
 
     const futureDates = (futureInstanceRows ?? []).map(row => row.instance_date)
-    const recurrenceStep = Math.max(recurrenceRule.interval_count ?? 1, 1)
-    const rebuiltFutureDates = futureDates.map((_, index) =>
-      addRecurringInterval(payload.instance_date, recurrenceRule.frequency, index * recurrenceStep)
+    const currentEndMode = deriveRecurringEndMode(recurrenceRule.end_date, recurrenceRule.occurrences_limit)
+    const targetEndMode = payload.recurring_end_mode ?? currentEndMode
+    const targetEndDate = targetEndMode === 'end_date'
+      ? (payload.recurring_end_date ?? recurrenceRule.end_date)
+      : null
+    const targetOccurrencesCount = targetEndMode === 'count'
+      ? (payload.recurring_occurrences_count ?? recurrenceRule.occurrences_limit ?? futureDates.length)
+      : null
+    const recurringSchedule = buildRecurringSchedule(
+      payload.instance_date,
+      recurrenceRule.frequency,
+      targetEndMode,
+      targetEndDate,
+      targetOccurrencesCount
     )
+    const rebuiltFutureDates = recurringSchedule.dates
+
+    if (!rebuiltFutureDates.length) {
+      throw new Error('Nenhuma instancia recorrente foi gerada para o periodo informado.')
+    }
 
     const { error: sourceTransactionError } = await supabase
       .from('transactions')
@@ -1448,6 +1464,20 @@ export function useTransactions() {
 
     if (sourceTransactionError) {
       throw sourceTransactionError
+    }
+
+    const shouldUpdateRuleStartDate = applyFromDate === recurrenceRule.start_date
+    const { error: recurrenceRuleUpdateError } = await supabase
+      .from('recurrence_rules')
+      .update({
+        start_date: shouldUpdateRuleStartDate ? payload.instance_date : recurrenceRule.start_date,
+        end_date: recurringSchedule.ruleEndDate,
+        occurrences_limit: recurringSchedule.ruleOccurrencesLimit
+      })
+      .eq('id', recurrenceRule.id)
+
+    if (recurrenceRuleUpdateError) {
+      throw recurrenceRuleUpdateError
     }
 
     const { error: deleteSeriesInstancesError } = await supabase
