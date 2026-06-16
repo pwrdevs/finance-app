@@ -381,6 +381,12 @@ function addMonthsKeepingDay(dateText: string, monthOffset: number) {
   return `${isoYear}-${isoMonth}-${isoDay}`
 }
 
+function getMonthDiff(fromDate: string, toDate: string) {
+  const [fromYear, fromMonth] = fromDate.split('-').map(Number)
+  const [toYear, toMonth] = toDate.split('-').map(Number)
+  return ((toYear - fromYear) * 12) + (toMonth - fromMonth)
+}
+
 function shiftDays(dateText: string, dayOffset: number) {
   const date = new Date(`${dateText}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + dayOffset)
@@ -1417,6 +1423,10 @@ export function useTransactions() {
     }
 
     const futureDates = (futureInstanceRows ?? []).map(row => row.instance_date)
+    const recurrenceStep = Math.max(recurrenceRule.interval_count ?? 1, 1)
+    const rebuiltFutureDates = futureDates.map((_, index) =>
+      addRecurringInterval(payload.instance_date, recurrenceRule.frequency, index * recurrenceStep)
+    )
 
     const { error: sourceTransactionError } = await supabase
       .from('transactions')
@@ -1454,7 +1464,7 @@ export function useTransactions() {
       sourceTransaction.user_id,
       recurrenceRule.id,
       sourceTransaction.id,
-      futureDates,
+      rebuiltFutureDates,
       {
         expectedValue: payload.expected_value,
         status: payload.status,
@@ -1492,27 +1502,63 @@ export function useTransactions() {
     const normalizedAccountId = normalizeOptionalId(payload.account_id)
     const normalizedCategoryId = normalizeOptionalId(payload.category_id)
 
-    const targetInstances = supabase
-      .from('transaction_instances')
-      .update({
-        expected_value: payload.expected_value,
-        real_value: payload.real_value ?? null,
-        is_checked: payload.is_checked,
-        checked_at: checkedAt,
-        status: payload.status,
-        person_id: normalizedPersonId,
-        card_id: normalizedCardId,
-        account_id: normalizedAccountId,
-        category_id: normalizedCategoryId
-      })
-      .eq('source_transaction_id', item.source_transaction_id)
+    if (scope === 'single') {
+      const { error: singleInstanceError } = await supabase
+        .from('transaction_instances')
+        .update({
+          instance_date: payload.instance_date,
+          expected_value: payload.expected_value,
+          real_value: payload.real_value ?? null,
+          is_checked: payload.is_checked,
+          checked_at: checkedAt,
+          status: payload.status,
+          person_id: normalizedPersonId,
+          card_id: normalizedCardId,
+          account_id: normalizedAccountId,
+          category_id: normalizedCategoryId
+        })
+        .eq('id', item.id)
 
-    const { error: instanceError } = scope === 'future'
-      ? await targetInstances.gte('instance_date', item.instance_date)
-      : await targetInstances.eq('id', item.id)
+      if (singleInstanceError) {
+        throw singleInstanceError
+      }
+    } else {
+      const { data: futureInstances, error: futureInstancesError } = await supabase
+        .from('transaction_instances')
+        .select('id, instance_date')
+        .eq('source_transaction_id', item.source_transaction_id)
+        .gte('instance_date', item.instance_date)
+        .order('instance_date', { ascending: true })
 
-    if (instanceError) {
-      throw instanceError
+      if (futureInstancesError) {
+        throw futureInstancesError
+      }
+
+      const monthShift = getMonthDiff(item.instance_date, payload.instance_date)
+
+      for (const instance of futureInstances ?? []) {
+        const shiftedDate = addMonthsKeepingDay(instance.instance_date, monthShift)
+
+        const { error: updateFutureInstanceError } = await supabase
+          .from('transaction_instances')
+          .update({
+            instance_date: shiftedDate,
+            expected_value: payload.expected_value,
+            real_value: payload.real_value ?? null,
+            is_checked: payload.is_checked,
+            checked_at: checkedAt,
+            status: payload.status,
+            person_id: normalizedPersonId,
+            card_id: normalizedCardId,
+            account_id: normalizedAccountId,
+            category_id: normalizedCategoryId
+          })
+          .eq('id', instance.id)
+
+        if (updateFutureInstanceError) {
+          throw updateFutureInstanceError
+        }
+      }
     }
 
     const { error: sourceTransactionError } = await supabase
