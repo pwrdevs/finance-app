@@ -131,8 +131,7 @@ const isDeleteConfirmModalOpen = ref(false)
 const editingRow = ref<TransactionInstanceItem | null>(null)
 const scopeTargetRow = ref<TransactionInstanceItem | null>(null)
 const pendingDeleteRow = ref<TransactionInstanceItem | null>(null)
-const pendingMoveRow = ref<TransactionInstanceItem | null>(null)
-const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | 'move' | null>(null)
+const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | null>(null)
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
@@ -329,22 +328,16 @@ const scopeModalTitle = computed(() => {
     return 'Como deseja excluir este lancamento?'
   }
 
-  if (scopeModalMode.value === 'move') {
-    return 'Mover para a proxima fatura?'
-  }
-
   return 'Como deseja aplicar esta alteracao?'
 })
 const scopeModalSingleLabel = computed(() => {
   if (scopeModalMode.value === 'cancel') return 'Cancelar apenas este'
   if (scopeModalMode.value === 'delete') return 'Excluir apenas este'
-  if (scopeModalMode.value === 'move') return 'Mover apenas este'
   return 'Apenas este lancamento'
 })
 const scopeModalFutureLabel = computed(() => {
   if (scopeModalMode.value === 'cancel') return 'Cancelar este e os proximos'
   if (scopeModalMode.value === 'delete') return 'Excluir este e os proximos'
-  if (scopeModalMode.value === 'move') return 'Mover este e os proximos'
   return 'Este e os proximos'
 })
 const deleteConfirmDescription = computed(() => {
@@ -2119,19 +2112,6 @@ async function applyScopedCancel(row: TransactionInstanceItem, scope: DeleteRecu
   await setStatus(row, 'canceled')
 }
 
-async function applyScopedMove(scope: DeleteRecurringScope) {
-  if (!pendingMoveRow.value) {
-    throw new Error('Nenhum lancamento selecionado.')
-  }
-
-  if (pendingMoveRow.value.origin_type === 'single' || scope === 'single') {
-    await moveTransactionInstanceToNextFinancialCompetence(pendingMoveRow.value, 'single')
-    return
-  }
-
-  await moveTransactionInstanceToNextFinancialCompetence(pendingMoveRow.value, scope)
-}
-
 async function confirmScopeDecision(scope: DeleteRecurringScope) {
   scopeModalError.value = ''
   scopeModalSaving.value = true
@@ -2170,6 +2150,8 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
       closeScopeDecisionModal()
       return
     }
+
+    throw new Error('Modo de escopo invalido.')
   } catch (err) {
     scopeModalError.value = err instanceof Error ? err.message : 'Nao foi possivel aplicar a acao no escopo selecionado.'
   } finally {
