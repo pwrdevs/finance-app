@@ -49,10 +49,17 @@ const LEGACY_CARDS_FILTERS_STORAGE_KEY = 'transactions.filters.cards'
 const LEGACY_ACCOUNTS_FILTERS_STORAGE_KEY = 'transactions.filters.accounts'
 const pageError = ref('')
 const pageNotice = ref('')
+const toastMessage = ref('')
+const toastTone = ref<'success' | 'warning' | 'error'>('success')
+const toastVisible = ref(false)
 const modalError = ref('')
 const scopeModalError = ref('')
 const isExportPreviewOpen = ref(false)
 const exportPreviewRef = ref<HTMLElement | null>(null)
+const isAdvancedFiltersOpen = ref(false)
+const filtersPopoverRef = ref<HTMLElement | null>(null)
+const filtersButtonRef = ref<HTMLElement | null>(null)
+let toastTimeoutHandle: ReturnType<typeof setTimeout> | null = null
 
 const route = useRoute()
 const router = useRouter()
@@ -196,6 +203,56 @@ const activeSearchDescriptionModel = computed({
 
     accountsSearchDescription.value = value
   }
+})
+
+const activePaymentFilterModel = computed({
+  get: () => activeTab.value === 'cards' ? cardsCardFilter.value : accountsAccountFilter.value,
+  set: (value: string) => {
+    if (activeTab.value === 'cards') {
+      cardsCardFilter.value = value
+      return
+    }
+
+    accountsAccountFilter.value = value
+  }
+})
+
+const activeStatusFilterModel = computed({
+  get: () => activeTab.value === 'cards' ? cardsStatusFilter.value : accountsStatusFilter.value,
+  set: (value: 'all' | TransactionStatus) => {
+    if (activeTab.value === 'cards') {
+      cardsStatusFilter.value = value
+      return
+    }
+
+    accountsStatusFilter.value = value
+  }
+})
+
+const activeLinkFilterModel = computed({
+  get: () => activeTab.value === 'cards' ? cardsReimbursementLinkFilter.value : accountsReimbursementLinkFilter.value,
+  set: (value: 'all' | 'normal' | 'reimbursement' | 'linked') => {
+    if (activeTab.value === 'cards') {
+      cardsReimbursementLinkFilter.value = value
+      return
+    }
+
+    accountsReimbursementLinkFilter.value = value
+  }
+})
+
+const recordsCountLabel = computed(() => `${filteredIndicators.value.launches} registro(s)`)
+
+const toastClass = computed(() => {
+  if (toastTone.value === 'warning') {
+    return 'border-amber-200 bg-amber-50 text-amber-800'
+  }
+
+  if (toastTone.value === 'error') {
+    return 'border-rose-200 bg-rose-50 text-rose-700'
+  }
+
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700'
 })
 
 const selectedPeriodLabel = computed(() => {
@@ -538,6 +595,7 @@ function restoreAccountsFiltersFromStorage() {
 function switchTab(tab: 'cards' | 'accounts') {
   activeTab.value = tab
   saveActiveTabToStorage()
+  isAdvancedFiltersOpen.value = false
 }
 
 function resolveTabFromRouteQuery() {
@@ -577,25 +635,91 @@ async function clearNewLaunchQueryIfNeeded() {
   await router.replace({ query: nextQuery })
 }
 
-async function refreshRowsAfterMutation(options: { created?: boolean; previousFilteredCount?: number; previousTotalCount?: number } = {}) {
+async function refreshRowsAfterMutation(options: {
+  successMessage?: string
+  checkFilteredVisibility?: boolean
+  previousFilteredCount?: number
+  previousTotalCount?: number
+} = {}) {
   await fetchRows()
 
-  if (!options.created) {
-    pageNotice.value = ''
-    return
-  }
-
-  const previousFilteredCount = options.previousFilteredCount ?? 0
-  const previousTotalCount = options.previousTotalCount ?? 0
+  const previousFilteredCount = options.previousFilteredCount ?? filteredRows.value.length
+  const previousTotalCount = options.previousTotalCount ?? rows.value.length
   const nextFilteredCount = filteredRows.value.length
   const nextTotalCount = rows.value.length
+  const isOutsideCurrentFilter = options.checkFilteredVisibility
+    && nextFilteredCount < previousFilteredCount
+    && nextTotalCount >= previousTotalCount
 
-  if (nextTotalCount > previousTotalCount && nextFilteredCount <= previousFilteredCount) {
+  if (isOutsideCurrentFilter) {
     pageNotice.value = 'Lançamento salvo, mas fora do filtro atual.'
+    showToast('Lançamento salvo, mas fora do filtro atual.', 'warning')
     return
   }
 
   pageNotice.value = ''
+
+  if (options.successMessage) {
+    showToast(options.successMessage, 'success')
+  }
+}
+
+function showToast(message: string, tone: 'success' | 'warning' | 'error' = 'success') {
+  toastMessage.value = message
+  toastTone.value = tone
+  toastVisible.value = true
+
+  if (toastTimeoutHandle) {
+    clearTimeout(toastTimeoutHandle)
+  }
+
+  toastTimeoutHandle = setTimeout(() => {
+    toastVisible.value = false
+    toastTimeoutHandle = null
+  }, 2600)
+}
+
+function toggleAdvancedFilters() {
+  isAdvancedFiltersOpen.value = !isAdvancedFiltersOpen.value
+}
+
+function closeAdvancedFilters() {
+  isAdvancedFiltersOpen.value = false
+}
+
+function handleAdvancedFiltersAllPeriodsChange(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+
+  if (activeTab.value === 'cards') {
+    cardsPeriodFilter.value = checked ? 'all' : buildPeriodKey(cardsPeriodYear.value, cardsPeriodMonth.value)
+    return
+  }
+
+  accountsPeriodFilter.value = checked ? 'all' : buildPeriodKey(accountsPeriodYear.value, accountsPeriodMonth.value)
+}
+
+function handleDocumentClick(event: MouseEvent) {
+  if (!isAdvancedFiltersOpen.value) {
+    return
+  }
+
+  const target = event.target as Node | null
+
+  if (!target) {
+    return
+  }
+
+  if (filtersPopoverRef.value?.contains(target) || filtersButtonRef.value?.contains(target)) {
+    return
+  }
+
+  closeAdvancedFilters()
+}
+
+function handleDocumentEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeAdvancedFilters()
+  }
 }
 
 const expectedValueLabel = computed(() => {
@@ -1346,7 +1470,7 @@ async function deleteSingleTransaction(row: TransactionInstanceItem) {
 
   try {
     await removeTransactionInstance(row, 'single')
-    await refreshRowsAfterMutation()
+    await refreshRowsAfterMutation({ successMessage: 'Lançamento excluído com sucesso.' })
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel excluir o lancamento.'
   } finally {
@@ -1743,13 +1867,15 @@ async function submitForm() {
       })
     }
 
-    isModalOpen.value = false
-    await clearNewLaunchQueryIfNeeded()
     await refreshRowsAfterMutation({
-      created: wasCreating,
+      successMessage: wasCreating ? 'Lançamento criado com sucesso.' : 'Lançamento atualizado com sucesso.',
+      checkFilteredVisibility: true,
       previousFilteredCount,
       previousTotalCount
     })
+
+    isModalOpen.value = false
+    await clearNewLaunchQueryIfNeeded()
   } catch (err) {
     modalError.value = err instanceof Error ? err.message : 'Nao foi possivel salvar o lancamento.'
   } finally {
@@ -1804,7 +1930,9 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
 
   try {
     await setStatus(row, nextStatus)
-    await refreshRowsAfterMutation()
+    await refreshRowsAfterMutation({
+      successMessage: nextStatus === 'canceled' ? 'Lançamento cancelado com sucesso.' : undefined
+    })
   } catch (err) {
     patchRowInState(row.id, {
       status: row.status
@@ -1861,10 +1989,17 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
 
   try {
     if (scopeModalMode.value === 'edit') {
+      const previousFilteredCount = filteredRows.value.length
+      const previousTotalCount = rows.value.length
       await applyScopedEdit(scope)
+      await refreshRowsAfterMutation({
+        successMessage: 'Lançamento atualizado com sucesso.',
+        checkFilteredVisibility: true,
+        previousFilteredCount,
+        previousTotalCount
+      })
       isModalOpen.value = false
       closeScopeDecisionModal()
-      await refreshRowsAfterMutation()
       return
     }
 
@@ -1874,15 +2009,15 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
 
     if (scopeModalMode.value === 'cancel') {
       await applyScopedCancel(scopeTargetRow.value, scope)
+      await refreshRowsAfterMutation({ successMessage: 'Lançamento cancelado com sucesso.' })
       closeScopeDecisionModal()
-      await refreshRowsAfterMutation()
       return
     }
 
     if (scopeModalMode.value === 'delete') {
       await removeTransactionInstance(scopeTargetRow.value, scope)
+      await refreshRowsAfterMutation({ successMessage: 'Lançamento excluído com sucesso.' })
       closeScopeDecisionModal()
-      await refreshRowsAfterMutation()
       return
     }
   } catch (err) {
@@ -1933,6 +2068,14 @@ watch(activeTab, () => {
   saveActiveTabToStorage()
 })
 
+watch(isAdvancedFiltersOpen, (open) => {
+  if (!open) {
+    return
+  }
+
+  pageError.value = ''
+})
+
 watch([cardsPeriodMonth, cardsPeriodYear], () => {
   cardsPeriodFilter.value = buildPeriodKey(cardsPeriodYear.value, cardsPeriodMonth.value)
 })
@@ -1970,6 +2113,9 @@ watch(
 )
 
 onMounted(async () => {
+  document.addEventListener('mousedown', handleDocumentClick)
+  document.addEventListener('keydown', handleDocumentEscape)
+
   await fetchOptions()
   restoreActiveTabFromStorage()
   applyTabFromRouteQuery()
@@ -1978,12 +2124,38 @@ onMounted(async () => {
   await fetchRows()
   await consumeNewLaunchQuery()
 })
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleDocumentClick)
+  document.removeEventListener('keydown', handleDocumentEscape)
+
+  if (toastTimeoutHandle) {
+    clearTimeout(toastTimeoutHandle)
+  }
+})
 </script>
 
 <template>
   <section class="space-y-5 overflow-x-hidden">
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="translate-y-2 opacity-0"
+      enter-to-class="translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="translate-y-0 opacity-100"
+      leave-to-class="translate-y-2 opacity-0"
+    >
+      <div
+        v-if="toastVisible"
+        class="fixed right-4 top-4 z-50 rounded-xl border px-3 py-2 text-xs font-semibold shadow-soft"
+        :class="toastClass"
+      >
+        {{ toastMessage }}
+      </div>
+    </Transition>
+
     <AppCard>
-      <div class="space-y-4">
+      <div class="space-y-3">
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="!isTabLocked">
             <button type="button" :class="filterChipClass(activeTab === 'cards')" @click="switchTab('cards')">Cartão</button>
@@ -1992,126 +2164,143 @@ onMounted(async () => {
           <span v-else class="inline-flex h-8 items-center rounded-full border border-primary-dark bg-primary-dark px-3 text-xs font-semibold uppercase tracking-[0.08em] text-surface">{{ lockedTabLabel }}</span>
           <span class="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700">{{ selectedPeriodLabel }}</span>
           <span class="inline-flex h-8 items-center rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700">{{ formatCurrency(filteredTotalValue) }}</span>
-          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Lançamentos: {{ filteredIndicators.launches }}</span>
-          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Compras: {{ filteredIndicators.purchases }}</span>
-          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Reembolsos: {{ filteredIndicators.reimbursements }}</span>
-          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Parceladas: {{ filteredIndicators.installment }}</span>
-          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">À vista: {{ filteredIndicators.single }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">{{ recordsCountLabel }}</span>
         </div>
 
         <FilterToolbar>
           <template #line1>
-            <div class="grid w-full gap-1.5 md:grid-cols-2 xl:grid-cols-6">
-              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Período</p>
-                <div class="grid grid-cols-4 gap-1">
-                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodMonth" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
-                    <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-                  </select>
-                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodYear" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
-                    <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
-                  </select>
-                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodMonth" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
-                    <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-                  </select>
-                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodYear" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
-                    <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
-                  </select>
-                  <input v-if="activeTab === 'cards'" v-model="cardsDayStart" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
-                  <input v-if="activeTab === 'cards'" v-model="cardsDayEnd" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
-                  <input v-if="activeTab === 'accounts'" v-model="accountsDayStart" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
-                  <input v-if="activeTab === 'accounts'" v-model="accountsDayEnd" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
+            <div class="relative">
+              <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-background/40 p-2">
+                <div class="relative min-w-[220px] flex-1">
+                  <input v-model="activeSearchDescriptionModel" class="h-9 w-full rounded-xl border border-border bg-surface px-3 pr-8 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
+                  <button v-if="activeSearchDescriptionModel" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted transition hover:text-foreground" title="Limpar busca" aria-label="Limpar busca" @click="clearActiveSearch">✕</button>
                 </div>
-                <label class="inline-flex h-6 items-center gap-2 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
-                  <input class="h-3.5 w-3.5 rounded border-border" type="checkbox" :checked="activeTab === 'cards' ? cardsPeriodFilter === 'all' : accountsPeriodFilter === 'all'" @change="activeTab === 'cards' ? (cardsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(cardsPeriodYear, cardsPeriodMonth)) : (accountsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(accountsPeriodYear, accountsPeriodMonth))">
-                  Todos os períodos
-                </label>
-                <p v-if="!isDayRangeAvailable" class="text-[10px] text-muted">Disponível ao selecionar mês/ano.</p>
+
+                <button
+                  ref="filtersButtonRef"
+                  type="button"
+                  class="inline-flex h-9 items-center justify-center rounded-xl border px-3 text-xs font-semibold transition"
+                  :class="isAdvancedFiltersOpen ? 'border-primary-dark bg-primary-dark text-surface' : 'border-border bg-surface text-muted hover:border-primary-dark/60 hover:text-foreground'"
+                  @click="toggleAdvancedFilters"
+                >
+                  Filtros
+                </button>
+
+                <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
+                </AppButton>
+
+                <AppButton size="sm" variant="ghost" :disabled="!filteredRows.length" title="Pré-visualizar exportação" aria-label="Pré-visualizar exportação" @click="openExportPreview">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 3v12" />
+                    <path d="M7 10l5 5 5-5" />
+                    <path d="M5 21h14" />
+                  </svg>
+                </AppButton>
               </div>
 
-              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Forma de pagamento</p>
-                <div class="flex flex-wrap items-center gap-1">
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === 'all')" @click="activeTab === 'cards' ? (cardsCardFilter = 'all') : (accountsAccountFilter = 'all')">Todos</button>
-                  <button
-                    v-for="entry in (activeTab === 'cards' ? activeCardsForQuickFilter : activeAccountsForQuickFilter)"
-                    :key="`${activeTab}-chip-${entry.id}`"
-                    type="button"
-                    :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === entry.id)"
-                    @click="activeTab === 'cards' ? (cardsCardFilter = entry.id) : (accountsAccountFilter = entry.id)"
-                  >
-                    {{ entry.name }}
+              <div
+                v-if="isAdvancedFiltersOpen"
+                ref="filtersPopoverRef"
+                class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-2xl border border-border bg-surface p-3 shadow-soft lg:left-auto lg:w-[760px]"
+              >
+                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div class="space-y-2">
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Período</p>
+                    <div class="grid grid-cols-2 gap-2">
+                      <select v-if="activeTab === 'cards'" v-model="cardsPeriodMonth" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                        <option v-for="option in filterMonthOptions" :key="`cards-popover-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+                      </select>
+                      <select v-if="activeTab === 'cards'" v-model="cardsPeriodYear" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                        <option v-for="year in filterYearOptions" :key="`cards-popover-year-${year}`" :value="year">{{ year }}</option>
+                      </select>
+                      <select v-if="activeTab === 'accounts'" v-model="accountsPeriodMonth" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                        <option v-for="option in filterMonthOptions" :key="`accounts-popover-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+                      </select>
+                      <select v-if="activeTab === 'accounts'" v-model="accountsPeriodYear" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                        <option v-for="year in filterYearOptions" :key="`accounts-popover-year-${year}`" :value="year">{{ year }}</option>
+                      </select>
+                    </div>
+                    <label class="inline-flex h-8 items-center gap-2 rounded-lg border border-border px-2 text-xs text-foreground">
+                      <input class="h-3.5 w-3.5 rounded border-border" type="checkbox" :checked="activeTab === 'cards' ? cardsPeriodFilter === 'all' : accountsPeriodFilter === 'all'" @change="handleAdvancedFiltersAllPeriodsChange">
+                      Todos os períodos
+                    </label>
+                    <div class="grid grid-cols-2 gap-2">
+                      <input v-if="activeTab === 'cards'" v-model="cardsDayStart" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia inicial" :disabled="!isDayRangeAvailable">
+                      <input v-if="activeTab === 'cards'" v-model="cardsDayEnd" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia final" :disabled="!isDayRangeAvailable">
+                      <input v-if="activeTab === 'accounts'" v-model="accountsDayStart" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia inicial" :disabled="!isDayRangeAvailable">
+                      <input v-if="activeTab === 'accounts'" v-model="accountsDayEnd" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia final" :disabled="!isDayRangeAvailable">
+                    </div>
+                  </div>
+
+                  <div class="space-y-2">
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Forma de pagamento</p>
+                    <select v-model="activePaymentFilterModel" class="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                      <option value="all">Todos</option>
+                      <option
+                        v-for="entry in (activeTab === 'cards' ? activeCardsForQuickFilter : activeAccountsForQuickFilter)"
+                        :key="`payment-popover-${activeTab}-${entry.id}`"
+                        :value="entry.id"
+                      >
+                        {{ entry.name }}
+                      </option>
+                    </select>
+
+                    <p class="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{{ activeTab === 'cards' ? 'Parcelamento' : 'Tipo' }}</p>
+                    <select v-if="activeTab === 'cards'" v-model="cardsInstallmentFilter" class="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                      <option value="all">Todos</option>
+                      <option value="installment">Parceladas</option>
+                      <option value="single">À vista</option>
+                    </select>
+                    <select v-else v-model="accountsTypeFilter" class="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                      <option value="all">Todos</option>
+                      <option value="income">Entradas</option>
+                      <option value="expense">Saídas</option>
+                    </select>
+
+                    <select v-if="activeTab === 'accounts'" v-model="accountsCategoryFilter" class="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                      <option value="all">Categoria: Todas</option>
+                      <option v-for="entry in categories" :key="`accounts-popover-category-${entry.id}`" :value="entry.id">{{ entry.name }}</option>
+                    </select>
+                  </div>
+
+                  <div class="space-y-2">
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Status</p>
+                    <select v-model="activeStatusFilterModel" class="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                      <option value="all">Todos</option>
+                      <option value="pending">Pendente</option>
+                      <option value="paid">Pago</option>
+                      <option value="canceled">Cancelado</option>
+                    </select>
+
+                    <p class="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Vínculo</p>
+                    <select v-model="activeLinkFilterModel" class="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                      <option value="all">Todos</option>
+                      <option value="normal">Originais</option>
+                      <option value="reimbursement">Reembolsos</option>
+                      <option value="linked">Vinculados</option>
+                    </select>
+
+                    <p class="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Faixa de valor</p>
+                    <div class="grid grid-cols-2 gap-2">
+                      <input v-if="activeTab === 'cards'" v-model="cardsValueMin" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground" type="number" step="0.01" placeholder="Valor mín.">
+                      <input v-if="activeTab === 'cards'" v-model="cardsValueMax" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground" type="number" step="0.01" placeholder="Valor máx.">
+                      <input v-if="activeTab === 'accounts'" v-model="accountsValueMin" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground" type="number" step="0.01" placeholder="Valor mín.">
+                      <input v-if="activeTab === 'accounts'" v-model="accountsValueMax" class="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground" type="number" step="0.01" placeholder="Valor máx.">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-3 flex justify-end">
+                  <button type="button" class="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-semibold text-muted transition hover:border-primary-dark/60 hover:text-foreground" @click="closeAdvancedFilters">
+                    Fechar filtros
                   </button>
-                </div>
-              </div>
-
-              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{{ activeTab === 'cards' ? 'Parcelamento' : 'Tipo' }}</p>
-                <div class="flex flex-wrap items-center gap-1" v-if="activeTab === 'cards'">
-                  <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'all')" @click="cardsInstallmentFilter = 'all'">Todos</button>
-                  <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'installment')" @click="cardsInstallmentFilter = 'installment'">Parceladas</button>
-                  <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'single')" @click="cardsInstallmentFilter = 'single'">À vista</button>
-                </div>
-                <div class="flex flex-wrap items-center gap-1" v-else>
-                  <button type="button" :class="filterChipClass(accountsTypeFilter === 'all')" @click="accountsTypeFilter = 'all'">Todos</button>
-                  <button type="button" :class="filterChipClass(accountsTypeFilter === 'income')" @click="accountsTypeFilter = 'income'">Entradas</button>
-                  <button type="button" :class="filterChipClass(accountsTypeFilter === 'expense')" @click="accountsTypeFilter = 'expense'">Saídas</button>
-                </div>
-                <select v-if="activeTab === 'accounts'" v-model="accountsCategoryFilter" class="h-7 w-full min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
-                  <option value="all">Categoria: Todas</option>
-                  <option v-for="entry in categories" :key="`accounts-category-${entry.id}`" :value="entry.id">{{ entry.name }}</option>
-                </select>
-              </div>
-
-              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Status</p>
-                <div class="flex flex-wrap items-center gap-1">
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'all')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'all') : (accountsStatusFilter = 'all')">Todos</button>
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'pending')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'pending') : (accountsStatusFilter = 'pending')">Pendente</button>
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'paid')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'paid') : (accountsStatusFilter = 'paid')">Pago</button>
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'canceled')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'canceled') : (accountsStatusFilter = 'canceled')">Cancelado</button>
-                </div>
-              </div>
-
-              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Vínculo</p>
-                <div class="flex flex-wrap items-center gap-1">
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'all')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'all') : (accountsReimbursementLinkFilter = 'all')">Todos</button>
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'normal')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'normal') : (accountsReimbursementLinkFilter = 'normal')">Originais</button>
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'reimbursement')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'reimbursement') : (accountsReimbursementLinkFilter = 'reimbursement')">Reembolsos</button>
-                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'linked')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'linked') : (accountsReimbursementLinkFilter = 'linked')">Vinculados</button>
-                </div>
-              </div>
-
-              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Busca e ações</p>
-                <div class="grid gap-1 sm:grid-cols-[minmax(0,1fr)_84px_84px_auto]">
-                  <div class="relative">
-                    <input v-model="activeSearchDescriptionModel" class="h-8 w-full rounded-xl border border-border bg-surface px-2.5 pr-8 text-[11px] text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
-                    <button v-if="activeSearchDescriptionModel" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted transition hover:text-foreground" title="Limpar busca" aria-label="Limpar busca" @click="clearActiveSearch">✕</button>
-                  </div>
-                  <input v-if="activeTab === 'cards'" v-model="cardsValueMin" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Mín." type="number" step="0.01">
-                  <input v-if="activeTab === 'cards'" v-model="cardsValueMax" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Máx." type="number" step="0.01">
-                  <input v-if="activeTab === 'accounts'" v-model="accountsValueMin" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Mín." type="number" step="0.01">
-                  <input v-if="activeTab === 'accounts'" v-model="accountsValueMax" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Máx." type="number" step="0.01">
-                  <div class="flex items-center justify-end gap-1">
-                    <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
-                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M3 6h18" />
-                        <path d="M8 6V4h8v2" />
-                        <path d="M19 6l-1 14H6L5 6" />
-                        <path d="M10 11v6" />
-                        <path d="M14 11v6" />
-                      </svg>
-                    </AppButton>
-                    <AppButton size="sm" variant="ghost" :disabled="!filteredRows.length" title="Pré-visualizar exportação" aria-label="Pré-visualizar exportação" @click="openExportPreview">
-                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M12 3v12" />
-                        <path d="M7 10l5 5 5-5" />
-                        <path d="M5 21h14" />
-                      </svg>
-                    </AppButton>
-                  </div>
                 </div>
               </div>
             </div>
