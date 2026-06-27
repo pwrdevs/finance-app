@@ -28,6 +28,14 @@ function formatDateYmd(year: number, month: number, day: number) {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+export function shiftDateByMonthsKeepingDay(dateText: string, monthOffset: number) {
+  const { year, month, day } = toDateParts(dateText)
+  const target = addMonths(year, month, monthOffset)
+  const safeDay = Math.min(day, getLastDayOfMonth(target.year, target.month))
+
+  return formatDateYmd(target.year, target.month, safeDay)
+}
+
 export function getCardFinancialEffectiveDate(instanceDate: string, closingDay: number | null, dueDay: number | null) {
   if (!closingDay || !dueDay) {
     return instanceDate
@@ -46,9 +54,14 @@ export function getCardFinancialEffectiveDate(instanceDate: string, closingDay: 
 export function resolveFinancialEffectiveDate(entry: {
   instance_date: string
   card_id: string | null
+  financial_effective_date_override?: string | null
   closing_day?: number | null
   due_day?: number | null
 }) {
+  if (entry.financial_effective_date_override) {
+    return entry.financial_effective_date_override
+  }
+
   if (!entry.card_id) {
     return entry.instance_date
   }

@@ -13,6 +13,7 @@ type ReimbursementRole = 'original' | 'reimbursement' | null
 interface TransactionInstanceSummaryRecord {
   id: string
   instance_date: string
+  financial_effective_date_override: string | null
   expected_value: number
   real_value: number | null
   status: TransactionStatus
@@ -139,10 +140,11 @@ function resolveInstanceValue(expectedValue: number, realValue: number | null) {
   return realValue == null ? expectedValue : realValue
 }
 
-function resolveFinancialEffectiveDate(record: { instance_date: string; card_id: string | null; card: { closing_day: number | null; due_day: number | null } | null }) {
+function resolveFinancialEffectiveDate(record: { instance_date: string; card_id: string | null; financial_effective_date_override: string | null; card: { closing_day: number | null; due_day: number | null } | null }) {
   return resolveFinancialEffectiveDateShared({
     instance_date: record.instance_date,
     card_id: record.card_id,
+    financial_effective_date_override: record.financial_effective_date_override,
     closing_day: record.card?.closing_day ?? null,
     due_day: record.card?.due_day ?? null
   })
@@ -271,6 +273,7 @@ export function useFinancialSummary() {
       .select(`
         id,
         instance_date,
+        financial_effective_date_override,
         expected_value,
         real_value,
         status,
@@ -290,8 +293,6 @@ export function useFinancialSummary() {
           description
         )
       `)
-      .gte('instance_date', previousMonthStart)
-      .lt('instance_date', to)
       .order('instance_date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -314,6 +315,7 @@ export function useFinancialSummary() {
         .select(`
           id,
           instance_date,
+          financial_effective_date_override,
           expected_value,
           real_value,
           status,
@@ -474,6 +476,7 @@ export function useFinancialSummary() {
       .select(`
           id,
           instance_date,
+          financial_effective_date_override,
           expected_value,
           real_value,
           status,
@@ -488,8 +491,6 @@ export function useFinancialSummary() {
             type
           )
         `)
-        .gte('instance_date', analysisFrom)
-        .lt('instance_date', selectedTo)
         .order('instance_date', { ascending: true })
 
     if (instanceError) {
@@ -503,6 +504,7 @@ export function useFinancialSummary() {
     const records = (instanceRows ?? []) as Array<{
       id: string
       instance_date: string
+      financial_effective_date_override: string | null
       expected_value: number
       real_value: number | null
       status: TransactionStatus

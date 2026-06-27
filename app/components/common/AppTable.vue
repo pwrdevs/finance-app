@@ -41,7 +41,9 @@ function getRowKey(row: Record<string, unknown>, index: number) {
             class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted"
             :class="cellAlignClass(column.align)"
           >
-            {{ column.label }}
+            <slot :name="`header-${column.key}`">
+              {{ column.label }}
+            </slot>
           </th>
         </tr>
       </thead>

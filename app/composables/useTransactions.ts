@@ -1,5 +1,5 @@
 import type { AccountItem, CardItem, CategoryItem, PersonItem } from '~/composables/useMasterData'
-import { resolveFinancialEffectiveDate } from '~/utils/financialCompetence'
+import { resolveFinancialEffectiveDate, shiftDateByMonthsKeepingDay } from '~/utils/financialCompetence'
 
 export const TRANSACTION_TYPES = ['income', 'expense'] as const
 export type TransactionType = (typeof TRANSACTION_TYPES)[number]
@@ -101,6 +101,7 @@ export interface TransactionInstanceItem {
   reimbursement_group_id: string | null
   reimbursement_role: ReimbursementRole | null
   financial_effective_date: string
+  financial_effective_date_override: string | null
   financial_competence_label: string
   linked_financial_competence_label: string | null
 }
@@ -299,7 +300,6 @@ async function resolveReimbursementPayload(
   if (!payload.reimbursement?.enabled) {
     return null
   }
-
   const categoryId = normalizeOptionalId(payload.reimbursement.category_id)
     ?? await resolveDefaultIncomeCategoryId(supabase, userId)
 
@@ -609,9 +609,11 @@ function mapInstance(record: TransactionInstanceRecord): TransactionInstanceItem
     financial_effective_date: resolveFinancialEffectiveDate({
       instance_date: record.instance_date,
       card_id: record.card_id,
+      financial_effective_date_override: record.financial_effective_date_override,
       closing_day: record.card?.closing_day ?? null,
       due_day: record.card?.due_day ?? null
     }),
+    financial_effective_date_override: record.financial_effective_date_override,
     financial_competence_label: record.instance_date,
     linked_financial_competence_label: null
   }
@@ -759,7 +761,6 @@ export function useTransactions() {
 
   async function listManualInstances(filters: TransactionFilters) {
     await ensureAuthenticatedUserId()
-    const monthRange = getMonthRange(filters)
 
     let query = supabase
       .from('transaction_instances')
@@ -767,6 +768,7 @@ export function useTransactions() {
         id,
         source_transaction_id,
         instance_date,
+        financial_effective_date_override,
         expected_value,
         real_value,
         is_checked,
@@ -802,12 +804,6 @@ export function useTransactions() {
           reimbursement_role
         )
       `)
-
-    if (monthRange) {
-      query = query
-        .gte('instance_date', monthRange.from)
-        .lt('instance_date', monthRange.to)
-    }
 
     const { data, error } = await query
       .order('instance_date', { ascending: true })
@@ -1344,6 +1340,130 @@ export function useTransactions() {
     }
   }
 
+  async function setFinancialEffectiveDateOverride(itemId: string, nextFinancialEffectiveDate: string) {
+    const { error } = await supabase
+      .from('transaction_instances')
+      .update({ financial_effective_date_override: nextFinancialEffectiveDate })
+      .eq('id', itemId)
+
+    if (error) {
+      throw error
+    }
+  }
+
+  async function moveFinancialCompetenceForwardForRows(itemIds: string[], financialEffectiveDateMap: Map<string, string>) {
+    for (const itemId of itemIds) {
+      const currentFinancialEffectiveDate = financialEffectiveDateMap.get(itemId)
+
+      if (!currentFinancialEffectiveDate) {
+        continue
+      }
+
+      await setFinancialEffectiveDateOverride(itemId, shiftDateByMonthsKeepingDay(currentFinancialEffectiveDate, 1))
+    }
+  }
+
+  async function moveTransactionInstanceToNextFinancialCompetence(
+    item: TransactionInstanceItem,
+    scope: DeleteRecurringScope = 'single'
+  ) {
+    if (item.reimbursement_role === 'reimbursement') {
+      throw new Error('Movimentacao manual nao se aplica a reembolso vinculado.')
+    }
+
+    if (scope === 'single' || item.origin_type === 'single') {
+      await setFinancialEffectiveDateOverride(
+        item.id,
+        shiftDateByMonthsKeepingDay(item.financial_effective_date, 1)
+      )
+      return
+    }
+
+    if (item.origin_type === 'installment') {
+      if (!item.source_transaction_id) {
+        throw new Error('Lancamento de origem parcelada obrigatorio.')
+      }
+
+      const { data: futureInstances, error } = await supabase
+        .from('transaction_instances')
+        .select(`
+          id,
+          instance_date,
+          financial_effective_date_override,
+          card_id,
+          card:card_id (
+            closing_day,
+            due_day
+          )
+        `)
+        .eq('source_transaction_id', item.source_transaction_id)
+        .gte('instance_date', item.instance_date)
+        .order('instance_date', { ascending: true })
+
+      if (error) {
+        throw error
+      }
+
+      const financialEffectiveDateMap = new Map(
+        (futureInstances ?? []).map((row) => [
+          row.id,
+          resolveFinancialEffectiveDate({
+            instance_date: row.instance_date,
+            card_id: row.card_id,
+            financial_effective_date_override: row.financial_effective_date_override,
+            closing_day: row.card?.closing_day ?? null,
+            due_day: row.card?.due_day ?? null
+          })
+        ])
+      )
+
+      await moveFinancialCompetenceForwardForRows((futureInstances ?? []).map(row => row.id), financialEffectiveDateMap)
+      return
+    }
+
+    if (item.origin_type === 'recurring') {
+      if (!item.source_transaction_id) {
+        throw new Error('Lancamento de origem recorrente obrigatorio.')
+      }
+
+      const { recurrenceRule } = await getRecurringContext(item.source_transaction_id)
+      const { data: futureInstances, error } = await supabase
+        .from('transaction_instances')
+        .select(`
+          id,
+          instance_date,
+          financial_effective_date_override,
+          card_id,
+          card:card_id (
+            closing_day,
+            due_day
+          )
+        `)
+        .eq('recurrence_rule_id', recurrenceRule.id)
+        .gte('instance_date', item.instance_date)
+        .order('instance_date', { ascending: true })
+
+      if (error) {
+        throw error
+      }
+
+      const financialEffectiveDateMap = new Map(
+        (futureInstances ?? []).map((row) => [
+          row.id,
+          resolveFinancialEffectiveDate({
+            instance_date: row.instance_date,
+            card_id: row.card_id,
+            financial_effective_date_override: row.financial_effective_date_override,
+            closing_day: row.card?.closing_day ?? null,
+            due_day: row.card?.due_day ?? null
+          })
+        ])
+      )
+
+      await moveFinancialCompetenceForwardForRows((futureInstances ?? []).map(row => row.id), financialEffectiveDateMap)
+    }
+  }
+
   async function getRecurringContext(sourceTransactionId: string) {
     const { data: sourceTransaction, error: sourceTransactionError } = await supabase
       .from('transactions')
@@ -1681,6 +1801,24 @@ export function useTransactions() {
     )
   }
 
+  async function updateTransactionStatuses(itemIds: string[], status: TransactionStatus) {
+    if (!itemIds.length) {
+      return 0
+    }
+
+    const { data, error } = await supabase
+      .from('transaction_instances')
+      .update({ status })
+      .in('id', itemIds)
+      .select('id')
+
+    if (error) {
+      throw error
+    }
+
+    return data?.length ?? itemIds.length
+  }
+
   async function listFilterOptions() {
     const [people, accounts, cards, categories] = await Promise.all([
       masterData.listPeople(),
@@ -1864,10 +2002,12 @@ export function useTransactions() {
     getRecurringConfiguration,
     listFilterOptions,
     listManualInstances,
+    moveTransactionInstanceToNextFinancialCompetence,
     updateInstallmentTransaction,
     updateRecurringTransaction,
     setChecked,
     setStatus,
+    updateTransactionStatuses,
     updateTransactionInstance
   }
 }

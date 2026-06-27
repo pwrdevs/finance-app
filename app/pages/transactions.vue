@@ -29,8 +29,10 @@ const {
   getRecurringConfiguration,
   listFilterOptions,
   listManualInstances,
+  moveTransactionInstanceToNextFinancialCompetence,
   setChecked,
   setStatus,
+  updateTransactionStatuses,
   updateInstallmentTransaction,
   updateRecurringTransaction,
   updateTransactionInstance
@@ -42,6 +44,7 @@ const exportingCsv = ref(false)
 const exportingPng = ref(false)
 const scopeModalSaving = ref(false)
 const rowActionBusy = ref(false)
+const bulkActionBusy = ref(false)
 const ACTIVE_TAB_STORAGE_KEY = 'transactions.activeTab'
 const CARDS_FILTERS_STORAGE_KEY = 'transactions.cards.filters'
 const ACCOUNTS_FILTERS_STORAGE_KEY = 'transactions.accounts.filters'
@@ -59,6 +62,7 @@ const exportPreviewRef = ref<HTMLElement | null>(null)
 const isAdvancedFiltersOpen = ref(false)
 const filtersPopoverRef = ref<HTMLElement | null>(null)
 const filtersButtonRef = ref<HTMLElement | null>(null)
+const selectedRowIds = ref<string[]>([])
 let toastTimeoutHandle: ReturnType<typeof setTimeout> | null = null
 
 const route = useRoute()
@@ -127,7 +131,8 @@ const isDeleteConfirmModalOpen = ref(false)
 const editingRow = ref<TransactionInstanceItem | null>(null)
 const scopeTargetRow = ref<TransactionInstanceItem | null>(null)
 const pendingDeleteRow = ref<TransactionInstanceItem | null>(null)
-const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | null>(null)
+const pendingMoveRow = ref<TransactionInstanceItem | null>(null)
+const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | 'move' | null>(null)
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
@@ -152,6 +157,7 @@ const formReimbursementValue = ref('')
 const formReimbursementDate = ref('')
 
 const columns = [
+  { key: 'selection', label: '', align: 'center' as const },
   { key: 'instance_date', label: 'Data' },
   { key: 'description_text', label: 'Descricao' },
   { key: 'link_badge', label: 'Vinculo' },
@@ -323,16 +329,22 @@ const scopeModalTitle = computed(() => {
     return 'Como deseja excluir este lancamento?'
   }
 
+  if (scopeModalMode.value === 'move') {
+    return 'Mover para a proxima fatura?'
+  }
+
   return 'Como deseja aplicar esta alteracao?'
 })
 const scopeModalSingleLabel = computed(() => {
   if (scopeModalMode.value === 'cancel') return 'Cancelar apenas este'
   if (scopeModalMode.value === 'delete') return 'Excluir apenas este'
+  if (scopeModalMode.value === 'move') return 'Mover apenas este'
   return 'Apenas este lancamento'
 })
 const scopeModalFutureLabel = computed(() => {
   if (scopeModalMode.value === 'cancel') return 'Cancelar este e os proximos'
   if (scopeModalMode.value === 'delete') return 'Excluir este e os proximos'
+  if (scopeModalMode.value === 'move') return 'Mover este e os proximos'
   return 'Este e os proximos'
 })
 const deleteConfirmDescription = computed(() => {
@@ -1081,6 +1093,43 @@ const filteredIndicators = computed(() => {
 
 const tableRows = computed(() => filteredRows.value)
 
+const selectionResetKey = computed(() => [
+  activeTab.value,
+  cardsPeriodFilter.value,
+  cardsCardFilter.value,
+  cardsInstallmentFilter.value,
+  cardsStatusFilter.value,
+  cardsReimbursementLinkFilter.value,
+  cardsSearchDescription.value,
+  cardsValueMin.value,
+  cardsValueMax.value,
+  cardsDayStart.value,
+  cardsDayEnd.value,
+  accountsPeriodFilter.value,
+  accountsAccountFilter.value,
+  accountsTypeFilter.value,
+  accountsCategoryFilter.value,
+  accountsStatusFilter.value,
+  accountsReimbursementLinkFilter.value,
+  accountsSearchDescription.value,
+  accountsValueMin.value,
+  accountsValueMax.value,
+  accountsDayStart.value,
+  accountsDayEnd.value
+].join('|'))
+
+const selectedVisibleRows = computed(() => filteredRows.value.filter(row => selectedRowIds.value.includes(row.id)))
+const selectedVisibleRowCount = computed(() => selectedVisibleRows.value.length)
+const allVisibleRowsSelected = computed(() => filteredRows.value.length > 0 && selectedVisibleRowCount.value === filteredRows.value.length)
+const someVisibleRowsSelected = computed(() => selectedVisibleRowCount.value > 0 && selectedVisibleRowCount.value < filteredRows.value.length)
+
+const bulkStatusActions = [
+  { status: 'paid' as const, label: 'Pago' },
+  { status: 'pending' as const, label: 'Pendente' },
+  { status: 'skipped' as const, label: 'Ignorado' },
+  { status: 'canceled' as const, label: 'Cancelado' }
+]
+
 function applyReimbursementDefaults() {
   if (!formReimbursementDescription.value.trim()) {
     formReimbursementDescription.value = formTitle.value.trim()
@@ -1094,6 +1143,68 @@ function applyReimbursementDefaults() {
 
   if (!formReimbursementPersonId.value) {
     formReimbursementPersonId.value = formPersonId.value
+  }
+}
+
+function clearSelectedRows() {
+  selectedRowIds.value = []
+}
+
+watch(selectionResetKey, () => {
+  clearSelectedRows()
+})
+
+function isRowSelected(rowId: string) {
+  return selectedRowIds.value.includes(rowId)
+}
+
+function toggleRowSelection(rowId: string, checked: boolean) {
+  if (checked) {
+    if (!selectedRowIds.value.includes(rowId)) {
+      selectedRowIds.value = [...selectedRowIds.value, rowId]
+    }
+    return
+  }
+
+  selectedRowIds.value = selectedRowIds.value.filter(id => id !== rowId)
+}
+
+function toggleVisibleRowsSelection(checked: boolean) {
+  if (!checked) {
+    clearSelectedRows()
+    return
+  }
+
+  selectedRowIds.value = filteredRows.value.map(row => row.id)
+}
+
+async function applyBulkStatus(status: TransactionStatus) {
+  if (!selectedVisibleRows.value.length || bulkActionBusy.value) {
+    return
+  }
+
+  bulkActionBusy.value = true
+  pageError.value = ''
+
+  const targetIds = selectedVisibleRows.value.map(row => row.id)
+
+  try {
+    await updateTransactionStatuses(targetIds, status)
+
+    rows.value = rows.value.map((entry) => targetIds.includes(entry.id)
+      ? { ...entry, status }
+      : entry
+    )
+
+    clearSelectedRows()
+    await refreshRowsAfterMutation({
+      successMessage: `${targetIds.length} lançamentos atualizados com sucesso.`
+    })
+  } catch (err) {
+    await fetchRows()
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar os lançamentos.'
+  } finally {
+    bulkActionBusy.value = false
   }
 }
 
@@ -1268,6 +1379,7 @@ function buildCsvLines() {
   const header = [
     'Data real',
     'Competencia/Fatura',
+    'Ajuste manual',
     'Descricao',
     'Responsavel',
     'Conta',
@@ -1295,10 +1407,12 @@ function buildCsvLines() {
     const competenceLabel = activeTab.value === 'cards'
       ? (entry.linked_financial_competence_label ?? entry.financial_competence_label)
       : entry.instance_date
+    const hasManualAdjustment = Boolean(entry.financial_effective_date_override)
 
     csvLines.push([
       entry.instance_date,
       competenceLabel,
+      hasManualAdjustment ? 'Fatura ajustada' : '',
       entry.description_text,
       entry.person_name,
       entry.account_name,
@@ -1982,6 +2096,19 @@ async function applyScopedCancel(row: TransactionInstanceItem, scope: DeleteRecu
   await setStatus(row, 'canceled')
 }
 
+async function applyScopedMove(scope: DeleteRecurringScope) {
+  if (!pendingMoveRow.value) {
+    throw new Error('Nenhum lancamento selecionado.')
+  }
+
+  if (pendingMoveRow.value.origin_type === 'single' || scope === 'single') {
+    await moveTransactionInstanceToNextFinancialCompetence(pendingMoveRow.value, 'single')
+    return
+  }
+
+  await moveTransactionInstanceToNextFinancialCompetence(pendingMoveRow.value, scope)
+}
+
 async function confirmScopeDecision(scope: DeleteRecurringScope) {
   scopeModalError.value = ''
   scopeModalSaving.value = true
@@ -2017,6 +2144,13 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
     if (scopeModalMode.value === 'delete') {
       await removeTransactionInstance(scopeTargetRow.value, scope)
       await refreshRowsAfterMutation({ successMessage: 'Lançamento excluído com sucesso.' })
+      closeScopeDecisionModal()
+      return
+    }
+
+    if (scopeModalMode.value === 'move') {
+      await applyScopedMove(scope)
+      await refreshRowsAfterMutation({ successMessage: 'Lançamento movido para a próxima fatura.' })
       closeScopeDecisionModal()
       return
     }
@@ -2313,8 +2447,57 @@ onBeforeUnmount(() => {
     <p v-if="pageNotice" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">{{ pageNotice }}</p>
 
     <AppCard title="Tabela de lançamentos" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
+      <div v-if="selectedVisibleRowCount > 0" class="mb-3 flex flex-col gap-3 rounded-2xl border border-border bg-surface px-4 py-3 shadow-panel sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-sm font-semibold text-foreground">{{ selectedVisibleRowCount }} selecionados</p>
+          <p class="text-xs text-muted">Ações em massa somente para os itens visíveis.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <AppButton
+            v-for="action in bulkStatusActions"
+            :key="action.status"
+            size="sm"
+            variant="secondary"
+            :label="action.label"
+            :disabled="bulkActionBusy"
+            @click="applyBulkStatus(action.status)"
+          />
+          <AppButton
+            size="sm"
+            variant="ghost"
+            label="Limpar seleção"
+            :disabled="bulkActionBusy"
+            @click="clearSelectedRows"
+          />
+        </div>
+      </div>
+
       <div class="overflow-x-auto">
         <AppTable :columns="columns" :rows="tableRows" empty-message="Nenhum lançamento encontrado.">
+          <template #header-selection>
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-border"
+              :checked="allVisibleRowsSelected"
+              :indeterminate.prop="someVisibleRowsSelected"
+              :disabled="bulkActionBusy || !filteredRows.length"
+              aria-label="Selecionar todos os itens visíveis"
+              @change="toggleVisibleRowsSelection(($event.target as HTMLInputElement).checked)"
+            />
+          </template>
+
+          <template #cell-selection="{ row }">
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-border"
+              :checked="isRowSelected((row as TransactionInstanceItem).id)"
+              :disabled="bulkActionBusy"
+              :aria-label="`Selecionar lançamento ${(row as TransactionInstanceItem).title}`"
+              @change="toggleRowSelection((row as TransactionInstanceItem).id, ($event.target as HTMLInputElement).checked)"
+            />
+          </template>
+
           <template #cell-instance_date="{ row, value }">
             <div class="flex items-center gap-2">
               <span
@@ -2335,6 +2518,12 @@ onBeforeUnmount(() => {
                 class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
               >
                 Fatura: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
+              </span>
+              <span
+                v-if="(row as TransactionInstanceItem).financial_effective_date_override"
+                class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700"
+              >
+                Fatura ajustada
               </span>
               <span
                 v-else-if="Boolean((row as TransactionInstanceItem).linked_financial_competence_label)"
@@ -2414,6 +2603,20 @@ onBeforeUnmount(() => {
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M12 20h9" />
                   <path d="m16.5 3.5 4 4L7 21H3v-4z" />
+                </svg>
+              </AppButton>
+              <AppButton
+                v-if="(row as TransactionInstanceItem).card_id && (row as TransactionInstanceItem).reimbursement_role !== 'reimbursement'"
+                size="sm"
+                variant="ghost"
+                aria-label="Mover para a proxima fatura"
+                title="Mover para a próxima fatura"
+                :disabled="rowActionBusy"
+                @click="openMoveDecisionModal(row as TransactionInstanceItem)"
+              >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="m13 5 7 7-7 7" />
                 </svg>
               </AppButton>
               <AppButton
@@ -2643,8 +2846,9 @@ onBeforeUnmount(() => {
                     <col class="w-[15%]" />
                     <col class="w-[14%]" />
                     <col class="w-[11%]" />
+                    <col class="w-[11%]" />
                     <col class="w-[7%]" />
-                    <col class="w-[14%]" />
+                    <col class="w-[13%]" />
                   </colgroup>
                   <thead>
                     <tr class="bg-[#d7e0b5] text-[11px] font-semibold uppercase tracking-wide text-[#334127]">
@@ -2653,6 +2857,7 @@ onBeforeUnmount(() => {
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle whitespace-nowrap">Responsavel</th>
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Categoria</th>
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Cartao</th>
+                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle whitespace-nowrap">Competencia</th>
                       <th class="border-b border-border/80 px-3 py-2 text-center align-middle">Parcela</th>
                       <th class="border-b border-border/80 px-3 py-2 text-right align-middle whitespace-nowrap">Valor</th>
                     </tr>
@@ -2667,14 +2872,29 @@ onBeforeUnmount(() => {
                       <td class="px-3 py-2.5 text-left align-middle">{{ (row as { description_text: string }).description_text }}</td>
                       <td class="px-3 py-2.5 text-left align-middle whitespace-nowrap">{{ (row as { person_name: string }).person_name }}</td>
                       <td class="px-3 py-2.5 text-left align-middle">{{ (row as { category_name: string }).category_name }}</td>
-                      <td class="px-3 py-2.5 text-left align-middle">{{ (row as { card_name: string }).card_name }}</td>
+                      <td class="px-3 py-2.5 text-left align-middle">
+                        <div class="space-y-1">
+                          <p>{{ (row as { card_name: string }).card_name }}</p>
+                          <span
+                            v-if="(row as TransactionInstanceItem).financial_effective_date_override"
+                            class="inline-flex rounded-full border border-[#e3d39b] bg-[#f3efd8] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6b5a23]"
+                          >
+                            Fatura ajustada
+                          </span>
+                        </div>
+                      </td>
+                      <td class="px-3 py-2.5 text-left align-middle whitespace-nowrap">
+                        {{ activeTab === 'cards'
+                          ? ((row as TransactionInstanceItem).linked_financial_competence_label ?? (row as TransactionInstanceItem).financial_competence_label)
+                          : (row as TransactionInstanceItem).instance_date }}
+                      </td>
                       <td class="px-3 py-2.5 text-center align-middle">{{ (row as { installment_label: string }).installment_label }}</td>
                       <td class="px-3 py-2.5 text-right align-middle tabular-nums whitespace-nowrap">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</td>
                     </tr>
                   </tbody>
                   <tfoot>
                     <tr class="bg-[#c0cf8f] font-semibold text-[#2f3526]">
-                      <td colspan="6" class="px-3 py-3 text-right align-middle">Total</td>
+                      <td colspan="7" class="px-3 py-3 text-right align-middle">Total</td>
                       <td class="px-3 py-3 text-right align-middle text-xs tabular-nums whitespace-nowrap">{{ formatCurrency(exportTotalEffective) }}</td>
                     </tr>
                   </tfoot>
