@@ -171,6 +171,17 @@ const filterYearOptions = computed(() => {
 
 const activePeriodFilter = computed(() => activeTab.value === 'cards' ? cardsPeriodFilter.value : accountsPeriodFilter.value)
 const activeSearchDescription = computed(() => activeTab.value === 'cards' ? cardsSearchDescription.value : accountsSearchDescription.value)
+const activeSearchDescriptionModel = computed({
+  get: () => activeSearchDescription.value,
+  set: (value: string) => {
+    if (activeTab.value === 'cards') {
+      cardsSearchDescription.value = value
+      return
+    }
+
+    accountsSearchDescription.value = value
+  }
+})
 
 const selectedPeriodLabel = computed(() => {
   if (activePeriodFilter.value === 'all') {
@@ -179,7 +190,7 @@ const selectedPeriodLabel = computed(() => {
 
   const [year, month] = activePeriodFilter.value.split('-')
   const monthOption = filterMonthOptions.find(entry => entry.value === month)
-  return monthOption ? `${monthOption.label}/${year}` : activePeriodFilter.value
+  return monthOption ? `${monthOption.label} ${year}` : activePeriodFilter.value
 })
 const selectedPeriodMonthKey = computed(() => {
   if (activePeriodFilter.value === 'all') {
@@ -1153,6 +1164,12 @@ function buildPeriodKey(year: string, month: string) {
   return `${year}-${month}`
 }
 
+function filterChipClass(isActive: boolean) {
+  return isActive
+    ? 'h-8 rounded-full border border-primary-dark bg-primary-dark px-3 text-xs font-semibold text-surface shadow-soft transition'
+    : 'h-8 rounded-full border border-border bg-transparent px-3 text-xs font-semibold text-muted transition hover:border-primary-dark/50 hover:text-foreground'
+}
+
 function clearActiveTabFilters() {
   if (activeTab.value === 'cards') {
     cardsPeriodFilter.value = monthYear.value
@@ -1724,181 +1741,123 @@ onMounted(async () => {
       <div class="space-y-4">
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="!isTabLocked">
-            <button
-              type="button"
-              class="h-9 rounded-full border px-4 text-sm font-semibold transition"
-              :class="activeTab === 'cards' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-              @click="switchTab('cards')"
-            >
-              Cartoes
-            </button>
-            <button
-              type="button"
-              class="h-9 rounded-full border px-4 text-sm font-semibold transition"
-              :class="activeTab === 'accounts' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-              @click="switchTab('accounts')"
-            >
-              Contas
-            </button>
+            <button type="button" :class="filterChipClass(activeTab === 'cards')" @click="switchTab('cards')">Cartão</button>
+            <button type="button" :class="filterChipClass(activeTab === 'accounts')" @click="switchTab('accounts')">Conta</button>
           </template>
-          <span v-else class="h-9 rounded-full border border-primary-dark bg-primary-light/30 px-4 text-sm font-semibold leading-9 text-foreground">{{ lockedTabLabel }}</span>
-          <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">{{ selectedPeriodLabel }}</span>
-          <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">Total filtrado: {{ formatCurrency(filteredTotalValue) }}</span>
+          <span v-else class="inline-flex h-8 items-center rounded-full border border-primary-dark bg-primary-dark px-3 text-xs font-semibold uppercase tracking-[0.08em] text-surface">{{ lockedTabLabel }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700">{{ selectedPeriodLabel }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700">{{ formatCurrency(filteredTotalValue) }}</span>
         </div>
 
-        <div class="grid gap-2 rounded-2xl border border-border/70 bg-background/40 p-2.5">
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <label class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Periodo</label>
-              <select
-                v-if="activeTab === 'cards'"
-                v-model="cardsPeriodMonth"
-                class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-              >
-                <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-              </select>
-              <select
-                v-if="activeTab === 'cards'"
-                v-model="cardsPeriodYear"
-                class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-              >
-                <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
-              </select>
-
-              <select
-                v-if="activeTab === 'accounts'"
-                v-model="accountsPeriodMonth"
-                class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-              >
-                <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-              </select>
-              <select
-                v-if="activeTab === 'accounts'"
-                v-model="accountsPeriodYear"
-                class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-              >
-                <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
-              </select>
-              <AppButton label="Todos os periodos" size="sm" variant="ghost" @click="activeTab === 'cards' ? (cardsPeriodFilter = 'all') : (accountsPeriodFilter = 'all')" />
-            </div>
-          </div>
-
-          <div v-if="activeTab === 'cards'" class="space-y-2">
-            <div class="w-full overflow-x-auto pb-1">
+        <div class="grid gap-2 rounded-2xl border border-border/70 bg-background/40 p-2.5 md:gap-2 md:p-3">
+          <div class="flex flex-wrap items-center gap-2 md:gap-3">
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Período</span>
               <div class="flex min-w-max items-center gap-2">
-                <button type="button" class="h-8 rounded-full border px-3 text-xs font-semibold transition" :class="cardsCardFilter === 'all' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'" @click="cardsCardFilter = 'all'">Todos</button>
+                <select
+                  v-if="activeTab === 'cards'"
+                  v-model="cardsPeriodMonth"
+                  class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
+                >
+                  <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+                </select>
+                <select
+                  v-if="activeTab === 'cards'"
+                  v-model="cardsPeriodYear"
+                  class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
+                >
+                  <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
+                </select>
+
+                <select
+                  v-if="activeTab === 'accounts'"
+                  v-model="accountsPeriodMonth"
+                  class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
+                >
+                  <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+                </select>
+                <select
+                  v-if="activeTab === 'accounts'"
+                  v-model="accountsPeriodYear"
+                  class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
+                >
+                  <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
+                </select>
+
+                <label class="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
+                  <input
+                    class="h-3.5 w-3.5 rounded border-border"
+                    type="checkbox"
+                    :checked="activeTab === 'cards' ? cardsPeriodFilter === 'all' : accountsPeriodFilter === 'all'"
+                    @change="activeTab === 'cards' ? (cardsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(cardsPeriodYear, cardsPeriodMonth)) : (accountsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(accountsPeriodYear, accountsPeriodMonth))"
+                  >
+                  Todos os períodos
+                </label>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Cartão</span>
+              <div class="flex min-w-max items-center gap-2">
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === 'all')" @click="activeTab === 'cards' ? (cardsCardFilter = 'all') : (accountsAccountFilter = 'all')">Todos</button>
                 <button
-                  v-for="entry in activeCardsForQuickFilter"
-                  :key="`cards-chip-${entry.id}`"
+                  v-for="entry in (activeTab === 'cards' ? activeCardsForQuickFilter : activeAccountsForQuickFilter)"
+                  :key="`${activeTab}-chip-${entry.id}`"
                   type="button"
-                  class="h-8 rounded-full border px-3 text-xs font-semibold transition"
-                  :class="cardsCardFilter === entry.id ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-                  @click="cardsCardFilter = entry.id"
+                  :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === entry.id)"
+                  @click="activeTab === 'cards' ? (cardsCardFilter = entry.id) : (accountsAccountFilter = entry.id)"
                 >
                   {{ entry.name }}
                 </button>
               </div>
             </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <AppButton label="Status: Todos" size="sm" :variant="cardsStatusFilter === 'all' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'all'" />
-              <AppButton label="Pendente" size="sm" :variant="cardsStatusFilter === 'pending' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'pending'" />
-              <AppButton label="Pago" size="sm" :variant="cardsStatusFilter === 'paid' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'paid'" />
-              <AppButton label="Cancelado" size="sm" :variant="cardsStatusFilter === 'canceled' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'canceled'" />
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <AppButton label="Vinculo: Todos" size="sm" :variant="cardsReimbursementLinkFilter === 'all' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'all'" />
-              <AppButton label="Normais" size="sm" :variant="cardsReimbursementLinkFilter === 'normal' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'normal'" />
-              <AppButton label="Reembolsos" size="sm" :variant="cardsReimbursementLinkFilter === 'reimbursement' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'reimbursement'" />
-              <AppButton label="Vinculados" size="sm" :variant="cardsReimbursementLinkFilter === 'linked' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'linked'" />
-            </div>
-
-            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-              <AppInput v-model="cardsSearchDescription" label="Buscar descricao" placeholder="Digite parte da descricao" />
-              <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M3 6h18" />
-                  <path d="M8 6V4h8v2" />
-                  <path d="M19 6l-1 14H6L5 6" />
-                  <path d="M10 11v6" />
-                  <path d="M14 11v6" />
-                </svg>
-              </AppButton>
-              <AppButton size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" :title="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" :aria-label="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" @click="exportCurrentTabCsv">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M12 3v12" />
-                  <path d="M7 10l5 5 5-5" />
-                  <path d="M5 21h14" />
-                </svg>
-              </AppButton>
-            </div>
           </div>
 
-          <div v-else class="space-y-2">
-            <div class="w-full overflow-x-auto pb-1">
+          <div class="flex flex-wrap items-center gap-2 md:gap-3">
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Status</span>
               <div class="flex min-w-max items-center gap-2">
-                <button type="button" class="h-8 rounded-full border px-3 text-xs font-semibold transition" :class="accountsAccountFilter === 'all' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'" @click="accountsAccountFilter = 'all'">Todas as contas</button>
-                <button
-                  v-for="entry in activeAccountsForQuickFilter"
-                  :key="`accounts-chip-${entry.id}`"
-                  type="button"
-                  class="h-8 rounded-full border px-3 text-xs font-semibold transition"
-                  :class="accountsAccountFilter === entry.id ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-                  @click="accountsAccountFilter = entry.id"
-                >
-                  {{ entry.name }}
-                </button>
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'all')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'all') : (accountsStatusFilter = 'all')">Todos</button>
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'pending')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'pending') : (accountsStatusFilter = 'pending')">Pendente</button>
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'paid')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'paid') : (accountsStatusFilter = 'paid')">Pago</button>
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'canceled')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'canceled') : (accountsStatusFilter = 'canceled')">Cancelado</button>
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2">
-              <AppButton label="Tipo: Todos" size="sm" :variant="accountsTypeFilter === 'all' ? 'secondary' : 'ghost'" @click="accountsTypeFilter = 'all'" />
-              <AppButton label="Entrada" size="sm" :variant="accountsTypeFilter === 'income' ? 'secondary' : 'ghost'" @click="accountsTypeFilter = 'income'" />
-              <AppButton label="Saida" size="sm" :variant="accountsTypeFilter === 'expense' ? 'secondary' : 'ghost'" @click="accountsTypeFilter = 'expense'" />
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Vínculo</span>
+              <div class="flex min-w-max items-center gap-2">
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'all')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'all') : (accountsReimbursementLinkFilter = 'all')">Todos</button>
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'normal')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'normal') : (accountsReimbursementLinkFilter = 'normal')">Originais</button>
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'reimbursement')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'reimbursement') : (accountsReimbursementLinkFilter = 'reimbursement')">Reembolsos</button>
+                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'linked')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'linked') : (accountsReimbursementLinkFilter = 'linked')">Vinculados</button>
+              </div>
             </div>
+          </div>
 
-            <div class="space-y-1">
-              <label class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Categoria</label>
-              <select v-model="accountsCategoryFilter" class="h-9 w-full rounded-xl border border-border bg-surface px-3 text-xs text-foreground sm:max-w-sm">
-                <option value="all">Todas</option>
-                <option v-for="entry in categories" :key="`accounts-category-${entry.id}`" :value="entry.id">{{ entry.name }}</option>
-              </select>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <AppButton label="Status: Todos" size="sm" :variant="accountsStatusFilter === 'all' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'all'" />
-              <AppButton label="Pendente" size="sm" :variant="accountsStatusFilter === 'pending' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'pending'" />
-              <AppButton label="Pago" size="sm" :variant="accountsStatusFilter === 'paid' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'paid'" />
-              <AppButton label="Cancelado" size="sm" :variant="accountsStatusFilter === 'canceled' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'canceled'" />
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <AppButton label="Vinculo: Todos" size="sm" :variant="accountsReimbursementLinkFilter === 'all' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'all'" />
-              <AppButton label="Normais" size="sm" :variant="accountsReimbursementLinkFilter === 'normal' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'normal'" />
-              <AppButton label="Reembolsos" size="sm" :variant="accountsReimbursementLinkFilter === 'reimbursement' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'reimbursement'" />
-              <AppButton label="Vinculados" size="sm" :variant="accountsReimbursementLinkFilter === 'linked' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'linked'" />
-            </div>
-
-            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-              <AppInput v-model="accountsSearchDescription" label="Buscar descricao" placeholder="Digite parte da descricao" />
-              <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M3 6h18" />
-                  <path d="M8 6V4h8v2" />
-                  <path d="M19 6l-1 14H6L5 6" />
-                  <path d="M10 11v6" />
-                  <path d="M14 11v6" />
-                </svg>
-              </AppButton>
-              <AppButton size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" :title="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" :aria-label="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" @click="exportCurrentTabCsv">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M12 3v12" />
-                  <path d="M7 10l5 5 5-5" />
-                  <path d="M5 21h14" />
-                </svg>
-              </AppButton>
-            </div>
+          <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+            <input
+              v-model="activeSearchDescriptionModel"
+              class="h-9 w-full rounded-xl border border-border bg-surface px-3 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none"
+              placeholder="Buscar descrição"
+              type="text"
+            >
+            <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+              </svg>
+            </AppButton>
+            <AppButton size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" :title="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" :aria-label="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" @click="exportCurrentTabCsv">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="M7 10l5 5 5-5" />
+                <path d="M5 21h14" />
+              </svg>
+            </AppButton>
           </div>
         </div>
       </div>
