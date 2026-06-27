@@ -761,15 +761,27 @@ function openScopeDecisionModal(mode: 'edit' | 'cancel' | 'delete', row?: Transa
   isScopeModalOpen.value = true
 }
 
-function openMoveDecisionModal(row: TransactionInstanceItem) {
+async function confirmMoveTransaction(row: TransactionInstanceItem) {
   if (rowActionBusy.value || scopeModalSaving.value) {
     return
   }
 
-  pendingMoveRow.value = row
-  scopeModalMode.value = 'move'
-  scopeModalError.value = ''
-  isScopeModalOpen.value = true
+  const confirmed = window.confirm(`Confirma mover o lancamento \"${row.title}\" para a proxima fatura?`)
+
+  if (!confirmed) {
+    return
+  }
+
+  rowActionBusy.value = true
+
+  try {
+    await moveTransactionInstanceToNextFinancialCompetence(row, 'single')
+    await refreshRowsAfterMutation({ successMessage: 'Lançamento movido para a próxima fatura.' })
+  } catch (err) {
+    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel mover o lancamento.'
+  } finally {
+    rowActionBusy.value = false
+  }
 }
 
 function closeScopeDecisionModal() {
@@ -2158,13 +2170,6 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
       closeScopeDecisionModal()
       return
     }
-
-    if (scopeModalMode.value === 'move') {
-      await applyScopedMove(scope)
-      await refreshRowsAfterMutation({ successMessage: 'Lançamento movido para a próxima fatura.' })
-      closeScopeDecisionModal()
-      return
-    }
   } catch (err) {
     scopeModalError.value = err instanceof Error ? err.message : 'Nao foi possivel aplicar a acao no escopo selecionado.'
   } finally {
@@ -2623,7 +2628,7 @@ onBeforeUnmount(() => {
                 aria-label="Mover para a proxima fatura"
                 title="Mover para a próxima fatura"
                 :disabled="rowActionBusy"
-                @click="openMoveDecisionModal(row as TransactionInstanceItem)"
+                @click="confirmMoveTransaction(row as TransactionInstanceItem)"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M5 12h14" />
