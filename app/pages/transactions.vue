@@ -37,42 +37,39 @@ const {
 
 const loading = ref(false)
 const saving = ref(false)
-const exportingPdf = ref(false)
-const exportingImage = ref(false)
+const exportingCsv = ref(false)
 const scopeModalSaving = ref(false)
 const rowActionBusy = ref(false)
-const FILTERS_STORAGE_KEY = 'pwrdevs.finance.transactions.filters'
-type QuickPaymentFilter = 'all' | 'account' | 'cards' | `card:${string}`
+const ACTIVE_TAB_STORAGE_KEY = 'transactions.activeTab'
+const CARDS_FILTERS_STORAGE_KEY = 'transactions.filters.cards'
+const ACCOUNTS_FILTERS_STORAGE_KEY = 'transactions.filters.accounts'
 const pageError = ref('')
+const pageNotice = ref('')
 const modalError = ref('')
 const scopeModalError = ref('')
-const filtersModalError = ref('')
-const hasPersistedFilters = ref(false)
-const skipSearchPersistence = ref(false)
 
 const monthYear = ref(new Date().toISOString().slice(0, 7))
-const periodFilter = ref<string | 'all'>(monthYear.value)
-const cardFilter = ref('all')
-const personFilter = ref('all')
-const categoryFilter = ref('all')
-const accountFilter = ref('all')
-const quickPaymentFilter = ref<QuickPaymentFilter>('all')
-const quickTypeFilter = ref<'all' | TransactionType>('all')
-const statusFilter = ref<'all' | TransactionStatus>('all')
-const reimbursementLinkFilter = ref<'all' | 'normal' | 'linked'>('all')
-const searchDescription = ref('')
-const isFiltersModalOpen = ref(false)
-const draftMonthYear = ref(monthYear.value)
-const draftCardFilter = ref(cardFilter.value)
-const draftPersonFilter = ref(personFilter.value)
-const draftCategoryFilter = ref(categoryFilter.value)
-const draftAccountFilter = ref(accountFilter.value)
-const draftStatusFilter = ref<'all' | TransactionStatus>(statusFilter.value)
-const draftReimbursementLinkFilter = ref<'all' | 'normal' | 'linked'>(reimbursementLinkFilter.value)
-const { month: initialDraftMonth, year: initialDraftYear } = parseMonthYear(monthYear.value)
-const draftFilterMonth = ref(String(initialDraftMonth).padStart(2, '0'))
-const draftFilterYear = ref(String(initialDraftYear))
-const draftAllPeriods = ref(false)
+const activeTab = ref<'cards' | 'accounts'>('cards')
+const { month: initialPeriodMonth, year: initialPeriodYear } = parseMonthYear(monthYear.value)
+const cardsPeriodMonth = ref(String(initialPeriodMonth).padStart(2, '0'))
+const cardsPeriodYear = ref(String(initialPeriodYear))
+const accountsPeriodMonth = ref(String(initialPeriodMonth).padStart(2, '0'))
+const accountsPeriodYear = ref(String(initialPeriodYear))
+
+const cardsPeriodFilter = ref<string | 'all'>(monthYear.value)
+const cardsCardFilter = ref('all')
+const cardsStatusFilter = ref<'all' | TransactionStatus>('all')
+const cardsReimbursementLinkFilter = ref<'all' | 'normal' | 'reimbursement' | 'linked'>('all')
+const cardsSearchDescription = ref('')
+
+const accountsPeriodFilter = ref<string | 'all'>(monthYear.value)
+const accountsAccountFilter = ref('all')
+const accountsTypeFilter = ref<'all' | TransactionType>('all')
+const accountsCategoryFilter = ref('all')
+const accountsStatusFilter = ref<'all' | TransactionStatus>('all')
+const accountsReimbursementLinkFilter = ref<'all' | 'normal' | 'reimbursement' | 'linked'>('all')
+const accountsSearchDescription = ref('')
+
 const route = useRoute()
 const router = useRouter()
 
@@ -85,10 +82,8 @@ const categories = ref<CategoryItem[]>([])
 const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
-const isExportPreviewOpen = ref(false)
 const isScopeModalOpen = ref(false)
 const isDeleteConfirmModalOpen = ref(false)
-const exportPreviewRef = ref<HTMLElement | null>(null)
 const editingRow = ref<TransactionInstanceItem | null>(null)
 const scopeTargetRow = ref<TransactionInstanceItem | null>(null)
 const pendingDeleteRow = ref<TransactionInstanceItem | null>(null)
@@ -156,21 +151,24 @@ const filterYearOptions = computed(() => {
   return Array.from({ length: 8 }, (_, index) => String(currentYear - 3 + index))
 })
 
+const activePeriodFilter = computed(() => activeTab.value === 'cards' ? cardsPeriodFilter.value : accountsPeriodFilter.value)
+const activeSearchDescription = computed(() => activeTab.value === 'cards' ? cardsSearchDescription.value : accountsSearchDescription.value)
+
 const selectedPeriodLabel = computed(() => {
-  if (periodFilter.value === 'all') {
+  if (activePeriodFilter.value === 'all') {
     return 'Todos os períodos'
   }
 
-  const [year, month] = periodFilter.value.split('-')
+  const [year, month] = activePeriodFilter.value.split('-')
   const monthOption = filterMonthOptions.find(entry => entry.value === month)
-  return monthOption ? `${monthOption.label}/${year}` : periodFilter.value
+  return monthOption ? `${monthOption.label}/${year}` : activePeriodFilter.value
 })
 const selectedPeriodMonthKey = computed(() => {
-  if (periodFilter.value === 'all') {
+  if (activePeriodFilter.value === 'all') {
     return null
   }
 
-  return periodFilter.value
+  return activePeriodFilter.value
 })
 
 const transactionStatusLabelMap: Record<TransactionStatus, string> = {
@@ -196,6 +194,19 @@ const paymentMethodOptions = computed(() => {
   return [...accountOptions, ...cardOptions]
 })
 const activeCardsForQuickFilter = computed(() => cards.value.filter(entry => entry.is_active))
+const activeAccountsForQuickFilter = computed(() => accounts.value.filter(entry => entry.is_active))
+
+const reimbursementOriginalCardMap = computed(() => {
+  const map = new Map<string, string>()
+
+  for (const row of rows.value) {
+    if (row.reimbursement_group_id && row.reimbursement_role === 'original' && row.card_id) {
+      map.set(row.reimbursement_group_id, row.card_id)
+    }
+  }
+
+  return map
+})
 
 const shouldAskScopeForEdit = computed(() => {
   const originType = editingRow.value?.origin_type
@@ -229,17 +240,6 @@ const deleteConfirmDescription = computed(() => {
 
   return `Confirma a exclusao do lancamento \"${pendingDeleteRow.value.title}\" em ${formatDateBr(pendingDeleteRow.value.instance_date)}? Esta acao nao pode ser desfeita.`
 })
-const selectedCardLabel = computed(() => {
-  if (cardFilter.value === 'all') return 'Todos'
-  return cards.value.find(entry => entry.id === cardFilter.value)?.name ?? 'Todos'
-})
-const selectedStatusLabel = computed(() => {
-  if (statusFilter.value === 'all') return 'Todos'
-  return transactionStatusLabelMap[statusFilter.value]
-})
-const hasActiveCardFilter = computed(() => cardFilter.value !== 'all')
-const hasActiveStatusFilter = computed(() => statusFilter.value !== 'all')
-
 interface PendingScopedEdit {
   row: TransactionInstanceItem
   payload: {
@@ -265,18 +265,21 @@ interface PendingScopedEdit {
 
 const pendingScopedEdit = ref<PendingScopedEdit | null>(null)
 
-interface PersistedTransactionFilters {
+interface PersistedCardsFilters {
   period_filter: string | 'all'
-  all_periods?: boolean
   card_filter: string
-  person_filter: string
-  category_filter: string
-  account_filter: string
-  payment_method_filter?: 'all' | 'account' | 'card'
-  quick_payment_filter?: string
-  quick_type_filter?: 'all' | TransactionType
   status_filter: 'all' | TransactionStatus
-  reimbursement_link_filter: 'all' | 'normal' | 'linked'
+  reimbursement_link_filter: 'all' | 'normal' | 'reimbursement' | 'linked'
+  search_description: string
+}
+
+interface PersistedAccountsFilters {
+  period_filter: string | 'all'
+  account_filter: string
+  type_filter: 'all' | TransactionType
+  category_filter: string
+  status_filter: 'all' | TransactionStatus
+  reimbursement_link_filter: 'all' | 'normal' | 'reimbursement' | 'linked'
   search_description: string
 }
 
@@ -288,36 +291,12 @@ function isValidStatusFilter(value: string): value is 'all' | TransactionStatus 
   return value === 'all' || TRANSACTION_STATUS.includes(value as TransactionStatus)
 }
 
-function isValidReimbursementLinkFilter(value: string): value is 'all' | 'normal' | 'linked' {
-  return value === 'all' || value === 'normal' || value === 'linked'
+function isValidReimbursementLinkFilter(value: string): value is 'all' | 'normal' | 'reimbursement' | 'linked' {
+  return value === 'all' || value === 'normal' || value === 'reimbursement' || value === 'linked'
 }
 
-function isValidQuickTypeFilter(value: string): value is 'all' | TransactionType {
+function isValidTypeFilter(value: string): value is 'all' | TransactionType {
   return value === 'all' || value === 'income' || value === 'expense'
-}
-
-function normalizeQuickPaymentFilter(value: string, allowedCardIds: string[]): QuickPaymentFilter {
-  if (value === 'all' || value === 'account' || value === 'cards') {
-    return value
-  }
-
-  if (value.startsWith('card:')) {
-    const cardId = value.slice(5)
-    if (allowedCardIds.includes(cardId)) {
-      return value as QuickPaymentFilter
-    }
-  }
-
-  return 'all'
-}
-
-function getQuickPaymentFilterLabel(value: QuickPaymentFilter) {
-  if (value === 'all') return 'Todos'
-  if (value === 'account') return 'Conta'
-  if (value === 'cards') return 'Cartoes'
-
-  const cardId = value.slice(5)
-  return cards.value.find(entry => entry.id === cardId)?.name ?? 'Cartao'
 }
 
 function pickPersistedOption(value: string, allowedIds: string[]) {
@@ -328,173 +307,151 @@ function pickPersistedOption(value: string, allowedIds: string[]) {
   return allowedIds.includes(value) ? value : 'all'
 }
 
-function removePersistedFilters() {
+function saveActiveTabToStorage() {
   if (typeof window === 'undefined') {
     return
   }
 
-  window.localStorage.removeItem(FILTERS_STORAGE_KEY)
-  hasPersistedFilters.value = false
+  window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab.value)
 }
 
-function saveFiltersToStorage() {
+function saveCardsFiltersToStorage() {
   if (typeof window === 'undefined') {
     return
   }
 
-  const payload: PersistedTransactionFilters = {
-    period_filter: periodFilter.value,
-    all_periods: periodFilter.value === 'all',
-    card_filter: cardFilter.value,
-    person_filter: personFilter.value,
-    category_filter: categoryFilter.value,
-    account_filter: accountFilter.value,
-    payment_method_filter: quickPaymentFilter.value === 'account' ? 'account' : quickPaymentFilter.value === 'cards' || quickPaymentFilter.value.startsWith('card:') ? 'card' : 'all',
-    quick_payment_filter: quickPaymentFilter.value,
-    quick_type_filter: quickTypeFilter.value,
-    status_filter: statusFilter.value,
-    reimbursement_link_filter: reimbursementLinkFilter.value,
-    search_description: searchDescription.value.trim()
+  const payload: PersistedCardsFilters = {
+    period_filter: cardsPeriodFilter.value,
+    card_filter: cardsCardFilter.value,
+    status_filter: cardsStatusFilter.value,
+    reimbursement_link_filter: cardsReimbursementLinkFilter.value,
+    search_description: cardsSearchDescription.value.trim()
   }
 
-  window.localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(payload))
-  hasPersistedFilters.value = true
+  window.localStorage.setItem(CARDS_FILTERS_STORAGE_KEY, JSON.stringify(payload))
 }
 
-function restoreFiltersFromStorage() {
+function saveAccountsFiltersToStorage() {
   if (typeof window === 'undefined') {
     return
   }
 
-  const raw = window.localStorage.getItem(FILTERS_STORAGE_KEY)
+  const payload: PersistedAccountsFilters = {
+    period_filter: accountsPeriodFilter.value,
+    account_filter: accountsAccountFilter.value,
+    type_filter: accountsTypeFilter.value,
+    category_filter: accountsCategoryFilter.value,
+    status_filter: accountsStatusFilter.value,
+    reimbursement_link_filter: accountsReimbursementLinkFilter.value,
+    search_description: accountsSearchDescription.value.trim()
+  }
+
+  window.localStorage.setItem(ACCOUNTS_FILTERS_STORAGE_KEY, JSON.stringify(payload))
+}
+
+function clearCardsFiltersStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(CARDS_FILTERS_STORAGE_KEY)
+}
+
+function clearAccountsFiltersStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(ACCOUNTS_FILTERS_STORAGE_KEY)
+}
+
+function restoreActiveTabFromStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const savedTab = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY)
+
+  if (savedTab === 'cards' || savedTab === 'accounts') {
+    activeTab.value = savedTab
+  }
+}
+
+function restoreCardsFiltersFromStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const raw = window.localStorage.getItem(CARDS_FILTERS_STORAGE_KEY)
 
   if (!raw) {
-    hasPersistedFilters.value = false
     return
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<PersistedTransactionFilters>
-    const hasAllPeriodsFlag = parsed.all_periods === true
-    const validPeriod = hasAllPeriodsFlag || parsed.period_filter === 'all'
-      ? 'all'
-      : (typeof parsed.period_filter === 'string' && isValidMonthYear(parsed.period_filter) ? parsed.period_filter : monthYear.value)
-    const validStatus = typeof parsed.status_filter === 'string' && isValidStatusFilter(parsed.status_filter)
+    const parsed = JSON.parse(raw) as Partial<PersistedCardsFilters>
+    cardsPeriodFilter.value = typeof parsed.period_filter === 'string' && (parsed.period_filter === 'all' || isValidMonthYear(parsed.period_filter))
+      ? parsed.period_filter
+      : monthYear.value
+    if (cardsPeriodFilter.value !== 'all') {
+      const { month, year } = parseMonthYear(cardsPeriodFilter.value)
+      cardsPeriodMonth.value = String(month).padStart(2, '0')
+      cardsPeriodYear.value = String(year)
+    }
+    cardsCardFilter.value = pickPersistedOption(String(parsed.card_filter ?? 'all'), cards.value.map(entry => entry.id))
+    cardsStatusFilter.value = typeof parsed.status_filter === 'string' && isValidStatusFilter(parsed.status_filter)
       ? parsed.status_filter
       : 'all'
-    const validReimbursementFilter = typeof parsed.reimbursement_link_filter === 'string' && isValidReimbursementLinkFilter(parsed.reimbursement_link_filter)
+    cardsReimbursementLinkFilter.value = typeof parsed.reimbursement_link_filter === 'string' && isValidReimbursementLinkFilter(parsed.reimbursement_link_filter)
       ? parsed.reimbursement_link_filter
       : 'all'
-    const validQuickType = typeof parsed.quick_type_filter === 'string' && isValidQuickTypeFilter(parsed.quick_type_filter)
-      ? parsed.quick_type_filter
-      : 'all'
-    const fallbackQuickPayment = parsed.payment_method_filter === 'account'
-      ? 'account'
-      : parsed.payment_method_filter === 'card'
-        ? 'cards'
-        : 'all'
-    const quickPaymentRaw = typeof parsed.quick_payment_filter === 'string'
-      ? parsed.quick_payment_filter
-      : fallbackQuickPayment
-    const validQuickPayment = normalizeQuickPaymentFilter(quickPaymentRaw, cards.value.map(entry => entry.id))
-
-    periodFilter.value = validPeriod
-    cardFilter.value = pickPersistedOption(String(parsed.card_filter ?? 'all'), cards.value.map(entry => entry.id))
-    personFilter.value = pickPersistedOption(String(parsed.person_filter ?? 'all'), people.value.map(entry => entry.id))
-    categoryFilter.value = pickPersistedOption(String(parsed.category_filter ?? 'all'), categories.value.map(entry => entry.id))
-    accountFilter.value = pickPersistedOption(String(parsed.account_filter ?? 'all'), accounts.value.map(entry => entry.id))
-    quickPaymentFilter.value = validQuickPayment
-    quickTypeFilter.value = validQuickType
-    statusFilter.value = validStatus
-    reimbursementLinkFilter.value = validReimbursementFilter
-    searchDescription.value = typeof parsed.search_description === 'string' ? parsed.search_description : ''
-
-    draftAllPeriods.value = validPeriod === 'all'
-
-    if (validPeriod === 'all') {
-      draftMonthYear.value = monthYear.value
-      const { month, year } = parseMonthYear(monthYear.value)
-      draftFilterMonth.value = String(month).padStart(2, '0')
-      draftFilterYear.value = String(year)
-    } else {
-      draftMonthYear.value = validPeriod
-      const { month, year } = parseMonthYear(validPeriod)
-      draftFilterMonth.value = String(month).padStart(2, '0')
-      draftFilterYear.value = String(year)
-    }
-
-    draftCardFilter.value = cardFilter.value
-    draftPersonFilter.value = personFilter.value
-    draftCategoryFilter.value = categoryFilter.value
-    draftAccountFilter.value = accountFilter.value
-    draftStatusFilter.value = statusFilter.value
-    draftReimbursementLinkFilter.value = reimbursementLinkFilter.value
-    hasPersistedFilters.value = true
+    cardsSearchDescription.value = typeof parsed.search_description === 'string' ? parsed.search_description : ''
   } catch {
-    removePersistedFilters()
+    clearCardsFiltersStorage()
   }
 }
 
-function clearPersistedFiltersOnly() {
-  removePersistedFilters()
-  filtersModalError.value = ''
+function restoreAccountsFiltersFromStorage() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const raw = window.localStorage.getItem(ACCOUNTS_FILTERS_STORAGE_KEY)
+
+  if (!raw) {
+    return
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedAccountsFilters>
+    accountsPeriodFilter.value = typeof parsed.period_filter === 'string' && (parsed.period_filter === 'all' || isValidMonthYear(parsed.period_filter))
+      ? parsed.period_filter
+      : monthYear.value
+    if (accountsPeriodFilter.value !== 'all') {
+      const { month, year } = parseMonthYear(accountsPeriodFilter.value)
+      accountsPeriodMonth.value = String(month).padStart(2, '0')
+      accountsPeriodYear.value = String(year)
+    }
+    accountsAccountFilter.value = pickPersistedOption(String(parsed.account_filter ?? 'all'), accounts.value.map(entry => entry.id))
+    accountsTypeFilter.value = typeof parsed.type_filter === 'string' && isValidTypeFilter(parsed.type_filter)
+      ? parsed.type_filter
+      : 'all'
+    accountsCategoryFilter.value = pickPersistedOption(String(parsed.category_filter ?? 'all'), categories.value.map(entry => entry.id))
+    accountsStatusFilter.value = typeof parsed.status_filter === 'string' && isValidStatusFilter(parsed.status_filter)
+      ? parsed.status_filter
+      : 'all'
+    accountsReimbursementLinkFilter.value = typeof parsed.reimbursement_link_filter === 'string' && isValidReimbursementLinkFilter(parsed.reimbursement_link_filter)
+      ? parsed.reimbursement_link_filter
+      : 'all'
+    accountsSearchDescription.value = typeof parsed.search_description === 'string' ? parsed.search_description : ''
+  } catch {
+    clearAccountsFiltersStorage()
+  }
 }
 
-function syncQuickPaymentFilterFromCurrentFilters() {
-  if (cardFilter.value !== 'all') {
-    quickPaymentFilter.value = `card:${cardFilter.value}`
-    return
-  }
-
-  if (accountFilter.value !== 'all') {
-    quickPaymentFilter.value = 'account'
-    return
-  }
-
-  if (quickPaymentFilter.value.startsWith('card:')) {
-    quickPaymentFilter.value = 'cards'
-  }
-}
-
-function applyQuickPaymentFilter(filter: QuickPaymentFilter) {
-  quickPaymentFilter.value = filter
-  reimbursementLinkFilter.value = 'all'
-
-  if (filter === 'all') {
-    cardFilter.value = 'all'
-    accountFilter.value = 'all'
-    return
-  }
-
-  if (filter === 'account') {
-    cardFilter.value = 'all'
-    accountFilter.value = 'all'
-    return
-  }
-
-  if (filter === 'cards') {
-    cardFilter.value = 'all'
-    accountFilter.value = 'all'
-    return
-  }
-
-  const cardId = filter.slice(5)
-  cardFilter.value = cardId
-  accountFilter.value = 'all'
-}
-
-function applyQuickReimbursementFilter() {
-  quickPaymentFilter.value = 'all'
-  cardFilter.value = 'all'
-  accountFilter.value = 'all'
-  reimbursementLinkFilter.value = 'linked'
-}
-
-function applyQuickAllFilters() {
-  quickPaymentFilter.value = 'all'
-  cardFilter.value = 'all'
-  accountFilter.value = 'all'
-  reimbursementLinkFilter.value = 'all'
+function switchTab(tab: 'cards' | 'accounts') {
+  activeTab.value = tab
+  saveActiveTabToStorage()
 }
 
 async function consumeNewLaunchQuery() {
@@ -507,6 +464,37 @@ async function consumeNewLaunchQuery() {
   const nextQuery = { ...route.query }
   delete nextQuery.new
   await router.replace({ query: nextQuery })
+}
+
+async function clearNewLaunchQueryIfNeeded() {
+  if (route.query.new !== '1') {
+    return
+  }
+
+  const nextQuery = { ...route.query }
+  delete nextQuery.new
+  await router.replace({ query: nextQuery })
+}
+
+async function refreshRowsAfterMutation(options: { created?: boolean; previousFilteredCount?: number; previousTotalCount?: number } = {}) {
+  await fetchRows()
+
+  if (!options.created) {
+    pageNotice.value = ''
+    return
+  }
+
+  const previousFilteredCount = options.previousFilteredCount ?? 0
+  const previousTotalCount = options.previousTotalCount ?? 0
+  const nextFilteredCount = filteredRows.value.length
+  const nextTotalCount = rows.value.length
+
+  if (nextTotalCount > previousTotalCount && nextFilteredCount <= previousFilteredCount) {
+    pageNotice.value = 'Lançamento salvo, mas fora do filtro atual.'
+    return
+  }
+
+  pageNotice.value = ''
 }
 
 const expectedValueLabel = computed(() => {
@@ -651,43 +639,67 @@ function getInstallmentLabel(row: TransactionInstanceItem) {
 }
 
 const filteredRows = computed(() => {
-  const normalizedSearch = searchDescription.value.trim().toLowerCase()
+  const normalizedSearch = activeSearchDescription.value.trim().toLowerCase()
 
   return rows.value
+    .filter((row) => {
+      const isLinkedToCardInvoice = Boolean(row.linked_financial_competence_label)
+
+      if (activeTab.value === 'cards') {
+        return Boolean(row.card_id) || isLinkedToCardInvoice
+      }
+
+      return !row.card_id && !isLinkedToCardInvoice
+    })
     .filter((row) => {
       if (!selectedPeriodMonthKey.value) {
         return true
       }
 
-      return row.financial_effective_date.slice(0, 7) === selectedPeriodMonthKey.value
+      if (activeTab.value === 'cards') {
+        return row.financial_effective_date.slice(0, 7) === selectedPeriodMonthKey.value
+      }
+
+      return row.instance_date.slice(0, 7) === selectedPeriodMonthKey.value
     })
     .filter((row) => {
-      if (quickPaymentFilter.value === 'account') {
-        return Boolean(row.account_id)
+      if (activeTab.value === 'cards') {
+        if (cardsCardFilter.value === 'all') {
+          return true
+        }
+
+        const referencedCardId = row.card_id
+          ?? (row.reimbursement_group_id ? reimbursementOriginalCardMap.value.get(row.reimbursement_group_id) ?? null : null)
+
+        return referencedCardId === cardsCardFilter.value
       }
 
-      if (quickPaymentFilter.value === 'cards') {
-        return Boolean(row.card_id)
+      if (accountsAccountFilter.value === 'all') {
+        return true
       }
 
-      if (quickPaymentFilter.value.startsWith('card:')) {
-        return row.card_id === quickPaymentFilter.value.slice(5)
-      }
-
-      return true
+      return row.account_id === accountsAccountFilter.value
     })
-    .filter((row) => quickTypeFilter.value === 'all' || row.type === quickTypeFilter.value)
-    .filter((row) => personFilter.value === 'all' || row.person_id === personFilter.value)
-    .filter((row) => cardFilter.value === 'all' || row.card_id === cardFilter.value)
-    .filter((row) => accountFilter.value === 'all' || row.account_id === accountFilter.value)
-    .filter((row) => categoryFilter.value === 'all' || row.category_id === categoryFilter.value)
-    .filter((row) => statusFilter.value === 'all' || row.status === statusFilter.value)
+    .filter((row) => activeTab.value === 'cards' || accountsTypeFilter.value === 'all' || row.type === accountsTypeFilter.value)
+    .filter((row) => activeTab.value === 'cards' || accountsCategoryFilter.value === 'all' || row.category_id === accountsCategoryFilter.value)
     .filter((row) => {
-      if (reimbursementLinkFilter.value === 'normal') {
+      const activeStatusFilter = activeTab.value === 'cards' ? cardsStatusFilter.value : accountsStatusFilter.value
+      return activeStatusFilter === 'all' || row.status === activeStatusFilter
+    })
+    .filter((row) => {
+      const activeLinkFilter = activeTab.value === 'cards'
+        ? cardsReimbursementLinkFilter.value
+        : accountsReimbursementLinkFilter.value
+
+      if (activeLinkFilter === 'normal') {
         return !row.reimbursement_group_id
       }
 
-      if (reimbursementLinkFilter.value === 'linked') {
+      if (activeLinkFilter === 'reimbursement') {
+        return row.reimbursement_role === 'reimbursement'
+      }
+
+      if (activeLinkFilter === 'linked') {
         return Boolean(row.reimbursement_group_id)
       }
 
@@ -700,11 +712,17 @@ const filteredRows = computed(() => {
     })
     .map((row) => ({
       ...row,
+      reference_card_id: row.card_id
+        ?? (row.reimbursement_group_id ? reimbursementOriginalCardMap.value.get(row.reimbursement_group_id) ?? null : null),
       installment_label: getInstallmentLabel(row),
       description_text: row.description?.trim() ? `${row.title} - ${row.description}` : row.title,
       person_name: row.person_id ? (peopleMap.value.get(row.person_id) || '-') : '-',
       category_name: row.category_id ? (categoriesMap.value.get(row.category_id) || '-') : '-',
-      card_name: row.card_id ? (cardsMap.value.get(row.card_id) || '-') : '-',
+      card_name: (() => {
+        const cardId = row.card_id
+          ?? (row.reimbursement_group_id ? reimbursementOriginalCardMap.value.get(row.reimbursement_group_id) ?? null : null)
+        return cardId ? (cardsMap.value.get(cardId) || '-') : '-'
+      })(),
       account_name: row.account_id ? (accountsMap.value.get(row.account_id) || '-') : '-',
       link_badge: row.reimbursement_role === 'original'
         ? 'Original'
@@ -715,7 +733,7 @@ const filteredRows = computed(() => {
     }))
 })
 
-  const filteredTotalValue = computed(() => filteredRows.value.reduce((sum, row) => sum + getEffectiveValue(row as TransactionInstanceItem), 0))
+const filteredTotalValue = computed(() => filteredRows.value.reduce((sum, row) => sum + getEffectiveValue(row as TransactionInstanceItem), 0))
 
 function applyReimbursementDefaults() {
   if (!formReimbursementDescription.value.trim()) {
@@ -881,101 +899,95 @@ function getEffectiveValue(row: TransactionInstanceItem) {
 
 const exportTotalEffective = computed(() => filteredTotalValue.value)
 
-function openExportPreview() {
-  if (!filteredRows.value.length) {
-    pageError.value = 'Nao ha lancamentos filtrados para exportar.'
-    return
-  }
-
-  pageError.value = ''
-  isExportPreviewOpen.value = true
+function csvEscape(value: string | number | null | undefined) {
+  const text = value == null ? '' : String(value)
+  return `"${text.replaceAll('"', '""')}"`
 }
 
-async function exportPreviewPdf() {
-  if (exportingPdf.value) return
+function getCsvFileName() {
+  const period = activePeriodFilter.value
 
+  if (activeTab.value === 'cards') {
+    return period === 'all'
+      ? 'lancamentos-cartoes-todos.csv'
+      : `lancamentos-cartoes-${period}.csv`
+  }
+
+  return period === 'all'
+    ? 'lancamentos-contas-todos.csv'
+    : `lancamentos-contas-${period}.csv`
+}
+
+async function exportCurrentTabCsv() {
   if (!filteredRows.value.length) {
     pageError.value = 'Nao ha lancamentos filtrados para exportar.'
     return
   }
 
-  exportingPdf.value = true
+  exportingCsv.value = true
   pageError.value = ''
 
   try {
-    const [canvas, { jsPDF }] = await Promise.all([
-      renderPreviewCanvas(),
-      import('jspdf')
-    ])
+    const header = [
+      'Data real',
+      'Competencia/Fatura',
+      'Descricao',
+      'Responsavel',
+      'Conta',
+      'Cartao',
+      'Categoria',
+      'Tipo',
+      'Previsto',
+      'Realizado',
+      'Status',
+      'Vinculo'
+    ]
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
-    const margin = 20
-    const pageWidth = doc.internal.pageSize.getWidth() - (margin * 2)
-    const pageHeight = doc.internal.pageSize.getHeight() - (margin * 2)
-    const imageHeight = (canvas.height * pageWidth) / canvas.width
-    const imageData = canvas.toDataURL('image/png')
+    const csvLines = [header.map(csvEscape).join(';')]
 
-    let remainingHeight = imageHeight
-    let positionY = margin
+    for (const row of filteredRows.value) {
+      const entry = row as TransactionInstanceItem & {
+        description_text: string
+        person_name: string
+        account_name: string
+        card_name: string
+        category_name: string
+        link_badge: string
+      }
 
-    doc.addImage(imageData, 'PNG', margin, positionY, pageWidth, imageHeight)
-    remainingHeight -= pageHeight
+      const competenceLabel = activeTab.value === 'cards'
+        ? (entry.linked_financial_competence_label ?? entry.financial_competence_label)
+        : entry.instance_date
 
-    while (remainingHeight > 0) {
-      doc.addPage()
-      positionY = margin - (imageHeight - remainingHeight)
-      doc.addImage(imageData, 'PNG', margin, positionY, pageWidth, imageHeight)
-      remainingHeight -= pageHeight
+      csvLines.push([
+        entry.instance_date,
+        competenceLabel,
+        entry.description_text,
+        entry.person_name,
+        entry.account_name,
+        entry.card_name,
+        entry.category_name,
+        entry.type === 'income' ? 'Entrada' : 'Saida',
+        entry.expected_value,
+        entry.real_value ?? '',
+        transactionStatusLabelMap[entry.status],
+        entry.link_badge
+      ].map(csvEscape).join(';'))
     }
 
-    const fileDate = new Date().toISOString().slice(0, 10)
-    doc.save(`lancamentos-filtrados-${fileDate}.pdf`)
-  } catch (err) {
-    pageError.value = err instanceof Error
-      ? `Nao foi possivel exportar o PDF. ${err.message}`
-      : 'Nao foi possivel exportar o PDF.'
-  } finally {
-    exportingPdf.value = false
-  }
-}
-
-async function savePreviewAsImage() {
-  if (exportingImage.value) return
-
-  exportingImage.value = true
-  pageError.value = ''
-
-  try {
-    const canvas = await renderPreviewCanvas()
-
-    const imageDate = new Date().toISOString().slice(0, 10)
+    const blob = new Blob([`\uFEFF${csvLines.join('\n')}`], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
-    link.href = canvas.toDataURL('image/png')
-    link.download = `lancamentos-filtrados-${imageDate}.png`
+    link.href = URL.createObjectURL(blob)
+    link.download = getCsvFileName()
     link.click()
+    URL.revokeObjectURL(link.href)
   } catch (err) {
     pageError.value = err instanceof Error
-      ? `Nao foi possivel salvar a imagem. ${err.message}`
-      : 'Nao foi possivel salvar a imagem.'
+      ? `Nao foi possivel exportar CSV. ${err.message}`
+      : 'Nao foi possivel exportar CSV.'
   } finally {
-    exportingImage.value = false
+    exportingCsv.value = false
   }
-}
-
-async function renderPreviewCanvas() {
-  if (!exportPreviewRef.value) {
-    throw new Error('Nao foi possivel renderizar o preview para exportacao.')
-  }
-
-  await nextTick()
-
-  const { default: html2canvas } = await import('html2canvas')
-  return html2canvas(exportPreviewRef.value, {
-    scale: 3,
-    backgroundColor: '#f6f7f2',
-    useCORS: true,
-    windowWidth: exportPreviewRef.value.scrollWidth
-  })
 }
 
 function resetForm() {
@@ -1104,83 +1116,35 @@ function parseMonthYear(value: string) {
   return { month, year }
 }
 
-async function clearFilters() {
-  skipSearchPersistence.value = true
-  cardFilter.value = 'all'
-  personFilter.value = 'all'
-  categoryFilter.value = 'all'
-  accountFilter.value = 'all'
-  quickPaymentFilter.value = 'all'
-  quickTypeFilter.value = 'all'
-  statusFilter.value = 'all'
-  reimbursementLinkFilter.value = 'all'
-  searchDescription.value = ''
-  periodFilter.value = monthYear.value
-  draftMonthYear.value = monthYear.value
-  const { month, year } = parseMonthYear(monthYear.value)
-  draftFilterMonth.value = String(month).padStart(2, '0')
-  draftFilterYear.value = String(year)
-  draftAllPeriods.value = false
-  draftCardFilter.value = 'all'
-  draftPersonFilter.value = 'all'
-  draftCategoryFilter.value = 'all'
-  draftAccountFilter.value = 'all'
-  draftStatusFilter.value = 'all'
-  draftReimbursementLinkFilter.value = 'all'
-  removePersistedFilters()
-  await fetchRows()
-  isFiltersModalOpen.value = false
-  await nextTick()
-  skipSearchPersistence.value = false
+function buildPeriodKey(year: string, month: string) {
+  return `${year}-${month}`
 }
 
-function openFiltersModal() {
-  draftAllPeriods.value = periodFilter.value === 'all'
-
-  if (periodFilter.value !== 'all') {
-    draftMonthYear.value = periodFilter.value
-    const { month, year } = parseMonthYear(periodFilter.value)
-    draftFilterMonth.value = String(month).padStart(2, '0')
-    draftFilterYear.value = String(year)
+function clearActiveTabFilters() {
+  if (activeTab.value === 'cards') {
+    cardsPeriodFilter.value = monthYear.value
+    cardsPeriodMonth.value = monthYear.value.slice(5, 7)
+    cardsPeriodYear.value = monthYear.value.slice(0, 4)
+    cardsCardFilter.value = 'all'
+    cardsStatusFilter.value = 'all'
+    cardsReimbursementLinkFilter.value = 'all'
+    cardsSearchDescription.value = ''
+    clearCardsFiltersStorage()
+    saveCardsFiltersToStorage()
+    return
   }
 
-  draftCardFilter.value = cardFilter.value
-  draftPersonFilter.value = personFilter.value
-  draftCategoryFilter.value = categoryFilter.value
-  draftAccountFilter.value = accountFilter.value
-  draftStatusFilter.value = statusFilter.value
-  draftReimbursementLinkFilter.value = reimbursementLinkFilter.value
-  filtersModalError.value = ''
-  isFiltersModalOpen.value = true
-}
-
-async function applyFilters() {
-  filtersModalError.value = ''
-  if (draftAllPeriods.value) {
-    periodFilter.value = 'all'
-  } else {
-    draftMonthYear.value = `${draftFilterYear.value}-${draftFilterMonth.value}`
-
-    try {
-      parseMonthYear(draftMonthYear.value)
-    } catch (err) {
-      filtersModalError.value = err instanceof Error ? err.message : 'Período inválido.'
-      return
-    }
-
-    periodFilter.value = draftMonthYear.value
-  }
-  cardFilter.value = draftCardFilter.value
-  personFilter.value = draftPersonFilter.value
-  categoryFilter.value = draftCategoryFilter.value
-  accountFilter.value = draftAccountFilter.value
-  syncQuickPaymentFilterFromCurrentFilters()
-  statusFilter.value = draftStatusFilter.value
-  reimbursementLinkFilter.value = draftReimbursementLinkFilter.value
-  saveFiltersToStorage()
-
-  await fetchRows()
-  isFiltersModalOpen.value = false
+  accountsPeriodFilter.value = monthYear.value
+  accountsPeriodMonth.value = monthYear.value.slice(5, 7)
+  accountsPeriodYear.value = monthYear.value.slice(0, 4)
+  accountsAccountFilter.value = 'all'
+  accountsTypeFilter.value = 'all'
+  accountsCategoryFilter.value = 'all'
+  accountsStatusFilter.value = 'all'
+  accountsReimbursementLinkFilter.value = 'all'
+  accountsSearchDescription.value = ''
+  clearAccountsFiltersStorage()
+  saveAccountsFiltersToStorage()
 }
 
 async function fetchRows() {
@@ -1385,6 +1349,9 @@ async function submitForm() {
   const instanceDate = formOriginType.value === 'recurring'
     ? formRecurringStartDate.value
     : purchaseDate
+  const wasCreating = !editingRow.value
+  const previousFilteredCount = filteredRows.value.length
+  const previousTotalCount = rows.value.length
 
   saving.value = true
 
@@ -1484,7 +1451,12 @@ async function submitForm() {
     }
 
     isModalOpen.value = false
-    await fetchRows()
+    await clearNewLaunchQueryIfNeeded()
+    await refreshRowsAfterMutation({
+      created: wasCreating,
+      previousFilteredCount,
+      previousTotalCount
+    })
   } catch (err) {
     modalError.value = err instanceof Error ? err.message : 'Nao foi possivel salvar o lancamento.'
   } finally {
@@ -1662,22 +1634,29 @@ watch(formTitle, () => {
   }
 })
 
-watch(searchDescription, () => {
-  if (skipSearchPersistence.value) {
-    return
-  }
+watch(activeTab, () => {
+  saveActiveTabToStorage()
+})
 
-  saveFiltersToStorage()
+watch([cardsPeriodMonth, cardsPeriodYear], () => {
+  cardsPeriodFilter.value = buildPeriodKey(cardsPeriodYear.value, cardsPeriodMonth.value)
+})
+
+watch([accountsPeriodMonth, accountsPeriodYear], () => {
+  accountsPeriodFilter.value = buildPeriodKey(accountsPeriodYear.value, accountsPeriodMonth.value)
 })
 
 watch(
-  [periodFilter, cardFilter, personFilter, categoryFilter, accountFilter, quickPaymentFilter, quickTypeFilter, statusFilter, reimbursementLinkFilter],
+  [cardsPeriodFilter, cardsCardFilter, cardsStatusFilter, cardsReimbursementLinkFilter, cardsSearchDescription],
   () => {
-    if (skipSearchPersistence.value) {
-      return
-    }
+    saveCardsFiltersToStorage()
+  }
+)
 
-    saveFiltersToStorage()
+watch(
+  [accountsPeriodFilter, accountsAccountFilter, accountsTypeFilter, accountsCategoryFilter, accountsStatusFilter, accountsReimbursementLinkFilter, accountsSearchDescription],
+  () => {
+    saveAccountsFiltersToStorage()
   }
 )
 
@@ -1690,8 +1669,9 @@ watch(
 
 onMounted(async () => {
   await fetchOptions()
-  restoreFiltersFromStorage()
-  syncQuickPaymentFilterFromCurrentFilters()
+  restoreActiveTabFromStorage()
+  restoreCardsFiltersFromStorage()
+  restoreAccountsFiltersFromStorage()
   await fetchRows()
   await consumeNewLaunchQuery()
 })
@@ -1700,345 +1680,160 @@ onMounted(async () => {
 <template>
   <section class="space-y-5 overflow-x-hidden">
     <AppCard>
-      <div class="flex flex-col gap-3">
-        <div class="flex flex-wrap items-center justify-start gap-2">
-          <AppButton label="Filtros" size="sm" variant="ghost" @click="openFiltersModal" />
-          <AppButton label="Limpar" size="sm" variant="ghost" @click="clearFilters" />
-          <AppButton label="Exportar" size="sm" variant="ghost" :disabled="!filteredRows.length" @click="openExportPreview" />
-          <AppButton label="Novo" size="sm" @click="openCreateModal" />
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
-          <span class="rounded-full bg-primary-light/20 px-2.5 py-1 font-semibold text-foreground">{{ selectedPeriodLabel }}</span>
-          <span v-if="hasPersistedFilters" class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-[11px]">Filtros salvos neste dispositivo</span>
-          <button
-            v-if="hasPersistedFilters"
-            type="button"
-            class="rounded-full border border-border/80 px-2.5 py-1 text-[11px] font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
-            @click="clearPersistedFiltersOnly"
-          >
-            Limpar filtros salvos
-          </button>
-        </div>
-
-        <div class="w-full max-w-xl">
-          <AppInput v-model="searchDescription" label="Pesquisar descrição" placeholder="Digite parte da descrição" />
-        </div>
-
+      <div class="space-y-4">
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Pagamento rápido</span>
-          <div class="w-full overflow-x-auto pb-1">
-            <div class="flex min-w-max items-center gap-2 pr-2">
-              <button
-                type="button"
-                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
-                :class="quickPaymentFilter === 'all' && reimbursementLinkFilter === 'all' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-                @click="applyQuickAllFilters"
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
-                :class="quickPaymentFilter === 'account' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-                @click="applyQuickPaymentFilter('account')"
-              >
-                Conta
-              </button>
-              <button
-                type="button"
-                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
-                :class="quickPaymentFilter === 'cards' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-                @click="applyQuickPaymentFilter('cards')"
-              >
-                Cartões
-              </button>
-              <button
-                v-for="entry in activeCardsForQuickFilter"
-                :key="`quick-card-${entry.id}`"
-                type="button"
-                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
-                :class="quickPaymentFilter === `card:${entry.id}` ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-                @click="applyQuickPaymentFilter(`card:${entry.id}`)"
-              >
-                {{ entry.name }}
-              </button>
-              <button
-                type="button"
-                class="h-8 rounded-full border px-3 text-xs font-semibold transition"
-                :class="reimbursementLinkFilter === 'linked' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-                @click="applyQuickReimbursementFilter"
-              >
-                Reembolso
-              </button>
+          <button
+            type="button"
+            class="h-9 rounded-full border px-4 text-sm font-semibold transition"
+            :class="activeTab === 'cards' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+            @click="switchTab('cards')"
+          >
+            Cartoes
+          </button>
+          <button
+            type="button"
+            class="h-9 rounded-full border px-4 text-sm font-semibold transition"
+            :class="activeTab === 'accounts' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+            @click="switchTab('accounts')"
+          >
+            Contas
+          </button>
+          <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">{{ selectedPeriodLabel }}</span>
+          <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">Total filtrado: {{ formatCurrency(filteredTotalValue) }}</span>
+        </div>
+
+        <div class="grid gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Periodo</label>
+            <select
+              v-if="activeTab === 'cards'"
+              v-model="cardsPeriodMonth"
+              class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+            >
+              <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+            </select>
+            <select
+              v-if="activeTab === 'cards'"
+              v-model="cardsPeriodYear"
+              class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+            >
+              <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
+            </select>
+
+            <select
+              v-if="activeTab === 'accounts'"
+              v-model="accountsPeriodMonth"
+              class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+            >
+              <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+            </select>
+            <select
+              v-if="activeTab === 'accounts'"
+              v-model="accountsPeriodYear"
+              class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+            >
+              <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
+            </select>
+            <AppButton label="Todos os periodos" size="sm" variant="ghost" @click="activeTab === 'cards' ? (cardsPeriodFilter = 'all') : (accountsPeriodFilter = 'all')" />
+          </div>
+
+          <div v-if="activeTab === 'cards'" class="space-y-2">
+            <div class="w-full overflow-x-auto pb-1">
+              <div class="flex min-w-max items-center gap-2">
+                <button type="button" class="h-8 rounded-full border px-3 text-xs font-semibold transition" :class="cardsCardFilter === 'all' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'" @click="cardsCardFilter = 'all'">Todos</button>
+                <button
+                  v-for="entry in activeCardsForQuickFilter"
+                  :key="`cards-chip-${entry.id}`"
+                  type="button"
+                  class="h-8 rounded-full border px-3 text-xs font-semibold transition"
+                  :class="cardsCardFilter === entry.id ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+                  @click="cardsCardFilter = entry.id"
+                >
+                  {{ entry.name }}
+                </button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <AppButton label="Status: Todos" size="sm" :variant="cardsStatusFilter === 'all' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'all'" />
+              <AppButton label="Pendente" size="sm" :variant="cardsStatusFilter === 'pending' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'pending'" />
+              <AppButton label="Pago" size="sm" :variant="cardsStatusFilter === 'paid' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'paid'" />
+              <AppButton label="Cancelado" size="sm" :variant="cardsStatusFilter === 'canceled' ? 'secondary' : 'ghost'" @click="cardsStatusFilter = 'canceled'" />
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <AppButton label="Vinculo: Todos" size="sm" :variant="cardsReimbursementLinkFilter === 'all' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'all'" />
+              <AppButton label="Normais" size="sm" :variant="cardsReimbursementLinkFilter === 'normal' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'normal'" />
+              <AppButton label="Reembolsos" size="sm" :variant="cardsReimbursementLinkFilter === 'reimbursement' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'reimbursement'" />
+              <AppButton label="Vinculados" size="sm" :variant="cardsReimbursementLinkFilter === 'linked' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'linked'" />
+            </div>
+
+            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+              <AppInput v-model="cardsSearchDescription" label="Buscar descricao" placeholder="Digite parte da descricao" />
+              <AppButton label="Limpar filtros" size="sm" variant="ghost" @click="clearActiveTabFilters" />
+              <AppButton :label="exportingCsv ? 'Exportando...' : 'Exportar CSV'" size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" @click="exportCurrentTabCsv" />
+              <AppButton label="Novo" size="sm" @click="openCreateModal" />
             </div>
           </div>
-        </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Tipo rápido</span>
-          <AppButton
-            label="Todos"
-            size="sm"
-            :variant="quickTypeFilter === 'all' ? 'secondary' : 'ghost'"
-            @click="quickTypeFilter = 'all'"
-          />
-          <AppButton
-            label="Entrada"
-            size="sm"
-            :variant="quickTypeFilter === 'income' ? 'secondary' : 'ghost'"
-            @click="quickTypeFilter = 'income'"
-          />
-          <AppButton
-            label="Saída"
-            size="sm"
-            :variant="quickTypeFilter === 'expense' ? 'secondary' : 'ghost'"
-            @click="quickTypeFilter = 'expense'"
-          />
-          <span
-            v-if="quickPaymentFilter !== 'all' || reimbursementLinkFilter === 'linked'"
-            class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-medium text-muted"
-          >
-            {{ reimbursementLinkFilter === 'linked' ? 'Pagamento rápido: Reembolso' : `Pagamento rápido: ${getQuickPaymentFilterLabel(quickPaymentFilter)}` }}
-          </span>
-          <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">
-            Total filtrado: {{ formatCurrency(filteredTotalValue) }}
-          </span>
+          <div v-else class="space-y-2">
+            <div class="w-full overflow-x-auto pb-1">
+              <div class="flex min-w-max items-center gap-2">
+                <button type="button" class="h-8 rounded-full border px-3 text-xs font-semibold transition" :class="accountsAccountFilter === 'all' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'" @click="accountsAccountFilter = 'all'">Todas as contas</button>
+                <button
+                  v-for="entry in activeAccountsForQuickFilter"
+                  :key="`accounts-chip-${entry.id}`"
+                  type="button"
+                  class="h-8 rounded-full border px-3 text-xs font-semibold transition"
+                  :class="accountsAccountFilter === entry.id ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+                  @click="accountsAccountFilter = entry.id"
+                >
+                  {{ entry.name }}
+                </button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <AppButton label="Tipo: Todos" size="sm" :variant="accountsTypeFilter === 'all' ? 'secondary' : 'ghost'" @click="accountsTypeFilter = 'all'" />
+              <AppButton label="Entrada" size="sm" :variant="accountsTypeFilter === 'income' ? 'secondary' : 'ghost'" @click="accountsTypeFilter = 'income'" />
+              <AppButton label="Saida" size="sm" :variant="accountsTypeFilter === 'expense' ? 'secondary' : 'ghost'" @click="accountsTypeFilter = 'expense'" />
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Categoria</label>
+              <select v-model="accountsCategoryFilter" class="h-9 w-full rounded-xl border border-border bg-surface px-3 text-xs text-foreground sm:max-w-sm">
+                <option value="all">Todas</option>
+                <option v-for="entry in categories" :key="`accounts-category-${entry.id}`" :value="entry.id">{{ entry.name }}</option>
+              </select>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <AppButton label="Status: Todos" size="sm" :variant="accountsStatusFilter === 'all' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'all'" />
+              <AppButton label="Pendente" size="sm" :variant="accountsStatusFilter === 'pending' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'pending'" />
+              <AppButton label="Pago" size="sm" :variant="accountsStatusFilter === 'paid' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'paid'" />
+              <AppButton label="Cancelado" size="sm" :variant="accountsStatusFilter === 'canceled' ? 'secondary' : 'ghost'" @click="accountsStatusFilter = 'canceled'" />
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <AppButton label="Vinculo: Todos" size="sm" :variant="accountsReimbursementLinkFilter === 'all' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'all'" />
+              <AppButton label="Normais" size="sm" :variant="accountsReimbursementLinkFilter === 'normal' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'normal'" />
+              <AppButton label="Reembolsos" size="sm" :variant="accountsReimbursementLinkFilter === 'reimbursement' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'reimbursement'" />
+              <AppButton label="Vinculados" size="sm" :variant="accountsReimbursementLinkFilter === 'linked' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'linked'" />
+            </div>
+
+            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+              <AppInput v-model="accountsSearchDescription" label="Buscar descricao" placeholder="Digite parte da descricao" />
+              <AppButton label="Limpar filtros" size="sm" variant="ghost" @click="clearActiveTabFilters" />
+              <AppButton :label="exportingCsv ? 'Exportando...' : 'Exportar CSV'" size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" @click="exportCurrentTabCsv" />
+              <AppButton label="Novo" size="sm" @click="openCreateModal" />
+            </div>
+          </div>
         </div>
       </div>
     </AppCard>
 
-    <AppModal
-      v-model="isFiltersModalOpen"
-      title="Filtros"
-      description="Aplique os filtros para atualizar os resultados da tabela."
-      max-width-class="max-w-3xl"
-    >
-      <div class="space-y-4">
-        <div class="space-y-2">
-          <label class="flex items-center gap-2 text-sm font-medium text-foreground">
-            <input v-model="draftAllPeriods" type="checkbox" class="h-4 w-4 rounded border-border" />
-            Todos os períodos
-          </label>
-          <p class="text-xs text-muted">Marque para visualizar todos os lançamentos sem filtro de mês e ano.</p>
-        </div>
-
-        <div class="grid gap-3 md:grid-cols-3">
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Ano</label>
-            <select v-model="draftFilterYear" :disabled="draftAllPeriods" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60">
-              <option v-for="year in filterYearOptions" :key="year" :value="year">{{ year }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Mês</label>
-            <select v-model="draftFilterMonth" :disabled="draftAllPeriods" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60">
-              <option v-for="option in filterMonthOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Cartão</label>
-            <select v-model="draftCardFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="all">Todos</option>
-              <option v-for="entry in cards" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Responsável</label>
-            <select v-model="draftPersonFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="all">Todos</option>
-              <option v-for="entry in people" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Categoria</label>
-            <select v-model="draftCategoryFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="all">Todas</option>
-              <option v-for="entry in categories" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Conta</label>
-            <select v-model="draftAccountFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="all">Todas</option>
-              <option v-for="entry in accounts" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Status</label>
-            <select v-model="draftStatusFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="all">Todos</option>
-              <option v-for="entry in TRANSACTION_STATUS" :key="entry" :value="entry">{{ transactionStatusLabelMap[entry] }}</option>
-            </select>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-foreground">Vinculo</label>
-            <select v-model="draftReimbursementLinkFilter" class="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground">
-              <option value="all">Todos</option>
-              <option value="normal">Normais</option>
-              <option value="linked">Vinculados / reembolsos</option>
-            </select>
-          </div>
-        </div>
-
-        <p v-if="filtersModalError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ filtersModalError }}</p>
-      </div>
-
-      <template #footer>
-        <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <AppButton label="Limpar filtros" variant="ghost" @click="clearFilters" />
-          <AppButton label="Aplicar filtros" variant="secondary" @click="applyFilters" />
-        </div>
-      </template>
-    </AppModal>
-
-    <AppModal
-      v-model="isExportPreviewOpen"
-      title="Preview de exportacao"
-      description="Revise os lancamentos filtrados antes de salvar imagem ou exportar PDF."
-      max-width-class="max-w-6xl"
-    >
-      <div class="space-y-4">
-        <div class="rounded-xl border border-border/80 bg-primary-light/10 px-4 py-2 text-[11px] text-muted">
-          O preview abaixo e exatamente o mesmo layout exportado em PNG e PDF.
-        </div>
-
-        <div class="flex justify-center">
-          <div ref="exportPreviewRef" class="w-full max-w-5xl rounded-xl border border-border bg-[#f6f7f2] p-6 text-[#2f3526] shadow-soft">
-            <div class="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
-              <div class="flex min-w-[240px] items-center gap-3">
-                <img src="/pwrdevs-logo.png" alt="PWRDEVS Finance" class="h-12 w-12 rounded-md border border-border/60 bg-[#eef1df] p-1" />
-                <div>
-                  <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#5c6642]">PWRDEVS Finance</p>
-                  <h3 class="text-lg font-semibold text-[#2f3526]">Resumo de lancamentos filtrados</h3>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <span class="inline-flex items-center rounded-full border border-[#8d9c68]/45 bg-[#e8edd5] px-3 py-1 text-xs font-semibold text-[#425030]">
-                  {{ filteredRows.length }} itens
-                </span>
-              </div>
-            </div>
-
-            <div class="mt-4 space-y-4">
-              <div class="grid gap-3 md:hidden">
-                <article
-                  v-for="row in filteredRows"
-                  :key="`mobile-${row.id}`"
-                  class="rounded-lg border border-border/80 bg-[#fdfdf9] p-3 shadow-sm"
-                >
-                  <div class="flex items-start justify-between gap-3 border-b border-border/70 pb-2">
-                    <div>
-                      <p class="text-[11px] font-semibold uppercase tracking-wide text-[#66704f]">{{ formatDateBr(row.instance_date) }}</p>
-                      <p class="mt-1 text-sm font-semibold leading-5 text-[#2f3526]">{{ row.description_text }}</p>
-                    </div>
-                    <span class="shrink-0 rounded-full bg-[#e8edd5] px-2.5 py-1 text-[11px] font-semibold text-[#425030]">
-                      {{ row.installment_label }}
-                    </span>
-                  </div>
-
-                  <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-[#4b543f]">
-                    <div>
-                      <dt class="uppercase tracking-wide text-[#7a8466]">Responsável</dt>
-                      <dd class="mt-0.5 whitespace-nowrap text-sm font-medium text-[#2f3526]">{{ row.person_name }}</dd>
-                    </div>
-                    <div>
-                      <dt class="uppercase tracking-wide text-[#7a8466]">Categoria</dt>
-                      <dd class="mt-0.5 text-sm font-medium text-[#2f3526]">{{ row.category_name }}</dd>
-                    </div>
-                    <div>
-                      <dt class="uppercase tracking-wide text-[#7a8466]">Cartão</dt>
-                      <dd class="mt-0.5 text-sm font-medium text-[#2f3526]">{{ row.card_name }}</dd>
-                    </div>
-                    <div>
-                      <dt class="uppercase tracking-wide text-[#7a8466]">Vínculo</dt>
-                      <dd class="mt-0.5 text-sm font-medium text-[#2f3526]">{{ row.link_badge }}</dd>
-                    </div>
-                    <div class="col-span-2 flex items-center justify-between rounded-md bg-[#eef2de] px-3 py-2">
-                      <span class="text-[11px] font-semibold uppercase tracking-wide text-[#66704f]">Valor</span>
-                      <span class="text-sm font-semibold tabular-nums text-[#2f3526] whitespace-nowrap">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</span>
-                    </div>
-                  </dl>
-                </article>
-
-                <div class="rounded-lg border border-border/80 bg-[#c0cf8f] px-4 py-3 text-[#2f3526] shadow-sm">
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-sm font-semibold uppercase tracking-wide">Total</span>
-                    <span class="text-base font-semibold tabular-nums whitespace-nowrap">{{ formatCurrency(exportTotalEffective) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="hidden overflow-hidden rounded-lg border border-border/80 bg-[#fdfdf9] md:block">
-                <div class="overflow-x-auto">
-                  <table class="w-full table-fixed text-xs text-[#2f3526]">
-                  <colgroup>
-                    <col class="w-[12%]" />
-                    <col class="w-[27%]" />
-                    <col class="w-[15%]" />
-                    <col class="w-[14%]" />
-                    <col class="w-[11%]" />
-                    <col class="w-[7%]" />
-                    <col class="w-[14%]" />
-                  </colgroup>
-                  <thead>
-                    <tr class="bg-[#d7e0b5] text-[11px] font-semibold uppercase tracking-wide text-[#334127]">
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Data</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Descricao</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle whitespace-nowrap">Responsavel</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Categoria</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Cartao</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-center align-middle">Parcela</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-right align-middle whitespace-nowrap">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="row in filteredRows"
-                      :key="row.id"
-                      class="border-b border-border/70 text-[#2f3526] odd:bg-[#fdfdf9] even:bg-[#f3f6e7]"
-                    >
-                      <td class="px-3 py-2.5 text-left align-middle">{{ formatDateBr(row.instance_date) }}</td>
-                      <td class="px-3 py-2.5 text-left align-middle">{{ row.description_text }}</td>
-                      <td class="px-3 py-2.5 text-left align-middle whitespace-nowrap">{{ row.person_name }}</td>
-                      <td class="px-3 py-2.5 text-left align-middle">{{ row.category_name }}</td>
-                      <td class="px-3 py-2.5 text-left align-middle">{{ row.card_name }}</td>
-                      <td class="px-3 py-2.5 text-center align-middle">{{ row.installment_label }}</td>
-                      <td class="px-3 py-2.5 text-right align-middle tabular-nums whitespace-nowrap">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</td>
-                    </tr>
-                  </tbody>
-                  <tfoot>
-                    <tr class="bg-[#c0cf8f] font-semibold text-[#2f3526]">
-                      <td colspan="6" class="px-3 py-3 text-right align-middle">Total</td>
-                      <td class="px-3 py-3 text-right align-middle text-xs tabular-nums whitespace-nowrap">{{ formatCurrency(exportTotalEffective) }}</td>
-                    </tr>
-                  </tfoot>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-          <AppButton label="Fechar" variant="ghost" block @click="isExportPreviewOpen = false" />
-          <AppButton :label="exportingImage ? 'Exportando PNG...' : 'Exportar PNG'" variant="secondary" :disabled="exportingImage" block @click="savePreviewAsImage" />
-          <AppButton :label="exportingPdf ? 'Exportando PDF...' : 'Exportar PDF'" :disabled="exportingPdf" block @click="exportPreviewPdf" />
-        </div>
-      </template>
-    </AppModal>
-
     <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
+    <p v-if="pageNotice" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">{{ pageNotice }}</p>
 
     <AppCard title="Tabela de lançamentos" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
       <div class="overflow-x-auto">
@@ -2062,13 +1857,13 @@ onMounted(async () => {
                 v-if="(row as TransactionInstanceItem).card_id"
                 class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
               >
-                FATURA: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
+                Fatura: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
               </span>
               <span
                 v-else-if="Boolean((row as TransactionInstanceItem).linked_financial_competence_label)"
                 class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
               >
-                FATURA: {{ (row as { linked_financial_competence_label?: string | null }).linked_financial_competence_label }}
+                Vinculado à fatura: {{ (row as { linked_financial_competence_label?: string | null }).linked_financial_competence_label }}
               </span>
             </div>
           </template>
