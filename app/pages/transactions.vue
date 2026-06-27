@@ -2001,39 +2001,37 @@ onMounted(async () => {
 
         <FilterToolbar>
           <template #line1>
-            <div class="grid w-full gap-2 xl:grid-cols-6">
-              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+            <div class="grid w-full gap-1.5 md:grid-cols-2 xl:grid-cols-6">
+              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Período</p>
-                <div class="grid grid-cols-2 gap-2">
-                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodMonth" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                <div class="grid grid-cols-4 gap-1">
+                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodMonth" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
                     <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
                   </select>
-                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodYear" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodYear" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
                     <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
                   </select>
-                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodMonth" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodMonth" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
                     <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
                   </select>
-                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodYear" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodYear" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
                     <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
                   </select>
+                  <input v-if="activeTab === 'cards'" v-model="cardsDayStart" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
+                  <input v-if="activeTab === 'cards'" v-model="cardsDayEnd" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
+                  <input v-if="activeTab === 'accounts'" v-model="accountsDayStart" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
+                  <input v-if="activeTab === 'accounts'" v-model="accountsDayEnd" class="h-7 min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
                 </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <input v-if="activeTab === 'cards'" v-model="cardsDayStart" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
-                  <input v-if="activeTab === 'cards'" v-model="cardsDayEnd" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
-                  <input v-if="activeTab === 'accounts'" v-model="accountsDayStart" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
-                  <input v-if="activeTab === 'accounts'" v-model="accountsDayEnd" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
-                </div>
-                <label class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
+                <label class="inline-flex h-6 items-center gap-2 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
                   <input class="h-3.5 w-3.5 rounded border-border" type="checkbox" :checked="activeTab === 'cards' ? cardsPeriodFilter === 'all' : accountsPeriodFilter === 'all'" @change="activeTab === 'cards' ? (cardsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(cardsPeriodYear, cardsPeriodMonth)) : (accountsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(accountsPeriodYear, accountsPeriodMonth))">
                   Todos os períodos
                 </label>
                 <p v-if="!isDayRangeAvailable" class="text-[10px] text-muted">Disponível ao selecionar mês/ano.</p>
               </div>
 
-              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Forma de pagamento</p>
-                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+                <div class="flex flex-wrap items-center gap-1">
                   <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === 'all')" @click="activeTab === 'cards' ? (cardsCardFilter = 'all') : (accountsAccountFilter = 'all')">Todos</button>
                   <button
                     v-for="entry in (activeTab === 'cards' ? activeCardsForQuickFilter : activeAccountsForQuickFilter)"
@@ -2047,27 +2045,27 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{{ activeTab === 'cards' ? 'Parcelamento' : 'Tipo' }}</p>
-                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap" v-if="activeTab === 'cards'">
+                <div class="flex flex-wrap items-center gap-1" v-if="activeTab === 'cards'">
                   <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'all')" @click="cardsInstallmentFilter = 'all'">Todos</button>
                   <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'installment')" @click="cardsInstallmentFilter = 'installment'">Parceladas</button>
                   <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'single')" @click="cardsInstallmentFilter = 'single'">À vista</button>
                 </div>
-                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap" v-else>
+                <div class="flex flex-wrap items-center gap-1" v-else>
                   <button type="button" :class="filterChipClass(accountsTypeFilter === 'all')" @click="accountsTypeFilter = 'all'">Todos</button>
                   <button type="button" :class="filterChipClass(accountsTypeFilter === 'income')" @click="accountsTypeFilter = 'income'">Entradas</button>
                   <button type="button" :class="filterChipClass(accountsTypeFilter === 'expense')" @click="accountsTypeFilter = 'expense'">Saídas</button>
                 </div>
-                <select v-if="activeTab === 'accounts'" v-model="accountsCategoryFilter" class="h-8 w-full min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                <select v-if="activeTab === 'accounts'" v-model="accountsCategoryFilter" class="h-7 w-full min-w-0 rounded-lg border border-border bg-surface px-2 text-[11px] text-foreground">
                   <option value="all">Categoria: Todas</option>
                   <option v-for="entry in categories" :key="`accounts-category-${entry.id}`" :value="entry.id">{{ entry.name }}</option>
                 </select>
               </div>
 
-              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Status</p>
-                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+                <div class="flex flex-wrap items-center gap-1">
                   <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'all')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'all') : (accountsStatusFilter = 'all')">Todos</button>
                   <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'pending')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'pending') : (accountsStatusFilter = 'pending')">Pendente</button>
                   <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'paid')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'paid') : (accountsStatusFilter = 'paid')">Pago</button>
@@ -2075,9 +2073,9 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Vínculo</p>
-                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+                <div class="flex flex-wrap items-center gap-1">
                   <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'all')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'all') : (accountsReimbursementLinkFilter = 'all')">Todos</button>
                   <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'normal')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'normal') : (accountsReimbursementLinkFilter = 'normal')">Originais</button>
                   <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'reimbursement')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'reimbursement') : (accountsReimbursementLinkFilter = 'reimbursement')">Reembolsos</button>
@@ -2085,37 +2083,35 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5 xl:col-span-2">
+              <div class="space-y-1 rounded-lg border border-border/80 bg-background/25 p-1.5">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Busca e ações</p>
-                <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <div class="grid gap-1 sm:grid-cols-[minmax(0,1fr)_84px_84px_auto]">
                   <div class="relative">
-                    <input v-model="activeSearchDescriptionModel" class="h-9 w-full rounded-xl border border-border bg-surface px-3 pr-8 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
+                    <input v-model="activeSearchDescriptionModel" class="h-8 w-full rounded-xl border border-border bg-surface px-2.5 pr-8 text-[11px] text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
                     <button v-if="activeSearchDescriptionModel" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted transition hover:text-foreground" title="Limpar busca" aria-label="Limpar busca" @click="clearActiveSearch">✕</button>
                   </div>
-                  <div class="grid grid-cols-2 gap-2">
-                    <input v-if="activeTab === 'cards'" v-model="cardsValueMin" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor mín." type="number" step="0.01">
-                    <input v-if="activeTab === 'cards'" v-model="cardsValueMax" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor máx." type="number" step="0.01">
-                    <input v-if="activeTab === 'accounts'" v-model="accountsValueMin" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor mín." type="number" step="0.01">
-                    <input v-if="activeTab === 'accounts'" v-model="accountsValueMax" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor máx." type="number" step="0.01">
+                  <input v-if="activeTab === 'cards'" v-model="cardsValueMin" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Mín." type="number" step="0.01">
+                  <input v-if="activeTab === 'cards'" v-model="cardsValueMax" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Máx." type="number" step="0.01">
+                  <input v-if="activeTab === 'accounts'" v-model="accountsValueMin" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Mín." type="number" step="0.01">
+                  <input v-if="activeTab === 'accounts'" v-model="accountsValueMax" class="h-8 min-w-0 rounded-xl border border-border bg-surface px-2 text-[11px] text-foreground" placeholder="Máx." type="number" step="0.01">
+                  <div class="flex items-center justify-end gap-1">
+                    <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
+                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4h8v2" />
+                        <path d="M19 6l-1 14H6L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </AppButton>
+                    <AppButton size="sm" variant="ghost" :disabled="!filteredRows.length" title="Pré-visualizar exportação" aria-label="Pré-visualizar exportação" @click="openExportPreview">
+                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 3v12" />
+                        <path d="M7 10l5 5 5-5" />
+                        <path d="M5 21h14" />
+                      </svg>
+                    </AppButton>
                   </div>
-                </div>
-                <div class="flex flex-wrap items-center justify-end gap-2">
-                  <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M3 6h18" />
-                      <path d="M8 6V4h8v2" />
-                      <path d="M19 6l-1 14H6L5 6" />
-                      <path d="M10 11v6" />
-                      <path d="M14 11v6" />
-                    </svg>
-                  </AppButton>
-                  <AppButton size="sm" variant="ghost" :disabled="!filteredRows.length" title="Pré-visualizar exportação" aria-label="Pré-visualizar exportação" @click="openExportPreview">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M12 3v12" />
-                      <path d="M7 10l5 5 5-5" />
-                      <path d="M5 21h14" />
-                    </svg>
-                  </AppButton>
                 </div>
               </div>
             </div>
