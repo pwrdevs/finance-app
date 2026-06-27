@@ -8,6 +8,8 @@ interface SourceTransactionSummary {
   description: string | null
 }
 
+type ReimbursementRole = 'original' | 'reimbursement' | null
+
 interface TransactionInstanceSummaryRecord {
   id: string
   instance_date: string
@@ -17,6 +19,8 @@ interface TransactionInstanceSummaryRecord {
   is_checked: boolean
   created_at: string
   card_id: string | null
+  reimbursement_group_id: string | null
+  reimbursement_role: ReimbursementRole
   card: {
     closing_day: number | null
     due_day: number | null
@@ -144,6 +148,91 @@ function resolveFinancialEffectiveDate(record: { instance_date: string; card_id:
   })
 }
 
+function pickOriginalForLinkedReimbursement(
+  reimbursementRow: TransactionInstanceSummaryRecord,
+  originals: TransactionInstanceSummaryRecord[]
+) {
+  if (!originals.length) {
+    return null
+  }
+
+  if (originals.length === 1) {
+    return originals[0]
+  }
+
+  const sameDate = originals.find(entry => entry.instance_date === reimbursementRow.instance_date)
+
+  if (sameDate) {
+    return sameDate
+  }
+
+  const targetDate = Date.parse(reimbursementRow.instance_date)
+
+  if (Number.isNaN(targetDate)) {
+    return originals[0]
+  }
+
+  let nearest = originals[0]
+  let nearestDiff = Number.POSITIVE_INFINITY
+
+  for (const entry of originals) {
+    const entryDate = Date.parse(entry.instance_date)
+
+    if (Number.isNaN(entryDate)) {
+      continue
+    }
+
+    const diff = Math.abs(entryDate - targetDate)
+
+    if (diff < nearestDiff) {
+      nearest = entry
+      nearestDiff = diff
+    }
+  }
+
+  return nearest
+}
+
+function buildFinancialEffectiveDateMap(records: TransactionInstanceSummaryRecord[]) {
+  const effectiveDateById = new Map<string, string>()
+  const originalsByGroup = new Map<string, TransactionInstanceSummaryRecord[]>()
+
+  for (const record of records) {
+    effectiveDateById.set(record.id, resolveFinancialEffectiveDate(record))
+
+    if (!record.reimbursement_group_id || record.reimbursement_role !== 'original') {
+      continue
+    }
+
+    const existing = originalsByGroup.get(record.reimbursement_group_id) ?? []
+    existing.push(record)
+    originalsByGroup.set(record.reimbursement_group_id, existing)
+  }
+
+  for (const record of records) {
+    if (!record.reimbursement_group_id || record.reimbursement_role !== 'reimbursement') {
+      continue
+    }
+
+    const originals = originalsByGroup.get(record.reimbursement_group_id) ?? []
+    const linkedOriginal = pickOriginalForLinkedReimbursement(record, originals)
+
+    if (!linkedOriginal?.card_id) {
+      continue
+    }
+
+    const linkedFinancialDate = effectiveDateById.get(linkedOriginal.id)
+
+    if (!linkedFinancialDate) {
+      continue
+    }
+
+    effectiveDateById.set(record.id, linkedFinancialDate)
+  }
+
+  return effectiveDateById
+}
+
 export function useFinancialSummary() {
   const supabase = useSupabaseClient()
   const session = useSupabaseSession()
@@ -188,6 +277,8 @@ export function useFinancialSummary() {
         is_checked,
         created_at,
         card_id,
+        reimbursement_group_id,
+        reimbursement_role,
         card:card_id (
           closing_day,
           due_day
@@ -208,9 +299,67 @@ export function useFinancialSummary() {
       throw error
     }
 
-    const rows = (data ?? []) as TransactionInstanceSummaryRecord[]
+    const baseRows = (data ?? []) as TransactionInstanceSummaryRecord[]
+    const reimbursementGroupsWithOriginalCard = Array.from(new Set(
+      baseRows
+        .filter(row => row.reimbursement_role === 'original' && row.reimbursement_group_id && Boolean(row.card_id))
+        .map(row => row.reimbursement_group_id as string)
+    ))
+
+    let linkedReimbursementRows: TransactionInstanceSummaryRecord[] = []
+
+    if (reimbursementGroupsWithOriginalCard.length) {
+      const { data: linkedData, error: linkedError } = await supabase
+        .from('transaction_instances')
+        .select(`
+          id,
+          instance_date,
+          expected_value,
+          real_value,
+          status,
+          is_checked,
+          created_at,
+          card_id,
+          reimbursement_group_id,
+          reimbursement_role,
+          card:card_id (
+            closing_day,
+            due_day
+          ),
+          source_transaction:source_transaction_id (
+            id,
+            title,
+            type,
+            description
+          )
+        `)
+        .in('reimbursement_group_id', reimbursementGroupsWithOriginalCard)
+        .eq('reimbursement_role', 'reimbursement')
+
+      if (linkedError) {
+        throw linkedError
+      }
+
+      linkedReimbursementRows = (linkedData ?? []) as TransactionInstanceSummaryRecord[]
+    }
+
+    const mergedRowsMap = new Map<string, TransactionInstanceSummaryRecord>()
+
+    for (const row of baseRows) {
+      mergedRowsMap.set(row.id, row)
+    }
+
+    for (const row of linkedReimbursementRows) {
+      mergedRowsMap.set(row.id, row)
+    }
+
+    const rows = Array.from(mergedRowsMap.values())
+    const effectiveDateById = buildFinancialEffectiveDateMap(rows)
     const selectedMonthKey = toMonthKey(filters.year, filters.month)
-    const rowsInFinancialMonth = rows.filter((row) => toMonthKeyFromDate(resolveFinancialEffectiveDate(row)) === selectedMonthKey)
+    const rowsInFinancialMonth = rows.filter((row) => {
+      const effectiveDate = effectiveDateById.get(row.id) ?? resolveFinancialEffectiveDate(row)
+      return toMonthKeyFromDate(effectiveDate) === selectedMonthKey
+    })
 
     const launches: MonthlyLaunchItem[] = rowsInFinancialMonth.map((row) => ({
       id: row.id,
@@ -323,11 +472,14 @@ export function useFinancialSummary() {
     const { data: instanceRows, error: instanceError } = await supabase
       .from('transaction_instances')
       .select(`
+          id,
           instance_date,
           expected_value,
           real_value,
           status,
           card_id,
+          reimbursement_group_id,
+          reimbursement_role,
           card:card_id (
             closing_day,
             due_day
@@ -349,14 +501,19 @@ export function useFinancialSummary() {
 
     const monthBalanceMap = new Map<string, { income: number; expense: number }>()
     const records = (instanceRows ?? []) as Array<{
+      id: string
       instance_date: string
       expected_value: number
       real_value: number | null
       status: TransactionStatus
       source_transaction: { type: TransactionType } | null
       card_id: string | null
+      reimbursement_group_id: string | null
+      reimbursement_role: ReimbursementRole
       card: { closing_day: number | null; due_day: number | null } | null
     }>
+
+    const effectiveDateById = buildFinancialEffectiveDateMap(records as TransactionInstanceSummaryRecord[])
 
     for (const record of records) {
       if (record.status === 'canceled') {
@@ -365,7 +522,7 @@ export function useFinancialSummary() {
 
       const type = record.source_transaction?.type || 'expense'
       const value = resolveInstanceValue(toNumber(record.expected_value), record.real_value == null ? null : Number(record.real_value))
-      const financialEffectiveDate = resolveFinancialEffectiveDate(record)
+      const financialEffectiveDate = effectiveDateById.get(record.id) ?? resolveFinancialEffectiveDate(record)
       const financialMonthKey = toMonthKeyFromDate(financialEffectiveDate)
 
       if (financialMonthKey > toMonthKey(selectedYear, selectedMonth)) {
@@ -419,6 +576,7 @@ export function useFinancialSummary() {
     }
 
     const months = fullTimeline.slice(-projectionMonths)
+    const firstMonthEntry = fullTimeline[0]
     const selectedMonthEntry = fullTimeline.at(-1)
     const selectedMonthBalance = selectedMonthEntry?.monthBalance ?? 0
     const selectedMonthAccumulatedBalance = selectedMonthEntry?.accumulatedBalance ?? initialBalance
@@ -427,8 +585,8 @@ export function useFinancialSummary() {
 
     return {
       initialBalance,
-      firstMonthBalance: selectedMonthBalance,
-      firstMonthAccumulatedBalance: selectedMonthAccumulatedBalance,
+      firstMonthBalance: firstMonthEntry?.monthBalance ?? selectedMonthBalance,
+      firstMonthAccumulatedBalance: firstMonthEntry?.accumulatedBalance ?? selectedMonthAccumulatedBalance,
       selectedMonthBalance,
       selectedMonthAccumulatedBalance,
       minimumAccumulatedBalance: safeMinimum,
