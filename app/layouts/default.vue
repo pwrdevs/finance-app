@@ -8,11 +8,9 @@ const { isAdmin } = useAccess()
 const sidebarLinks = computed(() => {
   const links = [
     { label: 'Painel', to: '/dashboard' },
-    { label: 'Responsáveis', to: '/people' },
-    { label: 'Contas', to: '/accounts' },
-    { label: 'Categorias', to: '/categories' },
-    { label: 'Cartões', to: '/cards' },
-    { label: 'Lançamentos', to: '/transactions' }
+    { label: 'Cadastros', to: '/cadastro' },
+    { label: 'Conta', to: '/transactions?tab=accounts' },
+    { label: 'Cartão', to: '/transactions?tab=cards' }
   ]
 
   if (isAdmin.value) {

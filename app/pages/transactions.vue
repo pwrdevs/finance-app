@@ -48,8 +48,29 @@ const pageNotice = ref('')
 const modalError = ref('')
 const scopeModalError = ref('')
 
+const route = useRoute()
+const router = useRouter()
+
+function normalizeTabQuery(rawTab: unknown): 'cards' | 'accounts' | null {
+  const tabQuery = typeof rawTab === 'string' ? rawTab.toLowerCase() : ''
+
+  if (tabQuery === 'cards' || tabQuery === 'card' || tabQuery === 'cartao' || tabQuery === 'cartão') {
+    return 'cards'
+  }
+
+  if (tabQuery === 'accounts' || tabQuery === 'account' || tabQuery === 'conta') {
+    return 'accounts'
+  }
+
+  return null
+}
+
+const routeLockedTab = computed(() => normalizeTabQuery(route.query.tab))
+const isTabLocked = computed(() => routeLockedTab.value !== null)
+const lockedTabLabel = computed(() => routeLockedTab.value === 'accounts' ? 'Conta' : 'Cartão')
+
 const monthYear = ref(new Date().toISOString().slice(0, 7))
-const activeTab = ref<'cards' | 'accounts'>('cards')
+const activeTab = ref<'cards' | 'accounts'>(normalizeTabQuery(route.query.tab) ?? 'cards')
 const { month: initialPeriodMonth, year: initialPeriodYear } = parseMonthYear(monthYear.value)
 const cardsPeriodMonth = ref(String(initialPeriodMonth).padStart(2, '0'))
 const cardsPeriodYear = ref(String(initialPeriodYear))
@@ -69,9 +90,6 @@ const accountsCategoryFilter = ref('all')
 const accountsStatusFilter = ref<'all' | TransactionStatus>('all')
 const accountsReimbursementLinkFilter = ref<'all' | 'normal' | 'reimbursement' | 'linked'>('all')
 const accountsSearchDescription = ref('')
-
-const route = useRoute()
-const router = useRouter()
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
@@ -451,6 +469,21 @@ function restoreAccountsFiltersFromStorage() {
 
 function switchTab(tab: 'cards' | 'accounts') {
   activeTab.value = tab
+  saveActiveTabToStorage()
+}
+
+function resolveTabFromRouteQuery() {
+  return normalizeTabQuery(route.query.tab)
+}
+
+function applyTabFromRouteQuery() {
+  const routeTab = resolveTabFromRouteQuery()
+
+  if (!routeTab) {
+    return
+  }
+
+  activeTab.value = routeTab
   saveActiveTabToStorage()
 }
 
@@ -1667,9 +1700,17 @@ watch(
   }
 )
 
+watch(
+  () => route.query.tab,
+  () => {
+    applyTabFromRouteQuery()
+  }
+)
+
 onMounted(async () => {
   await fetchOptions()
   restoreActiveTabFromStorage()
+  applyTabFromRouteQuery()
   restoreCardsFiltersFromStorage()
   restoreAccountsFiltersFromStorage()
   await fetchRows()
@@ -1682,59 +1723,64 @@ onMounted(async () => {
     <AppCard>
       <div class="space-y-4">
         <div class="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            class="h-9 rounded-full border px-4 text-sm font-semibold transition"
-            :class="activeTab === 'cards' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-            @click="switchTab('cards')"
-          >
-            Cartoes
-          </button>
-          <button
-            type="button"
-            class="h-9 rounded-full border px-4 text-sm font-semibold transition"
-            :class="activeTab === 'accounts' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
-            @click="switchTab('accounts')"
-          >
-            Contas
-          </button>
+          <template v-if="!isTabLocked">
+            <button
+              type="button"
+              class="h-9 rounded-full border px-4 text-sm font-semibold transition"
+              :class="activeTab === 'cards' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+              @click="switchTab('cards')"
+            >
+              Cartoes
+            </button>
+            <button
+              type="button"
+              class="h-9 rounded-full border px-4 text-sm font-semibold transition"
+              :class="activeTab === 'accounts' ? 'border-primary-dark bg-primary-light/30 text-foreground' : 'border-border bg-surface text-muted hover:text-foreground'"
+              @click="switchTab('accounts')"
+            >
+              Contas
+            </button>
+          </template>
+          <span v-else class="h-9 rounded-full border border-primary-dark bg-primary-light/30 px-4 text-sm font-semibold leading-9 text-foreground">{{ lockedTabLabel }}</span>
           <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">{{ selectedPeriodLabel }}</span>
           <span class="rounded-full border border-border/80 bg-surface px-2.5 py-1 text-xs font-semibold text-foreground">Total filtrado: {{ formatCurrency(filteredTotalValue) }}</span>
         </div>
 
-        <div class="grid gap-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <label class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Periodo</label>
-            <select
-              v-if="activeTab === 'cards'"
-              v-model="cardsPeriodMonth"
-              class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-            >
-              <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-            </select>
-            <select
-              v-if="activeTab === 'cards'"
-              v-model="cardsPeriodYear"
-              class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-            >
-              <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
-            </select>
+        <div class="grid gap-2 rounded-2xl border border-border/70 bg-background/40 p-2.5">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Periodo</label>
+              <select
+                v-if="activeTab === 'cards'"
+                v-model="cardsPeriodMonth"
+                class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+              >
+                <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+              </select>
+              <select
+                v-if="activeTab === 'cards'"
+                v-model="cardsPeriodYear"
+                class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+              >
+                <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
+              </select>
 
-            <select
-              v-if="activeTab === 'accounts'"
-              v-model="accountsPeriodMonth"
-              class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-            >
-              <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-            </select>
-            <select
-              v-if="activeTab === 'accounts'"
-              v-model="accountsPeriodYear"
-              class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
-            >
-              <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
-            </select>
-            <AppButton label="Todos os periodos" size="sm" variant="ghost" @click="activeTab === 'cards' ? (cardsPeriodFilter = 'all') : (accountsPeriodFilter = 'all')" />
+              <select
+                v-if="activeTab === 'accounts'"
+                v-model="accountsPeriodMonth"
+                class="h-9 min-w-[9rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+              >
+                <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+              </select>
+              <select
+                v-if="activeTab === 'accounts'"
+                v-model="accountsPeriodYear"
+                class="h-9 min-w-[7rem] rounded-xl border border-border bg-surface px-3 text-xs text-foreground"
+              >
+                <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
+              </select>
+              <AppButton label="Todos os periodos" size="sm" variant="ghost" @click="activeTab === 'cards' ? (cardsPeriodFilter = 'all') : (accountsPeriodFilter = 'all')" />
+            </div>
           </div>
 
           <div v-if="activeTab === 'cards'" class="space-y-2">
@@ -1768,11 +1814,24 @@ onMounted(async () => {
               <AppButton label="Vinculados" size="sm" :variant="cardsReimbursementLinkFilter === 'linked' ? 'secondary' : 'ghost'" @click="cardsReimbursementLinkFilter = 'linked'" />
             </div>
 
-            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
               <AppInput v-model="cardsSearchDescription" label="Buscar descricao" placeholder="Digite parte da descricao" />
-              <AppButton label="Limpar filtros" size="sm" variant="ghost" @click="clearActiveTabFilters" />
-              <AppButton :label="exportingCsv ? 'Exportando...' : 'Exportar CSV'" size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" @click="exportCurrentTabCsv" />
-              <AppButton label="Novo" size="sm" @click="openCreateModal" />
+              <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                </svg>
+              </AppButton>
+              <AppButton size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" :title="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" :aria-label="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" @click="exportCurrentTabCsv">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3v12" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+              </AppButton>
             </div>
           </div>
 
@@ -1821,11 +1880,24 @@ onMounted(async () => {
               <AppButton label="Vinculados" size="sm" :variant="accountsReimbursementLinkFilter === 'linked' ? 'secondary' : 'ghost'" @click="accountsReimbursementLinkFilter = 'linked'" />
             </div>
 
-            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+            <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
               <AppInput v-model="accountsSearchDescription" label="Buscar descricao" placeholder="Digite parte da descricao" />
-              <AppButton label="Limpar filtros" size="sm" variant="ghost" @click="clearActiveTabFilters" />
-              <AppButton :label="exportingCsv ? 'Exportando...' : 'Exportar CSV'" size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" @click="exportCurrentTabCsv" />
-              <AppButton label="Novo" size="sm" @click="openCreateModal" />
+              <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                </svg>
+              </AppButton>
+              <AppButton size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" :title="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" :aria-label="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" @click="exportCurrentTabCsv">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3v12" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+              </AppButton>
             </div>
           </div>
         </div>

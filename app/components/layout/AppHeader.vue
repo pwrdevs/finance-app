@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import type { RouteLocationRaw } from 'vue-router'
+
 interface HeaderLink {
   label: string
-  to: string
+  to: RouteLocationRaw
 }
 
 const user = useSupabaseUser()
 const route = useRoute()
+const router = useRouter()
 const { loadProfile, profileAvatarUrl, profileFullName } = useProfile()
 
 const props = withDefaults(defineProps<{
@@ -58,6 +61,25 @@ const profileInitials = computed(() => {
 
 const topLinks = computed(() => props.links)
 
+function isLinkActive(target: RouteLocationRaw) {
+  const resolved = router.resolve(target)
+
+  if (resolved.path !== route.path) {
+    return false
+  }
+
+  const expected = new URLSearchParams(resolved.fullPath.split('?')[1] || '')
+  const current = new URLSearchParams(route.fullPath.split('?')[1] || '')
+
+  for (const [key, value] of expected.entries()) {
+    if (current.get(key) !== value) {
+      return false
+    }
+  }
+
+  return true
+}
+
 async function refreshHeaderProfile() {
   await loadProfile()
 }
@@ -102,10 +124,10 @@ watch(
       <nav class="relative z-10 -mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1">
         <NuxtLink
           v-for="link in topLinks"
-          :key="link.to"
+          :key="String(link.label)"
           :to="link.to"
           class="whitespace-nowrap rounded-xl px-2.5 py-2 text-[11px] font-medium text-muted transition hover:bg-primary-light/30 hover:text-foreground sm:px-3 sm:text-sm"
-          :class="route.path === link.to ? 'bg-primary-light/45 text-foreground' : ''"
+          :class="isLinkActive(link.to) ? 'bg-primary-light/45 text-foreground' : ''"
         >
           {{ link.label }}
         </NuxtLink>
