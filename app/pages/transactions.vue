@@ -6,11 +6,9 @@ import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
 import FilterToolbar from '~/components/common/FilterToolbar.vue'
 import {
-  type DeleteRecurringScope,
   type RecurringEndMode,
   type RecurringFrequency,
   TRANSACTION_STATUS,
-  type RecurringScope,
   type TransactionOriginType,
   type TransactionInstanceItem,
   type TransactionStatus,
@@ -42,7 +40,6 @@ const loading = ref(false)
 const saving = ref(false)
 const exportingCsv = ref(false)
 const exportingPng = ref(false)
-const scopeModalSaving = ref(false)
 const rowActionBusy = ref(false)
 const bulkActionBusy = ref(false)
 const ACTIVE_TAB_STORAGE_KEY = 'transactions.activeTab'
@@ -56,7 +53,6 @@ const toastMessage = ref('')
 const toastTone = ref<'success' | 'warning' | 'error'>('success')
 const toastVisible = ref(false)
 const modalError = ref('')
-const scopeModalError = ref('')
 const isExportPreviewOpen = ref(false)
 const exportPreviewRef = ref<HTMLElement | null>(null)
 const isAdvancedFiltersOpen = ref(false)
@@ -126,12 +122,7 @@ const categories = ref<CategoryItem[]>([])
 const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
-const isScopeModalOpen = ref(false)
-const isDeleteConfirmModalOpen = ref(false)
 const editingRow = ref<TransactionInstanceItem | null>(null)
-const scopeTargetRow = ref<TransactionInstanceItem | null>(null)
-const pendingDeleteRow = ref<TransactionInstanceItem | null>(null)
-const scopeModalMode = ref<'edit' | 'cancel' | 'delete' | null>(null)
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
@@ -319,58 +310,6 @@ const shouldAskScopeForEdit = computed(() => {
   const originType = editingRow.value?.origin_type
   return originType === 'recurring' || originType === 'installment'
 })
-const scopeModalTitle = computed(() => {
-  if (scopeModalMode.value === 'cancel') {
-    return 'Como deseja cancelar este lancamento?'
-  }
-
-  if (scopeModalMode.value === 'delete') {
-    return 'Como deseja excluir este lancamento?'
-  }
-
-  return 'Como deseja aplicar esta alteracao?'
-})
-const scopeModalSingleLabel = computed(() => {
-  if (scopeModalMode.value === 'cancel') return 'Cancelar apenas este'
-  if (scopeModalMode.value === 'delete') return 'Excluir apenas este'
-  return 'Apenas este lancamento'
-})
-const scopeModalFutureLabel = computed(() => {
-  if (scopeModalMode.value === 'cancel') return 'Cancelar este e os proximos'
-  if (scopeModalMode.value === 'delete') return 'Excluir este e os proximos'
-  return 'Este e os proximos'
-})
-const deleteConfirmDescription = computed(() => {
-  if (!pendingDeleteRow.value) {
-    return 'Esta acao nao pode ser desfeita.'
-  }
-
-  return `Confirma a exclusao do lancamento \"${pendingDeleteRow.value.title}\" em ${formatDateBr(pendingDeleteRow.value.instance_date)}? Esta acao nao pode ser desfeita.`
-})
-interface PendingScopedEdit {
-  row: TransactionInstanceItem
-  payload: {
-    title: string
-    type: TransactionType
-    expected_value: number
-    real_value: number | null
-    due_date: string
-    instance_date: string
-    person_id: string | null
-    account_id: string | null
-    card_id: string | null
-    category_id: string | null
-    description: string
-    status: TransactionStatus
-    is_checked: boolean
-    recurring_end_mode?: RecurringEndMode
-    recurring_end_date?: string | null
-    recurring_occurrences_count?: number | null
-    recurring_no_end_date?: boolean
-  }
-}
-
-const pendingScopedEdit = ref<PendingScopedEdit | null>(null)
 
 interface PersistedCardsFilters {
   period_filter: string | 'all'
@@ -747,15 +686,8 @@ const expectedValueHelpText = computed(() => {
   return ''
 })
 
-function openScopeDecisionModal(mode: 'edit' | 'cancel' | 'delete', row?: TransactionInstanceItem) {
-  scopeModalMode.value = mode
-  scopeTargetRow.value = row ?? editingRow.value
-  scopeModalError.value = ''
-  isScopeModalOpen.value = true
-}
-
 async function confirmMoveTransaction(row: TransactionInstanceItem) {
-  if (rowActionBusy.value || scopeModalSaving.value) {
+  if (rowActionBusy.value) {
     return
   }
 
@@ -775,26 +707,6 @@ async function confirmMoveTransaction(row: TransactionInstanceItem) {
   } finally {
     rowActionBusy.value = false
   }
-}
-
-function closeScopeDecisionModal() {
-  isScopeModalOpen.value = false
-  scopeModalMode.value = null
-  scopeTargetRow.value = null
-  pendingScopedEdit.value = null
-  scopeModalError.value = ''
-  scopeModalSaving.value = false
-}
-
-function openDeleteConfirmModal(row: TransactionInstanceItem) {
-  pendingDeleteRow.value = row
-  pageError.value = ''
-  isDeleteConfirmModalOpen.value = true
-}
-
-function closeDeleteConfirmModal() {
-  isDeleteConfirmModalOpen.value = false
-  pendingDeleteRow.value = null
 }
 
 function getDaysDiff(fromDate: string, toDate: string) {
@@ -1609,25 +1521,36 @@ async function deleteSingleTransaction(row: TransactionInstanceItem) {
 }
 
 async function handleDeleteClick(row: TransactionInstanceItem) {
-  if (rowActionBusy.value || scopeModalSaving.value) {
+  if (rowActionBusy.value) {
     return
   }
+
+  const applyFuture = row.origin_type === 'recurring' || row.origin_type === 'installment'
+    ? !window.confirm(`Excluir apenas o lancamento "${row.title}"? Clique em Cancelar para excluir este e os proximos.`)
+    : false
 
   if (row.origin_type === 'recurring' || row.origin_type === 'installment') {
-    openScopeDecisionModal('delete', row)
+    pageError.value = ''
+    rowActionBusy.value = true
+
+    try {
+      await removeTransactionInstance(row, applyFuture ? 'future' : 'single')
+      await refreshRowsAfterMutation({ successMessage: 'Lançamento excluído com sucesso.' })
+    } catch (err) {
+      pageError.value = err instanceof Error ? err.message : 'Nao foi possivel excluir o lancamento.'
+    } finally {
+      rowActionBusy.value = false
+    }
     return
   }
 
-  openDeleteConfirmModal(row)
-}
+  const confirmed = window.confirm(`Confirma excluir o lancamento "${row.title}" em ${formatDateBr(row.instance_date)}? Esta acao nao pode ser desfeita.`)
 
-async function confirmDeleteSingleTransaction() {
-  if (!pendingDeleteRow.value) {
+  if (!confirmed) {
     return
   }
 
-  await deleteSingleTransaction(pendingDeleteRow.value)
-  closeDeleteConfirmModal()
+  await deleteSingleTransaction(row)
 }
 
 function parseOptionalNumber(value: string) {
@@ -1925,34 +1848,56 @@ async function submitForm() {
       }
 
       if (shouldAskScopeForEdit.value) {
-        pendingScopedEdit.value = {
-          row: editingRow.value,
-          payload: editPayload
-        }
-        openScopeDecisionModal('edit', editingRow.value)
-        return
-      }
+        const applySingle = window.confirm(`Salvar alterações apenas neste lancamento "${editingRow.value.title}"? Clique em Cancelar para aplicar este e os proximos.`)
 
-      await updateTransactionInstance(
-        editingRow.value.id,
-        {
-          title: editPayload.title,
-          type: editPayload.type,
-          expected_value: editPayload.expected_value,
-          real_value: editPayload.real_value,
-          due_date: editPayload.due_date,
-          instance_date: editPayload.instance_date,
-          person_id: editPayload.person_id,
-          account_id: editPayload.account_id,
-          card_id: editPayload.card_id,
-          category_id: editPayload.category_id,
-          description: editPayload.description,
-          status: editPayload.status,
-          is_checked: editPayload.is_checked
-        },
-        editingRow.value.source_transaction_id,
-        editingRow.value.origin_type
-      )
+        if (editingRow.value.origin_type === 'recurring') {
+          await updateRecurringTransaction(editingRow.value, editPayload, applySingle ? 'single' : 'future')
+        } else if (editingRow.value.origin_type === 'installment') {
+          await updateInstallmentTransaction(editingRow.value, editPayload, applySingle ? 'single' : 'future')
+        } else {
+          await updateTransactionInstance(
+            editingRow.value.id,
+            {
+              title: editPayload.title,
+              type: editPayload.type,
+              expected_value: editPayload.expected_value,
+              real_value: editPayload.real_value,
+              due_date: editPayload.due_date,
+              instance_date: editPayload.instance_date,
+              person_id: editPayload.person_id,
+              account_id: editPayload.account_id,
+              card_id: editPayload.card_id,
+              category_id: editPayload.category_id,
+              description: editPayload.description,
+              status: editPayload.status,
+              is_checked: editPayload.is_checked
+            },
+            editingRow.value.source_transaction_id,
+            editingRow.value.origin_type
+          )
+        }
+      } else {
+        await updateTransactionInstance(
+          editingRow.value.id,
+          {
+            title: editPayload.title,
+            type: editPayload.type,
+            expected_value: editPayload.expected_value,
+            real_value: editPayload.real_value,
+            due_date: editPayload.due_date,
+            instance_date: editPayload.instance_date,
+            person_id: editPayload.person_id,
+            account_id: editPayload.account_id,
+            card_id: editPayload.card_id,
+            category_id: editPayload.category_id,
+            description: editPayload.description,
+            status: editPayload.status,
+            is_checked: editPayload.is_checked
+          },
+          editingRow.value.source_transaction_id,
+          editingRow.value.origin_type
+        )
+      }
     } else {
       await createTransaction({
         origin_type: resolvedOriginType,
@@ -2049,7 +1994,23 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
   pageError.value = ''
 
   if ((row.origin_type === 'recurring' || row.origin_type === 'installment') && nextStatus === 'canceled') {
-    openScopeDecisionModal('cancel', row)
+    const applySingle = window.confirm(`Cancelar apenas o lancamento "${row.title}"? Clique em Cancelar para cancelar este e os proximos.`)
+
+    rowActionBusy.value = true
+
+    try {
+      if (row.origin_type === 'recurring') {
+        await cancelRecurringTransaction(row, applySingle ? 'single' : 'future')
+      } else {
+        await cancelInstallmentTransaction(row, applySingle ? 'single' : 'future')
+      }
+
+      await refreshRowsAfterMutation({ successMessage: 'Lançamento cancelado com sucesso.' })
+    } catch (err) {
+      pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar o status.'
+    } finally {
+      rowActionBusy.value = false
+    }
     return
   }
 
@@ -2069,93 +2030,6 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
     })
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar o status.'
   } finally {
-    rowActionBusy.value = false
-  }
-}
-
-async function applyScopedEdit(scope: DeleteRecurringScope) {
-  if (!pendingScopedEdit.value) {
-    throw new Error('Nenhuma alteracao pendente para aplicar.')
-  }
-
-  const { row, payload } = pendingScopedEdit.value
-
-  if (row.origin_type === 'recurring') {
-    await updateRecurringTransaction(row, payload, scope as RecurringScope)
-    return
-  }
-
-  if (row.origin_type === 'installment') {
-    await updateInstallmentTransaction(row, payload, scope)
-    return
-  }
-
-  await updateTransactionInstance(
-    row.id,
-    payload,
-    row.source_transaction_id,
-    row.origin_type
-  )
-}
-
-async function applyScopedCancel(row: TransactionInstanceItem, scope: DeleteRecurringScope) {
-  if (row.origin_type === 'recurring') {
-    await cancelRecurringTransaction(row, scope as RecurringScope)
-    return
-  }
-
-  if (row.origin_type === 'installment') {
-    await cancelInstallmentTransaction(row, scope)
-    return
-  }
-
-  await setStatus(row, 'canceled')
-}
-
-async function confirmScopeDecision(scope: DeleteRecurringScope) {
-  scopeModalError.value = ''
-  scopeModalSaving.value = true
-  rowActionBusy.value = true
-
-  try {
-    if (scopeModalMode.value === 'edit') {
-      const previousFilteredCount = filteredRows.value.length
-      const previousTotalCount = rows.value.length
-      await applyScopedEdit(scope)
-      await refreshRowsAfterMutation({
-        successMessage: 'Lançamento atualizado com sucesso.',
-        checkFilteredVisibility: true,
-        previousFilteredCount,
-        previousTotalCount
-      })
-      isModalOpen.value = false
-      closeScopeDecisionModal()
-      return
-    }
-
-    if (!scopeTargetRow.value) {
-      throw new Error('Nenhum lancamento selecionado.')
-    }
-
-    if (scopeModalMode.value === 'cancel') {
-      await applyScopedCancel(scopeTargetRow.value, scope)
-      await refreshRowsAfterMutation({ successMessage: 'Lançamento cancelado com sucesso.' })
-      closeScopeDecisionModal()
-      return
-    }
-
-    if (scopeModalMode.value === 'delete') {
-      await removeTransactionInstance(scopeTargetRow.value, scope)
-      await refreshRowsAfterMutation({ successMessage: 'Lançamento excluído com sucesso.' })
-      closeScopeDecisionModal()
-      return
-    }
-
-    throw new Error('Modo de escopo invalido.')
-  } catch (err) {
-    scopeModalError.value = err instanceof Error ? err.message : 'Nao foi possivel aplicar a acao no escopo selecionado.'
-  } finally {
-    scopeModalSaving.value = false
     rowActionBusy.value = false
   }
 }
@@ -2912,63 +2786,5 @@ onBeforeUnmount(() => {
       </template>
     </AppModal>
 
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" @click="closeScopeDecisionModal" />
-      </Transition>
-
-      <Transition name="slide-up">
-        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[80] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
-          <div class="w-full max-w-md rounded-3xl bg-[#16181a] p-5 shadow-2xl ring-1 ring-white/10">
-            <h3 class="text-lg font-semibold text-white">{{ scopeModalTitle }}</h3>
-
-            <div class="mt-4 grid gap-3">
-              <button
-                type="button"
-                class="h-12 rounded-2xl bg-white text-sm font-semibold text-[#111315] transition hover:bg-white/90 disabled:opacity-60"
-                :disabled="scopeModalSaving"
-                @click="confirmScopeDecision('single')"
-              >
-                {{ scopeModalSingleLabel }}
-              </button>
-
-              <button
-                type="button"
-                class="h-12 rounded-2xl bg-[#2a2f34] text-sm font-semibold text-white transition hover:bg-[#353b41] disabled:opacity-60"
-                :disabled="scopeModalSaving"
-                @click="confirmScopeDecision('future')"
-              >
-                {{ scopeModalFutureLabel }}
-              </button>
-
-              <button
-                type="button"
-                class="mt-1 h-11 rounded-2xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 transition hover:bg-white/10"
-                :disabled="scopeModalSaving"
-                @click="closeScopeDecisionModal"
-              >
-                Voltar
-              </button>
-            </div>
-
-            <p v-if="scopeModalError" class="mt-3 rounded-xl bg-rose-200/15 px-3 py-2 text-xs text-rose-200">{{ scopeModalError }}</p>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
-    <AppModal
-      v-model="isDeleteConfirmModalOpen"
-      title="Confirmar exclusao"
-      :description="deleteConfirmDescription"
-      max-width-class="max-w-md"
-    >
-      <template #footer>
-        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-          <AppButton label="Voltar" variant="ghost" :disabled="rowActionBusy" block @click="closeDeleteConfirmModal" />
-          <AppButton label="Excluir" variant="danger" :disabled="rowActionBusy" block @click="confirmDeleteSingleTransaction" />
-        </div>
-      </template>
-    </AppModal>
   </section>
 </template>
