@@ -89,6 +89,10 @@ const cardsInstallmentFilter = ref<'all' | 'installment' | 'single'>('all')
 const cardsStatusFilter = ref<'all' | TransactionStatus>('all')
 const cardsReimbursementLinkFilter = ref<'all' | 'normal' | 'reimbursement' | 'linked'>('all')
 const cardsSearchDescription = ref('')
+const cardsValueMin = ref('')
+const cardsValueMax = ref('')
+const cardsDayStart = ref('')
+const cardsDayEnd = ref('')
 
 const accountsPeriodFilter = ref<string | 'all'>(monthYear.value)
 const accountsAccountFilter = ref('all')
@@ -97,6 +101,10 @@ const accountsCategoryFilter = ref('all')
 const accountsStatusFilter = ref<'all' | TransactionStatus>('all')
 const accountsReimbursementLinkFilter = ref<'all' | 'normal' | 'reimbursement' | 'linked'>('all')
 const accountsSearchDescription = ref('')
+const accountsValueMin = ref('')
+const accountsValueMax = ref('')
+const accountsDayStart = ref('')
+const accountsDayEnd = ref('')
 
 const rows = ref<TransactionInstanceItem[]>([])
 const people = ref<PersonItem[]>([])
@@ -206,6 +214,7 @@ const selectedPeriodMonthKey = computed(() => {
 
   return activePeriodFilter.value
 })
+const isDayRangeAvailable = computed(() => activePeriodFilter.value !== 'all')
 
 const transactionStatusLabelMap: Record<TransactionStatus, string> = {
   pending: 'Pendente',
@@ -308,6 +317,10 @@ interface PersistedCardsFilters {
   status_filter: 'all' | TransactionStatus
   reimbursement_link_filter: 'all' | 'normal' | 'reimbursement' | 'linked'
   search_description: string
+  value_min: string
+  value_max: string
+  day_start: string
+  day_end: string
 }
 
 interface PersistedAccountsFilters {
@@ -318,6 +331,10 @@ interface PersistedAccountsFilters {
   status_filter: 'all' | TransactionStatus
   reimbursement_link_filter: 'all' | 'normal' | 'reimbursement' | 'linked'
   search_description: string
+  value_min: string
+  value_max: string
+  day_start: string
+  day_end: string
 }
 
 function isValidMonthYear(value: string) {
@@ -344,6 +361,14 @@ function pickPersistedOption(value: string, allowedIds: string[]) {
   return allowedIds.includes(value) ? value : 'all'
 }
 
+function normalizeFilterText(value: unknown) {
+  if (value == null) {
+    return ''
+  }
+
+  return String(value).trim()
+}
+
 function saveActiveTabToStorage() {
   if (typeof window === 'undefined') {
     return
@@ -363,7 +388,11 @@ function saveCardsFiltersToStorage() {
     installment_filter: cardsInstallmentFilter.value,
     status_filter: cardsStatusFilter.value,
     reimbursement_link_filter: cardsReimbursementLinkFilter.value,
-    search_description: cardsSearchDescription.value.trim()
+    search_description: cardsSearchDescription.value.trim(),
+    value_min: normalizeFilterText(cardsValueMin.value),
+    value_max: normalizeFilterText(cardsValueMax.value),
+    day_start: normalizeFilterText(cardsDayStart.value),
+    day_end: normalizeFilterText(cardsDayEnd.value)
   }
 
   window.localStorage.setItem(CARDS_FILTERS_STORAGE_KEY, JSON.stringify(payload))
@@ -381,7 +410,11 @@ function saveAccountsFiltersToStorage() {
     category_filter: accountsCategoryFilter.value,
     status_filter: accountsStatusFilter.value,
     reimbursement_link_filter: accountsReimbursementLinkFilter.value,
-    search_description: accountsSearchDescription.value.trim()
+    search_description: accountsSearchDescription.value.trim(),
+    value_min: normalizeFilterText(accountsValueMin.value),
+    value_max: normalizeFilterText(accountsValueMax.value),
+    day_start: normalizeFilterText(accountsDayStart.value),
+    day_end: normalizeFilterText(accountsDayEnd.value)
   }
 
   window.localStorage.setItem(ACCOUNTS_FILTERS_STORAGE_KEY, JSON.stringify(payload))
@@ -450,6 +483,10 @@ function restoreCardsFiltersFromStorage() {
       ? parsed.reimbursement_link_filter
       : 'all'
     cardsSearchDescription.value = typeof parsed.search_description === 'string' ? parsed.search_description : ''
+    cardsValueMin.value = normalizeFilterText(parsed.value_min)
+    cardsValueMax.value = normalizeFilterText(parsed.value_max)
+    cardsDayStart.value = normalizeFilterText(parsed.day_start)
+    cardsDayEnd.value = normalizeFilterText(parsed.day_end)
   } catch {
     clearCardsFiltersStorage()
   }
@@ -489,6 +526,10 @@ function restoreAccountsFiltersFromStorage() {
       ? parsed.reimbursement_link_filter
       : 'all'
     accountsSearchDescription.value = typeof parsed.search_description === 'string' ? parsed.search_description : ''
+    accountsValueMin.value = normalizeFilterText(parsed.value_min)
+    accountsValueMax.value = normalizeFilterText(parsed.value_max)
+    accountsDayStart.value = normalizeFilterText(parsed.day_start)
+    accountsDayEnd.value = normalizeFilterText(parsed.day_end)
   } catch {
     clearAccountsFiltersStorage()
   }
@@ -698,8 +739,50 @@ function getInstallmentLabel(row: TransactionInstanceItem) {
   return '1/1'
 }
 
+function parseOptionalMoney(value: unknown) {
+  const normalized = normalizeFilterText(value).replace(',', '.')
+
+  if (!normalized) {
+    return null
+  }
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseOptionalDay(value: unknown) {
+  const normalized = normalizeFilterText(value)
+
+  if (!normalized) {
+    return null
+  }
+
+  const parsed = Number(normalized)
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) {
+    return null
+  }
+
+  return parsed
+}
+
+function clearActiveSearch() {
+  if (activeTab.value === 'cards') {
+    cardsSearchDescription.value = ''
+    return
+  }
+
+  accountsSearchDescription.value = ''
+}
+
 const filteredRows = computed(() => {
   const normalizedSearch = activeSearchDescription.value.trim().toLowerCase()
+  const activeValueMin = parseOptionalMoney(activeTab.value === 'cards' ? cardsValueMin.value : accountsValueMin.value)
+  const activeValueMax = parseOptionalMoney(activeTab.value === 'cards' ? cardsValueMax.value : accountsValueMax.value)
+  const activeDayStart = parseOptionalDay(activeTab.value === 'cards' ? cardsDayStart.value : accountsDayStart.value)
+  const activeDayEnd = parseOptionalDay(activeTab.value === 'cards' ? cardsDayEnd.value : accountsDayEnd.value)
+  const normalizedDayStart = activeDayStart != null && activeDayEnd != null ? Math.min(activeDayStart, activeDayEnd) : activeDayStart
+  const normalizedDayEnd = activeDayStart != null && activeDayEnd != null ? Math.max(activeDayStart, activeDayEnd) : activeDayEnd
 
   return rows.value
     .filter((row) => {
@@ -776,6 +859,40 @@ const filteredRows = computed(() => {
 
       if (activeLinkFilter === 'linked') {
         return Boolean(row.reimbursement_group_id)
+      }
+
+      return true
+    })
+    .filter((row) => {
+      if (!isDayRangeAvailable.value) {
+        return true
+      }
+
+      const dayReference = activeTab.value === 'cards'
+        ? row.financial_effective_date
+        : row.instance_date
+
+      const dayNumber = Number(dayReference.slice(8, 10))
+
+      if (normalizedDayStart != null && dayNumber < normalizedDayStart) {
+        return false
+      }
+
+      if (normalizedDayEnd != null && dayNumber > normalizedDayEnd) {
+        return false
+      }
+
+      return true
+    })
+    .filter((row) => {
+      const effectiveValue = getEffectiveValue(row)
+
+      if (activeValueMin != null && effectiveValue < activeValueMin) {
+        return false
+      }
+
+      if (activeValueMax != null && effectiveValue > activeValueMax) {
+        return false
       }
 
       return true
@@ -1229,7 +1346,7 @@ async function deleteSingleTransaction(row: TransactionInstanceItem) {
 
   try {
     await removeTransactionInstance(row, 'single')
-    await fetchRows()
+    await refreshRowsAfterMutation()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel excluir o lancamento.'
   } finally {
@@ -1297,6 +1414,10 @@ function clearActiveTabFilters() {
     cardsStatusFilter.value = 'all'
     cardsReimbursementLinkFilter.value = 'all'
     cardsSearchDescription.value = ''
+    cardsValueMin.value = ''
+    cardsValueMax.value = ''
+    cardsDayStart.value = ''
+    cardsDayEnd.value = ''
     clearCardsFiltersStorage()
     saveCardsFiltersToStorage()
     return
@@ -1311,6 +1432,10 @@ function clearActiveTabFilters() {
   accountsStatusFilter.value = 'all'
   accountsReimbursementLinkFilter.value = 'all'
   accountsSearchDescription.value = ''
+  accountsValueMin.value = ''
+  accountsValueMax.value = ''
+  accountsDayStart.value = ''
+  accountsDayEnd.value = ''
   clearAccountsFiltersStorage()
   saveAccountsFiltersToStorage()
 }
@@ -1403,7 +1528,7 @@ async function saveInlineRealValue(row: TransactionInstanceItem) {
       row.origin_type
     )
 
-    await fetchRows()
+    await refreshRowsAfterMutation()
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel salvar o valor realizado.'
   } finally {
@@ -1648,6 +1773,7 @@ async function toggleChecked(row: TransactionInstanceItem) {
 
   try {
     await setChecked(row, nextChecked)
+    await refreshRowsAfterMutation()
   } catch (err) {
     patchRowInState(row.id, {
       is_checked: row.is_checked,
@@ -1678,6 +1804,7 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
 
   try {
     await setStatus(row, nextStatus)
+    await refreshRowsAfterMutation()
   } catch (err) {
     patchRowInState(row.id, {
       status: row.status
@@ -1737,7 +1864,7 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
       await applyScopedEdit(scope)
       isModalOpen.value = false
       closeScopeDecisionModal()
-      await fetchRows()
+      await refreshRowsAfterMutation()
       return
     }
 
@@ -1748,14 +1875,14 @@ async function confirmScopeDecision(scope: DeleteRecurringScope) {
     if (scopeModalMode.value === 'cancel') {
       await applyScopedCancel(scopeTargetRow.value, scope)
       closeScopeDecisionModal()
-      await fetchRows()
+      await refreshRowsAfterMutation()
       return
     }
 
     if (scopeModalMode.value === 'delete') {
       await removeTransactionInstance(scopeTargetRow.value, scope)
       closeScopeDecisionModal()
-      await fetchRows()
+      await refreshRowsAfterMutation()
       return
     }
   } catch (err) {
@@ -1815,14 +1942,14 @@ watch([accountsPeriodMonth, accountsPeriodYear], () => {
 })
 
 watch(
-  [cardsPeriodFilter, cardsCardFilter, cardsInstallmentFilter, cardsStatusFilter, cardsReimbursementLinkFilter, cardsSearchDescription],
+  [cardsPeriodFilter, cardsCardFilter, cardsInstallmentFilter, cardsStatusFilter, cardsReimbursementLinkFilter, cardsSearchDescription, cardsValueMin, cardsValueMax, cardsDayStart, cardsDayEnd],
   () => {
     saveCardsFiltersToStorage()
   }
 )
 
 watch(
-  [accountsPeriodFilter, accountsAccountFilter, accountsTypeFilter, accountsCategoryFilter, accountsStatusFilter, accountsReimbursementLinkFilter, accountsSearchDescription],
+  [accountsPeriodFilter, accountsAccountFilter, accountsTypeFilter, accountsCategoryFilter, accountsStatusFilter, accountsReimbursementLinkFilter, accountsSearchDescription, accountsValueMin, accountsValueMax, accountsDayStart, accountsDayEnd],
   () => {
     saveAccountsFiltersToStorage()
   }
@@ -1874,114 +2001,123 @@ onMounted(async () => {
 
         <FilterToolbar>
           <template #line1>
-            <div class="flex items-center gap-2 overflow-x-auto">
-              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Período</span>
-              <div class="flex min-w-max items-center gap-2">
-                <select v-if="activeTab === 'cards'" v-model="cardsPeriodMonth" class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
-                  <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-                </select>
-                <select v-if="activeTab === 'cards'" v-model="cardsPeriodYear" class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
-                  <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
-                </select>
-                <select v-if="activeTab === 'accounts'" v-model="accountsPeriodMonth" class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
-                  <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
-                </select>
-                <select v-if="activeTab === 'accounts'" v-model="accountsPeriodYear" class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
-                  <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
-                </select>
-                <label class="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
+            <div class="grid w-full gap-2 xl:grid-cols-6">
+              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Período</p>
+                <div class="grid grid-cols-2 gap-2">
+                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodMonth" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                    <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+                  </select>
+                  <select v-if="activeTab === 'cards'" v-model="cardsPeriodYear" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                    <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
+                  </select>
+                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodMonth" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                    <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
+                  </select>
+                  <select v-if="activeTab === 'accounts'" v-model="accountsPeriodYear" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                    <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
+                  </select>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <input v-if="activeTab === 'cards'" v-model="cardsDayStart" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
+                  <input v-if="activeTab === 'cards'" v-model="cardsDayEnd" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
+                  <input v-if="activeTab === 'accounts'" v-model="accountsDayStart" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia ini." :disabled="!isDayRangeAvailable">
+                  <input v-if="activeTab === 'accounts'" v-model="accountsDayEnd" class="h-8 min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground disabled:opacity-60" type="number" min="1" max="31" placeholder="Dia fim" :disabled="!isDayRangeAvailable">
+                </div>
+                <label class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
                   <input class="h-3.5 w-3.5 rounded border-border" type="checkbox" :checked="activeTab === 'cards' ? cardsPeriodFilter === 'all' : accountsPeriodFilter === 'all'" @change="activeTab === 'cards' ? (cardsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(cardsPeriodYear, cardsPeriodMonth)) : (accountsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(accountsPeriodYear, accountsPeriodMonth))">
                   Todos os períodos
                 </label>
+                <p v-if="!isDayRangeAvailable" class="text-[10px] text-muted">Disponível ao selecionar mês/ano.</p>
               </div>
-            </div>
 
-            <div class="flex items-center gap-2 overflow-x-auto">
-              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{{ activeTab === 'cards' ? 'Cartão' : 'Conta' }}</span>
-              <div class="flex min-w-max items-center gap-2">
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === 'all')" @click="activeTab === 'cards' ? (cardsCardFilter = 'all') : (accountsAccountFilter = 'all')">Todos</button>
-                <button
-                  v-for="entry in (activeTab === 'cards' ? activeCardsForQuickFilter : activeAccountsForQuickFilter)"
-                  :key="`${activeTab}-chip-${entry.id}`"
-                  type="button"
-                  :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === entry.id)"
-                  @click="activeTab === 'cards' ? (cardsCardFilter = entry.id) : (accountsAccountFilter = entry.id)"
-                >
-                  {{ entry.name }}
-                </button>
+              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Forma de pagamento</p>
+                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === 'all')" @click="activeTab === 'cards' ? (cardsCardFilter = 'all') : (accountsAccountFilter = 'all')">Todos</button>
+                  <button
+                    v-for="entry in (activeTab === 'cards' ? activeCardsForQuickFilter : activeAccountsForQuickFilter)"
+                    :key="`${activeTab}-chip-${entry.id}`"
+                    type="button"
+                    :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === entry.id)"
+                    @click="activeTab === 'cards' ? (cardsCardFilter = entry.id) : (accountsAccountFilter = entry.id)"
+                  >
+                    {{ entry.name }}
+                  </button>
+                </div>
               </div>
-            </div>
-          </template>
 
-          <template #line2>
-            <template v-if="activeTab === 'cards'">
-              <div class="flex items-center gap-2 overflow-x-auto">
-                <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Parcelamento</span>
-                <div class="flex min-w-max items-center gap-2">
+              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{{ activeTab === 'cards' ? 'Parcelamento' : 'Tipo' }}</p>
+                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap" v-if="activeTab === 'cards'">
                   <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'all')" @click="cardsInstallmentFilter = 'all'">Todos</button>
                   <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'installment')" @click="cardsInstallmentFilter = 'installment'">Parceladas</button>
                   <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'single')" @click="cardsInstallmentFilter = 'single'">À vista</button>
                 </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="flex items-center gap-2 overflow-x-auto">
-                <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Tipo</span>
-                <div class="flex min-w-max items-center gap-2">
+                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap" v-else>
                   <button type="button" :class="filterChipClass(accountsTypeFilter === 'all')" @click="accountsTypeFilter = 'all'">Todos</button>
                   <button type="button" :class="filterChipClass(accountsTypeFilter === 'income')" @click="accountsTypeFilter = 'income'">Entradas</button>
                   <button type="button" :class="filterChipClass(accountsTypeFilter === 'expense')" @click="accountsTypeFilter = 'expense'">Saídas</button>
                 </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Categoria</span>
-                <select v-model="accountsCategoryFilter" class="h-8 min-w-[11rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
-                  <option value="all">Todas</option>
+                <select v-if="activeTab === 'accounts'" v-model="accountsCategoryFilter" class="h-8 w-full min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground">
+                  <option value="all">Categoria: Todas</option>
                   <option v-for="entry in categories" :key="`accounts-category-${entry.id}`" :value="entry.id">{{ entry.name }}</option>
                 </select>
               </div>
-            </template>
 
-            <div class="flex items-center gap-2 overflow-x-auto">
-              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Status</span>
-              <div class="flex min-w-max items-center gap-2">
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'all')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'all') : (accountsStatusFilter = 'all')">Todos</button>
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'pending')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'pending') : (accountsStatusFilter = 'pending')">Pendente</button>
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'paid')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'paid') : (accountsStatusFilter = 'paid')">Pago</button>
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'canceled')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'canceled') : (accountsStatusFilter = 'canceled')">Cancelado</button>
+              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Status</p>
+                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'all')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'all') : (accountsStatusFilter = 'all')">Todos</button>
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'pending')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'pending') : (accountsStatusFilter = 'pending')">Pendente</button>
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'paid')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'paid') : (accountsStatusFilter = 'paid')">Pago</button>
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'canceled')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'canceled') : (accountsStatusFilter = 'canceled')">Cancelado</button>
+                </div>
               </div>
-            </div>
 
-            <div class="flex items-center gap-2 overflow-x-auto">
-              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Vínculo</span>
-              <div class="flex min-w-max items-center gap-2">
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'all')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'all') : (accountsReimbursementLinkFilter = 'all')">Todos</button>
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'normal')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'normal') : (accountsReimbursementLinkFilter = 'normal')">Originais</button>
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'reimbursement')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'reimbursement') : (accountsReimbursementLinkFilter = 'reimbursement')">Reembolsos</button>
-                <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'linked')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'linked') : (accountsReimbursementLinkFilter = 'linked')">Vinculados</button>
+              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Vínculo</p>
+                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'all')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'all') : (accountsReimbursementLinkFilter = 'all')">Todos</button>
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'normal')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'normal') : (accountsReimbursementLinkFilter = 'normal')">Originais</button>
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'reimbursement')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'reimbursement') : (accountsReimbursementLinkFilter = 'reimbursement')">Reembolsos</button>
+                  <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'linked')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'linked') : (accountsReimbursementLinkFilter = 'linked')">Vinculados</button>
+                </div>
               </div>
-            </div>
-          </template>
 
-          <template #line3>
-            <div class="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
-              <input v-model="activeSearchDescriptionModel" class="h-9 w-full rounded-xl border border-border bg-surface px-3 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
-              <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M3 6h18" />
-                  <path d="M8 6V4h8v2" />
-                  <path d="M19 6l-1 14H6L5 6" />
-                  <path d="M10 11v6" />
-                  <path d="M14 11v6" />
-                </svg>
-              </AppButton>
-              <AppButton size="sm" variant="ghost" :disabled="!filteredRows.length" title="Pré-visualizar exportação" aria-label="Pré-visualizar exportação" @click="openExportPreview">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M12 3v12" />
-                  <path d="M7 10l5 5 5-5" />
-                  <path d="M5 21h14" />
-                </svg>
-              </AppButton>
+              <div class="space-y-2 rounded-xl border border-border bg-background/35 p-2.5 xl:col-span-2">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Busca e ações</p>
+                <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <div class="relative">
+                    <input v-model="activeSearchDescriptionModel" class="h-9 w-full rounded-xl border border-border bg-surface px-3 pr-8 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
+                    <button v-if="activeSearchDescriptionModel" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted transition hover:text-foreground" title="Limpar busca" aria-label="Limpar busca" @click="clearActiveSearch">✕</button>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <input v-if="activeTab === 'cards'" v-model="cardsValueMin" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor mín." type="number" step="0.01">
+                    <input v-if="activeTab === 'cards'" v-model="cardsValueMax" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor máx." type="number" step="0.01">
+                    <input v-if="activeTab === 'accounts'" v-model="accountsValueMin" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor mín." type="number" step="0.01">
+                    <input v-if="activeTab === 'accounts'" v-model="accountsValueMax" class="h-9 min-w-0 rounded-xl border border-border bg-surface px-2 text-xs text-foreground" placeholder="Valor máx." type="number" step="0.01">
+                  </div>
+                </div>
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                  <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                    </svg>
+                  </AppButton>
+                  <AppButton size="sm" variant="ghost" :disabled="!filteredRows.length" title="Pré-visualizar exportação" aria-label="Pré-visualizar exportação" @click="openExportPreview">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 3v12" />
+                      <path d="M7 10l5 5 5-5" />
+                      <path d="M5 21h14" />
+                    </svg>
+                  </AppButton>
+                </div>
+              </div>
             </div>
           </template>
         </FilterToolbar>
