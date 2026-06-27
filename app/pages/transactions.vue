@@ -761,6 +761,17 @@ function openScopeDecisionModal(mode: 'edit' | 'cancel' | 'delete', row?: Transa
   isScopeModalOpen.value = true
 }
 
+function openMoveDecisionModal(row: TransactionInstanceItem) {
+  if (rowActionBusy.value || scopeModalSaving.value) {
+    return
+  }
+
+  pendingMoveRow.value = row
+  scopeModalMode.value = 'move'
+  scopeModalError.value = ''
+  isScopeModalOpen.value = true
+}
+
 function closeScopeDecisionModal() {
   isScopeModalOpen.value = false
   scopeModalMode.value = null
