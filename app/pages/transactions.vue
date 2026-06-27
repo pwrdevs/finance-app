@@ -4,6 +4,7 @@ import AppCard from '~/components/common/AppCard.vue'
 import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import AppTable from '~/components/common/AppTable.vue'
+import FilterToolbar from '~/components/common/FilterToolbar.vue'
 import {
   type DeleteRecurringScope,
   type RecurringEndMode,
@@ -38,15 +39,21 @@ const {
 const loading = ref(false)
 const saving = ref(false)
 const exportingCsv = ref(false)
+const exportingPng = ref(false)
 const scopeModalSaving = ref(false)
 const rowActionBusy = ref(false)
 const ACTIVE_TAB_STORAGE_KEY = 'transactions.activeTab'
-const CARDS_FILTERS_STORAGE_KEY = 'transactions.filters.cards'
-const ACCOUNTS_FILTERS_STORAGE_KEY = 'transactions.filters.accounts'
+const CARDS_FILTERS_STORAGE_KEY = 'transactions.cards.filters'
+const ACCOUNTS_FILTERS_STORAGE_KEY = 'transactions.accounts.filters'
+const LEGACY_CARDS_FILTERS_STORAGE_KEY = 'transactions.filters.cards'
+const LEGACY_ACCOUNTS_FILTERS_STORAGE_KEY = 'transactions.filters.accounts'
 const pageError = ref('')
 const pageNotice = ref('')
 const modalError = ref('')
 const scopeModalError = ref('')
+const isExportPreviewOpen = ref(false)
+const exportPreviewRef = ref<HTMLElement | null>(null)
+const cardsExpandedGroups = ref<Record<string, boolean>>({})
 
 const route = useRoute()
 const router = useRouter()
@@ -79,6 +86,7 @@ const accountsPeriodYear = ref(String(initialPeriodYear))
 
 const cardsPeriodFilter = ref<string | 'all'>(monthYear.value)
 const cardsCardFilter = ref('all')
+const cardsInstallmentFilter = ref<'all' | 'installment' | 'single'>('all')
 const cardsStatusFilter = ref<'all' | TransactionStatus>('all')
 const cardsReimbursementLinkFilter = ref<'all' | 'normal' | 'reimbursement' | 'linked'>('all')
 const cardsSearchDescription = ref('')
@@ -297,6 +305,7 @@ const pendingScopedEdit = ref<PendingScopedEdit | null>(null)
 interface PersistedCardsFilters {
   period_filter: string | 'all'
   card_filter: string
+  installment_filter: 'all' | 'installment' | 'single'
   status_filter: 'all' | TransactionStatus
   reimbursement_link_filter: 'all' | 'normal' | 'reimbursement' | 'linked'
   search_description: string
@@ -352,6 +361,7 @@ function saveCardsFiltersToStorage() {
   const payload: PersistedCardsFilters = {
     period_filter: cardsPeriodFilter.value,
     card_filter: cardsCardFilter.value,
+    installment_filter: cardsInstallmentFilter.value,
     status_filter: cardsStatusFilter.value,
     reimbursement_link_filter: cardsReimbursementLinkFilter.value,
     search_description: cardsSearchDescription.value.trim()
@@ -384,6 +394,7 @@ function clearCardsFiltersStorage() {
   }
 
   window.localStorage.removeItem(CARDS_FILTERS_STORAGE_KEY)
+  window.localStorage.removeItem(LEGACY_CARDS_FILTERS_STORAGE_KEY)
 }
 
 function clearAccountsFiltersStorage() {
@@ -392,6 +403,7 @@ function clearAccountsFiltersStorage() {
   }
 
   window.localStorage.removeItem(ACCOUNTS_FILTERS_STORAGE_KEY)
+  window.localStorage.removeItem(LEGACY_ACCOUNTS_FILTERS_STORAGE_KEY)
 }
 
 function restoreActiveTabFromStorage() {
@@ -412,6 +424,7 @@ function restoreCardsFiltersFromStorage() {
   }
 
   const raw = window.localStorage.getItem(CARDS_FILTERS_STORAGE_KEY)
+    ?? window.localStorage.getItem(LEGACY_CARDS_FILTERS_STORAGE_KEY)
 
   if (!raw) {
     return
@@ -428,6 +441,9 @@ function restoreCardsFiltersFromStorage() {
       cardsPeriodYear.value = String(year)
     }
     cardsCardFilter.value = pickPersistedOption(String(parsed.card_filter ?? 'all'), cards.value.map(entry => entry.id))
+    cardsInstallmentFilter.value = parsed.installment_filter === 'installment' || parsed.installment_filter === 'single'
+      ? parsed.installment_filter
+      : 'all'
     cardsStatusFilter.value = typeof parsed.status_filter === 'string' && isValidStatusFilter(parsed.status_filter)
       ? parsed.status_filter
       : 'all'
@@ -446,6 +462,7 @@ function restoreAccountsFiltersFromStorage() {
   }
 
   const raw = window.localStorage.getItem(ACCOUNTS_FILTERS_STORAGE_KEY)
+    ?? window.localStorage.getItem(LEGACY_ACCOUNTS_FILTERS_STORAGE_KEY)
 
   if (!raw) {
     return
@@ -727,6 +744,21 @@ const filteredRows = computed(() => {
     .filter((row) => activeTab.value === 'cards' || accountsTypeFilter.value === 'all' || row.type === accountsTypeFilter.value)
     .filter((row) => activeTab.value === 'cards' || accountsCategoryFilter.value === 'all' || row.category_id === accountsCategoryFilter.value)
     .filter((row) => {
+      if (activeTab.value !== 'cards') {
+        return true
+      }
+
+      if (cardsInstallmentFilter.value === 'installment') {
+        return (row.installment_total ?? 1) > 1
+      }
+
+      if (cardsInstallmentFilter.value === 'single') {
+        return (row.installment_total ?? 1) <= 1
+      }
+
+      return true
+    })
+    .filter((row) => {
       const activeStatusFilter = activeTab.value === 'cards' ? cardsStatusFilter.value : accountsStatusFilter.value
       return activeStatusFilter === 'all' || row.status === activeStatusFilter
     })
@@ -778,6 +810,186 @@ const filteredRows = computed(() => {
 })
 
 const filteredTotalValue = computed(() => filteredRows.value.reduce((sum, row) => sum + getEffectiveValue(row as TransactionInstanceItem), 0))
+
+const filteredIncomeValue = computed(() => {
+  return filteredRows.value.reduce((sum, row) => {
+    const item = row as TransactionInstanceItem
+    return item.type === 'income' ? sum + getEffectiveValue(item) : sum
+  }, 0)
+})
+
+const filteredExpenseValue = computed(() => {
+  return filteredRows.value.reduce((sum, row) => {
+    const item = row as TransactionInstanceItem
+    return item.type === 'expense' ? sum + getEffectiveValue(item) : sum
+  }, 0)
+})
+
+const filteredBalanceValue = computed(() => filteredIncomeValue.value - filteredExpenseValue.value)
+
+const filteredIndicators = computed(() => {
+  const entries = filteredRows.value as TransactionInstanceItem[]
+  const purchaseIds = new Set(entries.map(entry => entry.source_transaction_id ?? entry.id))
+  return {
+    launches: entries.length,
+    purchases: purchaseIds.size,
+    reimbursements: entries.filter(entry => entry.reimbursement_role === 'reimbursement').length,
+    installment: entries.filter(entry => (entry.installment_total ?? 1) > 1).length,
+    single: entries.filter(entry => (entry.installment_total ?? 1) <= 1).length
+  }
+})
+
+interface CardGroupHeaderRow {
+  id: string
+  is_group_header: true
+  group_key: string
+  group_title: string
+  group_card_name: string
+  group_purchase_date: string
+  group_installment_total: number
+  group_total_value: number
+  group_installment_value: number
+  group_status_label: string
+}
+
+function isCardGroupHeaderRow(row: unknown): row is CardGroupHeaderRow {
+  if (!row || typeof row !== 'object') {
+    return false
+  }
+
+  return (row as { is_group_header?: boolean }).is_group_header === true
+}
+
+interface CardGroupData {
+  key: string
+  title: string
+  cardName: string
+  purchaseDate: string
+  totalInstallments: number
+  rows: TransactionInstanceItem[]
+}
+
+function getCardGroupKey(row: TransactionInstanceItem) {
+  return row.source_transaction_id ?? row.id
+}
+
+function getCardGroupPurchaseDate(row: TransactionInstanceItem) {
+  return row.due_date || row.instance_date
+}
+
+function getCardGroupStatusLabel(rows: TransactionInstanceItem[]) {
+  const paidCount = rows.filter(entry => entry.status === 'paid').length
+  const pendingCount = rows.filter(entry => entry.status === 'pending').length
+  const canceledCount = rows.filter(entry => entry.status === 'canceled').length
+
+  if (paidCount >= pendingCount && paidCount >= canceledCount) return 'Pago'
+  if (pendingCount >= canceledCount) return 'Pendente'
+  return 'Cancelado'
+}
+
+const groupedCardTableRows = computed(() => {
+  const source = (filteredRows.value as TransactionInstanceItem[])
+  const groups = new Map<string, CardGroupData>()
+
+  for (const row of source) {
+    const key = getCardGroupKey(row)
+    const existing = groups.get(key)
+
+    if (!existing) {
+      groups.set(key, {
+        key,
+        title: row.title,
+        cardName: row.card_id ? (cardsMap.value.get(row.card_id) || '-') : '-',
+        purchaseDate: getCardGroupPurchaseDate(row),
+        totalInstallments: row.installment_total ?? 1,
+        rows: [row]
+      })
+      continue
+    }
+
+    existing.rows.push(row)
+    if (getCardGroupPurchaseDate(row) < existing.purchaseDate) {
+      existing.purchaseDate = getCardGroupPurchaseDate(row)
+    }
+    if ((row.installment_total ?? 1) > existing.totalInstallments) {
+      existing.totalInstallments = row.installment_total ?? 1
+    }
+  }
+
+  const orderedGroups = Array.from(groups.values()).sort((a, b) => {
+    if (a.purchaseDate !== b.purchaseDate) {
+      return a.purchaseDate.localeCompare(b.purchaseDate)
+    }
+    return a.title.localeCompare(b.title)
+  })
+
+  const rows: Array<CardGroupHeaderRow | Record<string, unknown>> = []
+
+  for (const group of orderedGroups) {
+    const sortedChildren = [...group.rows].sort((a, b) => {
+      const aPart = a.installment_number ?? 1
+      const bPart = b.installment_number ?? 1
+      if (aPart !== bPart) {
+        return aPart - bPart
+      }
+      return a.instance_date.localeCompare(b.instance_date)
+    })
+
+    const installmentValue = sortedChildren[0] ? getEffectiveValue(sortedChildren[0]) : 0
+    const groupTotalValue = installmentValue * Math.max(group.totalInstallments, 1)
+    rows.push({
+      id: `group-${group.key}`,
+      is_group_header: true,
+      group_key: group.key,
+      group_title: group.title,
+      group_card_name: group.cardName,
+      group_purchase_date: group.purchaseDate,
+      group_installment_total: group.totalInstallments,
+      group_total_value: groupTotalValue,
+      group_installment_value: installmentValue,
+      group_status_label: getCardGroupStatusLabel(sortedChildren),
+      instance_date: group.purchaseDate,
+      description_text: group.title,
+      link_badge: 'Grupo',
+      person_name: '-',
+      category_name: '-',
+      card_name: group.cardName,
+      expected_value: groupTotalValue,
+      installment_label: `1/${group.totalInstallments}`,
+      real_value_input: '',
+      status_select: getCardGroupStatusLabel(sortedChildren),
+      checked_toggle: false,
+      actions: ''
+    })
+
+    const expanded = cardsExpandedGroups.value[group.key] ?? true
+    if (expanded) {
+      rows.push(...sortedChildren)
+    }
+  }
+
+  return rows
+})
+
+const tableRows = computed(() => {
+  if (activeTab.value === 'cards') {
+    return groupedCardTableRows.value
+  }
+
+  return filteredRows.value
+})
+
+const exportPreviewRows = computed(() => {
+  return (filteredRows.value as TransactionInstanceItem[]).slice(0, 20)
+})
+
+function toggleCardGroup(groupKey: string) {
+  const current = cardsExpandedGroups.value[groupKey] ?? true
+  cardsExpandedGroups.value = {
+    ...cardsExpandedGroups.value,
+    [groupKey]: !current
+  }
+}
 
 function applyReimbursementDefaults() {
   if (!formReimbursementDescription.value.trim()) {
@@ -962,7 +1174,58 @@ function getCsvFileName() {
     : `lancamentos-contas-${period}.csv`
 }
 
-async function exportCurrentTabCsv() {
+function buildCsvLines() {
+  const header = [
+    'Data real',
+    'Competencia/Fatura',
+    'Descricao',
+    'Responsavel',
+    'Conta',
+    'Cartao',
+    'Categoria',
+    'Tipo',
+    'Previsto',
+    'Realizado',
+    'Status',
+    'Vinculo'
+  ]
+
+  const csvLines = [header.map(csvEscape).join(';')]
+
+  for (const row of filteredRows.value) {
+    const entry = row as TransactionInstanceItem & {
+      description_text: string
+      person_name: string
+      account_name: string
+      card_name: string
+      category_name: string
+      link_badge: string
+    }
+
+    const competenceLabel = activeTab.value === 'cards'
+      ? (entry.linked_financial_competence_label ?? entry.financial_competence_label)
+      : entry.instance_date
+
+    csvLines.push([
+      entry.instance_date,
+      competenceLabel,
+      entry.description_text,
+      entry.person_name,
+      entry.account_name,
+      entry.card_name,
+      entry.category_name,
+      entry.type === 'income' ? 'Entrada' : 'Saida',
+      entry.expected_value,
+      entry.real_value ?? '',
+      transactionStatusLabelMap[entry.status],
+      entry.link_badge
+    ].map(csvEscape).join(';'))
+  }
+
+  return csvLines
+}
+
+async function downloadCsvFromPreview() {
   if (!filteredRows.value.length) {
     pageError.value = 'Nao ha lancamentos filtrados para exportar.'
     return
@@ -972,52 +1235,7 @@ async function exportCurrentTabCsv() {
   pageError.value = ''
 
   try {
-    const header = [
-      'Data real',
-      'Competencia/Fatura',
-      'Descricao',
-      'Responsavel',
-      'Conta',
-      'Cartao',
-      'Categoria',
-      'Tipo',
-      'Previsto',
-      'Realizado',
-      'Status',
-      'Vinculo'
-    ]
-
-    const csvLines = [header.map(csvEscape).join(';')]
-
-    for (const row of filteredRows.value) {
-      const entry = row as TransactionInstanceItem & {
-        description_text: string
-        person_name: string
-        account_name: string
-        card_name: string
-        category_name: string
-        link_badge: string
-      }
-
-      const competenceLabel = activeTab.value === 'cards'
-        ? (entry.linked_financial_competence_label ?? entry.financial_competence_label)
-        : entry.instance_date
-
-      csvLines.push([
-        entry.instance_date,
-        competenceLabel,
-        entry.description_text,
-        entry.person_name,
-        entry.account_name,
-        entry.card_name,
-        entry.category_name,
-        entry.type === 'income' ? 'Entrada' : 'Saida',
-        entry.expected_value,
-        entry.real_value ?? '',
-        transactionStatusLabelMap[entry.status],
-        entry.link_badge
-      ].map(csvEscape).join(';'))
-    }
+    const csvLines = buildCsvLines()
 
     const blob = new Blob([`\uFEFF${csvLines.join('\n')}`], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
@@ -1032,6 +1250,44 @@ async function exportCurrentTabCsv() {
   } finally {
     exportingCsv.value = false
   }
+}
+
+async function downloadPngFromPreview() {
+  if (!exportPreviewRef.value) {
+    return
+  }
+
+  exportingPng.value = true
+  pageError.value = ''
+
+  try {
+    const html2canvas = (await import('html2canvas')).default
+    const canvas = await html2canvas(exportPreviewRef.value, {
+      backgroundColor: '#ffffff',
+      scale: 2
+    })
+    const link = document.createElement('a')
+    const period = activePeriodFilter.value === 'all' ? 'todos' : activePeriodFilter.value
+    link.download = `lancamentos-${activeTab.value}-${period}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  } catch (err) {
+    pageError.value = err instanceof Error
+      ? `Nao foi possivel gerar PNG. ${err.message}`
+      : 'Nao foi possivel gerar PNG.'
+  } finally {
+    exportingPng.value = false
+  }
+}
+
+function openExportPreview() {
+  if (!filteredRows.value.length) {
+    pageError.value = 'Nao ha lancamentos filtrados para exportar.'
+    return
+  }
+
+  pageError.value = ''
+  isExportPreviewOpen.value = true
 }
 
 function resetForm() {
@@ -1176,6 +1432,7 @@ function clearActiveTabFilters() {
     cardsPeriodMonth.value = monthYear.value.slice(5, 7)
     cardsPeriodYear.value = monthYear.value.slice(0, 4)
     cardsCardFilter.value = 'all'
+    cardsInstallmentFilter.value = 'all'
     cardsStatusFilter.value = 'all'
     cardsReimbursementLinkFilter.value = 'all'
     cardsSearchDescription.value = ''
@@ -1697,7 +1954,7 @@ watch([accountsPeriodMonth, accountsPeriodYear], () => {
 })
 
 watch(
-  [cardsPeriodFilter, cardsCardFilter, cardsStatusFilter, cardsReimbursementLinkFilter, cardsSearchDescription],
+  [cardsPeriodFilter, cardsCardFilter, cardsInstallmentFilter, cardsStatusFilter, cardsReimbursementLinkFilter, cardsSearchDescription],
   () => {
     saveCardsFiltersToStorage()
   }
@@ -1747,57 +2004,39 @@ onMounted(async () => {
           <span v-else class="inline-flex h-8 items-center rounded-full border border-primary-dark bg-primary-dark px-3 text-xs font-semibold uppercase tracking-[0.08em] text-surface">{{ lockedTabLabel }}</span>
           <span class="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700">{{ selectedPeriodLabel }}</span>
           <span class="inline-flex h-8 items-center rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700">{{ formatCurrency(filteredTotalValue) }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Lançamentos: {{ filteredIndicators.launches }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Compras: {{ filteredIndicators.purchases }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Reembolsos: {{ filteredIndicators.reimbursements }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">Parceladas: {{ filteredIndicators.installment }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">À vista: {{ filteredIndicators.single }}</span>
         </div>
 
-        <div class="grid gap-2 rounded-2xl border border-border/70 bg-background/40 p-2.5 md:gap-2 md:p-3">
-          <div class="flex flex-wrap items-center gap-2 md:gap-3">
-            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+        <FilterToolbar>
+          <template #line1>
+            <div class="flex items-center gap-2 overflow-x-auto">
               <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Período</span>
               <div class="flex min-w-max items-center gap-2">
-                <select
-                  v-if="activeTab === 'cards'"
-                  v-model="cardsPeriodMonth"
-                  class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
-                >
+                <select v-if="activeTab === 'cards'" v-model="cardsPeriodMonth" class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
                   <option v-for="option in filterMonthOptions" :key="`cards-month-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
-                <select
-                  v-if="activeTab === 'cards'"
-                  v-model="cardsPeriodYear"
-                  class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
-                >
+                <select v-if="activeTab === 'cards'" v-model="cardsPeriodYear" class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
                   <option v-for="year in filterYearOptions" :key="`cards-year-${year}`" :value="year">{{ year }}</option>
                 </select>
-
-                <select
-                  v-if="activeTab === 'accounts'"
-                  v-model="accountsPeriodMonth"
-                  class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
-                >
+                <select v-if="activeTab === 'accounts'" v-model="accountsPeriodMonth" class="h-8 min-w-[8rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
                   <option v-for="option in filterMonthOptions" :key="`accounts-month-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
-                <select
-                  v-if="activeTab === 'accounts'"
-                  v-model="accountsPeriodYear"
-                  class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground"
-                >
+                <select v-if="activeTab === 'accounts'" v-model="accountsPeriodYear" class="h-8 min-w-[5.5rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
                   <option v-for="year in filterYearOptions" :key="`accounts-year-${year}`" :value="year">{{ year }}</option>
                 </select>
-
                 <label class="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
-                  <input
-                    class="h-3.5 w-3.5 rounded border-border"
-                    type="checkbox"
-                    :checked="activeTab === 'cards' ? cardsPeriodFilter === 'all' : accountsPeriodFilter === 'all'"
-                    @change="activeTab === 'cards' ? (cardsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(cardsPeriodYear, cardsPeriodMonth)) : (accountsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(accountsPeriodYear, accountsPeriodMonth))"
-                  >
+                  <input class="h-3.5 w-3.5 rounded border-border" type="checkbox" :checked="activeTab === 'cards' ? cardsPeriodFilter === 'all' : accountsPeriodFilter === 'all'" @change="activeTab === 'cards' ? (cardsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(cardsPeriodYear, cardsPeriodMonth)) : (accountsPeriodFilter = ($event.target as HTMLInputElement).checked ? 'all' : buildPeriodKey(accountsPeriodYear, accountsPeriodMonth))">
                   Todos os períodos
                 </label>
               </div>
             </div>
 
-            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
-              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Cartão</span>
+            <div class="flex items-center gap-2 overflow-x-auto">
+              <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{{ activeTab === 'cards' ? 'Cartão' : 'Conta' }}</span>
               <div class="flex min-w-max items-center gap-2">
                 <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsCardFilter : accountsAccountFilter) === 'all')" @click="activeTab === 'cards' ? (cardsCardFilter = 'all') : (accountsAccountFilter = 'all')">Todos</button>
                 <button
@@ -1811,10 +2050,38 @@ onMounted(async () => {
                 </button>
               </div>
             </div>
-          </div>
+          </template>
 
-          <div class="flex flex-wrap items-center gap-2 md:gap-3">
-            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+          <template #line2>
+            <template v-if="activeTab === 'cards'">
+              <div class="flex items-center gap-2 overflow-x-auto">
+                <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Parcelamento</span>
+                <div class="flex min-w-max items-center gap-2">
+                  <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'all')" @click="cardsInstallmentFilter = 'all'">Todos</button>
+                  <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'installment')" @click="cardsInstallmentFilter = 'installment'">Parceladas</button>
+                  <button type="button" :class="filterChipClass(cardsInstallmentFilter === 'single')" @click="cardsInstallmentFilter = 'single'">À vista</button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="flex items-center gap-2 overflow-x-auto">
+                <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Tipo</span>
+                <div class="flex min-w-max items-center gap-2">
+                  <button type="button" :class="filterChipClass(accountsTypeFilter === 'all')" @click="accountsTypeFilter = 'all'">Todos</button>
+                  <button type="button" :class="filterChipClass(accountsTypeFilter === 'income')" @click="accountsTypeFilter = 'income'">Entradas</button>
+                  <button type="button" :class="filterChipClass(accountsTypeFilter === 'expense')" @click="accountsTypeFilter = 'expense'">Saídas</button>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Categoria</span>
+                <select v-model="accountsCategoryFilter" class="h-8 min-w-[11rem] rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground">
+                  <option value="all">Todas</option>
+                  <option v-for="entry in categories" :key="`accounts-category-${entry.id}`" :value="entry.id">{{ entry.name }}</option>
+                </select>
+              </div>
+            </template>
+
+            <div class="flex items-center gap-2 overflow-x-auto">
               <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Status</span>
               <div class="flex min-w-max items-center gap-2">
                 <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsStatusFilter : accountsStatusFilter) === 'all')" @click="activeTab === 'cards' ? (cardsStatusFilter = 'all') : (accountsStatusFilter = 'all')">Todos</button>
@@ -1824,7 +2091,7 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+            <div class="flex items-center gap-2 overflow-x-auto">
               <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Vínculo</span>
               <div class="flex min-w-max items-center gap-2">
                 <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'all')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'all') : (accountsReimbursementLinkFilter = 'all')">Todos</button>
@@ -1833,33 +2100,30 @@ onMounted(async () => {
                 <button type="button" :class="filterChipClass((activeTab === 'cards' ? cardsReimbursementLinkFilter : accountsReimbursementLinkFilter) === 'linked')" @click="activeTab === 'cards' ? (cardsReimbursementLinkFilter = 'linked') : (accountsReimbursementLinkFilter = 'linked')">Vinculados</button>
               </div>
             </div>
-          </div>
+          </template>
 
-          <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
-            <input
-              v-model="activeSearchDescriptionModel"
-              class="h-9 w-full rounded-xl border border-border bg-surface px-3 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none"
-              placeholder="Buscar descrição"
-              type="text"
-            >
-            <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 6h18" />
-                <path d="M8 6V4h8v2" />
-                <path d="M19 6l-1 14H6L5 6" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
-              </svg>
-            </AppButton>
-            <AppButton size="sm" variant="ghost" :disabled="exportingCsv || !filteredRows.length" :title="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" :aria-label="exportingCsv ? 'Exportando CSV' : 'Exportar CSV'" @click="exportCurrentTabCsv">
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 3v12" />
-                <path d="M7 10l5 5 5-5" />
-                <path d="M5 21h14" />
-              </svg>
-            </AppButton>
-          </div>
-        </div>
+          <template #line3>
+            <div class="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+              <input v-model="activeSearchDescriptionModel" class="h-9 w-full rounded-xl border border-border bg-surface px-3 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
+              <AppButton size="sm" variant="ghost" title="Limpar filtros" aria-label="Limpar filtros" @click="clearActiveTabFilters">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                </svg>
+              </AppButton>
+              <AppButton size="sm" variant="ghost" :disabled="!filteredRows.length" title="Pré-visualizar exportação" aria-label="Pré-visualizar exportação" @click="openExportPreview">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3v12" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+              </AppButton>
+            </div>
+          </template>
+        </FilterToolbar>
       </div>
     </AppCard>
 
@@ -1868,9 +2132,18 @@ onMounted(async () => {
 
     <AppCard title="Tabela de lançamentos" :subtitle="loading ? 'Carregando dados...' : `${filteredRows.length} registro(s)`">
       <div class="overflow-x-auto">
-        <AppTable :columns="columns" :rows="filteredRows" empty-message="Nenhum lançamento encontrado.">
+        <AppTable :columns="columns" :rows="tableRows" empty-message="Nenhum lançamento encontrado.">
           <template #cell-instance_date="{ row, value }">
-            <div class="flex items-center gap-2">
+            <button
+              v-if="isCardGroupHeaderRow(row)"
+              type="button"
+              class="inline-flex items-center gap-2 text-left text-xs font-semibold uppercase tracking-[0.08em] text-foreground"
+              @click="toggleCardGroup(row.group_key)"
+            >
+              <span>{{ cardsExpandedGroups[row.group_key] ?? true ? '▾' : '▸' }}</span>
+              <span>{{ formatDateBr(String(row.group_purchase_date)) }}</span>
+            </button>
+            <div v-else class="flex items-center gap-2">
               <span
                 class="h-2.5 w-2.5 rounded-full"
                 :class="getRowAlertClass(row as TransactionInstanceItem)"
@@ -1882,7 +2155,13 @@ onMounted(async () => {
           </template>
 
           <template #cell-card_name="{ row }">
-            <div class="space-y-1">
+            <div v-if="isCardGroupHeaderRow(row)" class="space-y-1">
+              <p class="font-semibold text-foreground">{{ row.group_card_name }}</p>
+              <span class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+                Compra: {{ formatDateBr(String(row.group_purchase_date)) }}
+              </span>
+            </div>
+            <div v-else class="space-y-1">
               <p>{{ (row as { card_name: string }).card_name }}</p>
               <span
                 v-if="(row as TransactionInstanceItem).card_id"
@@ -1900,7 +2179,9 @@ onMounted(async () => {
           </template>
 
           <template #cell-checked_toggle="{ row }">
+            <span v-if="isCardGroupHeaderRow(row)" class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">-</span>
             <input
+              v-else
               type="checkbox"
               class="h-4 w-4 rounded border-border"
               :checked="Boolean((row as TransactionInstanceItem).is_checked)"
@@ -1914,7 +2195,11 @@ onMounted(async () => {
           </template>
 
           <template #cell-real_value_input="{ row }">
+            <span v-if="isCardGroupHeaderRow(row)" class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              Parcela: {{ formatCurrency(row.group_installment_value) }}
+            </span>
             <input
+              v-else
               class="h-9 w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs text-foreground"
               :value="getRealDraftValue(row as TransactionInstanceItem)"
               type="number"
@@ -1926,7 +2211,14 @@ onMounted(async () => {
           </template>
 
           <template #cell-status_select="{ row }">
+            <span
+              v-if="isCardGroupHeaderRow(row)"
+              class="inline-flex rounded-full border border-border bg-surface px-2 py-1 text-[11px] font-semibold text-muted"
+            >
+              {{ row.group_status_label }}
+            </span>
             <select
+              v-else
               class="h-9 w-36 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
               :value="(row as TransactionInstanceItem).status"
               :disabled="rowActionBusy"
@@ -1938,6 +2230,13 @@ onMounted(async () => {
 
           <template #cell-link_badge="{ row }">
             <span
+              v-if="isCardGroupHeaderRow(row)"
+              class="inline-flex rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700"
+            >
+              {{ row.group_installment_total > 1 ? `Compra parcelada (${row.group_installment_total}x)` : 'Compra à vista' }}
+            </span>
+            <span
+              v-else
               class="inline-flex rounded-full px-2 py-1 text-[11px] font-semibold"
               :class="
                 (row as TransactionInstanceItem).reimbursement_role === 'original'
@@ -1956,7 +2255,16 @@ onMounted(async () => {
           </template>
 
           <template #cell-actions="{ row }">
-            <div class="flex justify-end gap-2">
+            <div v-if="isCardGroupHeaderRow(row)" class="flex justify-end">
+              <button
+                type="button"
+                class="h-8 rounded-full border border-border px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted transition hover:border-primary-dark/50 hover:text-foreground"
+                @click="toggleCardGroup(row.group_key)"
+              >
+                {{ cardsExpandedGroups[row.group_key] ?? true ? 'Recolher' : 'Expandir' }}
+              </button>
+            </div>
+            <div v-else class="flex justify-end gap-2">
               <AppButton
                 size="sm"
                 variant="ghost"
@@ -2159,6 +2467,76 @@ onMounted(async () => {
         <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
           <AppButton label="Cancelar" variant="ghost" block @click="isModalOpen = false" />
           <AppButton :label="saving ? 'Salvando...' : 'Salvar'" :disabled="saving" block @click="submitForm" />
+        </div>
+      </template>
+    </AppModal>
+
+    <AppModal
+      v-model="isExportPreviewOpen"
+      title="Pré-visualização de exportação"
+      description="Confira os dados filtrados antes de baixar CSV ou PNG."
+      max-width-class="max-w-5xl"
+    >
+      <div ref="exportPreviewRef" class="space-y-4 rounded-2xl border border-border bg-surface p-4">
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="rounded-xl border border-border bg-background/60 p-3">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Período</p>
+            <p class="mt-1 text-sm font-semibold text-foreground">{{ selectedPeriodLabel }}</p>
+          </div>
+          <div class="rounded-xl border border-border bg-background/60 p-3">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Entradas</p>
+            <p class="mt-1 text-sm font-semibold text-emerald-700">{{ formatCurrency(filteredIncomeValue) }}</p>
+          </div>
+          <div class="rounded-xl border border-border bg-background/60 p-3">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Saídas</p>
+            <p class="mt-1 text-sm font-semibold text-rose-700">{{ formatCurrency(filteredExpenseValue) }}</p>
+          </div>
+          <div class="rounded-xl border border-border bg-background/60 p-3">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Saldo filtrado</p>
+            <p class="mt-1 text-sm font-semibold" :class="filteredBalanceValue >= 0 ? 'text-emerald-700' : 'text-rose-700'">{{ formatCurrency(filteredBalanceValue) }}</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+          <span class="rounded-full border border-border bg-background px-2 py-1">Aba: {{ activeTab === 'cards' ? 'Cartão' : 'Conta' }}</span>
+          <span class="rounded-full border border-border bg-background px-2 py-1">Lançamentos: {{ filteredIndicators.launches }}</span>
+          <span class="rounded-full border border-border bg-background px-2 py-1">Compras: {{ filteredIndicators.purchases }}</span>
+          <span class="rounded-full border border-border bg-background px-2 py-1">Reembolsos: {{ filteredIndicators.reimbursements }}</span>
+        </div>
+
+        <div class="overflow-x-auto rounded-2xl border border-border">
+          <table class="min-w-full divide-y divide-border text-xs">
+            <thead class="bg-primary-light/35 text-[11px] uppercase tracking-[0.08em] text-muted">
+              <tr>
+                <th class="px-3 py-2 text-left">Data</th>
+                <th class="px-3 py-2 text-left">Descrição</th>
+                <th class="px-3 py-2 text-left">Categoria</th>
+                <th class="px-3 py-2 text-left">Método</th>
+                <th class="px-3 py-2 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border bg-surface text-foreground">
+              <tr v-for="row in exportPreviewRows" :key="`preview-${row.id}`">
+                <td class="px-3 py-2">{{ formatDateBr(row.instance_date) }}</td>
+                <td class="px-3 py-2">{{ row.description?.trim() ? `${row.title} - ${row.description}` : row.title }}</td>
+                <td class="px-3 py-2">{{ row.category_id ? (categoriesMap.get(row.category_id) || '-') : '-' }}</td>
+                <td class="px-3 py-2">{{ row.card_id ? (cardsMap.get(row.card_id) || '-') : (row.account_id ? (accountsMap.get(row.account_id) || '-') : '-') }}</td>
+                <td class="px-3 py-2 text-right">{{ formatCurrency(getEffectiveValue(row)) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="text-[11px] text-muted">
+          Exibindo {{ exportPreviewRows.length }} de {{ filteredRows.length }} lançamento(s) no preview.
+        </p>
+      </div>
+
+      <template #footer>
+        <div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          <AppButton label="Fechar" variant="ghost" block @click="isExportPreviewOpen = false" />
+          <AppButton :label="exportingPng ? 'Gerando PNG...' : 'Baixar PNG'" :disabled="exportingPng || !filteredRows.length" block @click="downloadPngFromPreview" />
+          <AppButton :label="exportingCsv ? 'Exportando CSV...' : 'Baixar CSV'" :disabled="exportingCsv || !filteredRows.length" block @click="downloadCsvFromPreview" />
         </div>
       </template>
     </AppModal>
