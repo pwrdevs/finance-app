@@ -2169,8 +2169,8 @@ onBeforeUnmount(() => {
 
         <FilterToolbar>
           <template #line1>
-            <div class="relative">
-              <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-background/40 p-2">
+            <div class="relative w-full">
+              <div class="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-border bg-background/40 p-2">
                 <div class="relative min-w-[220px] flex-1">
                   <input v-model="activeSearchDescriptionModel" class="h-9 w-full rounded-xl border border-border bg-surface px-3 pr-8 text-xs text-foreground placeholder:text-muted focus:border-primary-dark focus:outline-none" placeholder="Buscar descrição" type="text">
                   <button v-if="activeSearchDescriptionModel" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted transition hover:text-foreground" title="Limpar busca" aria-label="Limpar busca" @click="clearActiveSearch">✕</button>
@@ -2208,7 +2208,7 @@ onBeforeUnmount(() => {
               <div
                 v-if="isAdvancedFiltersOpen"
                 ref="filtersPopoverRef"
-                class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-2xl border border-border bg-surface p-3 shadow-soft lg:left-auto lg:w-[760px]"
+                class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 w-full rounded-2xl border border-border bg-surface p-3 shadow-soft max-w-[calc(100vw-1rem)] lg:left-auto lg:right-0 lg:w-[min(760px,calc(100vw-1.5rem))]"
               >
                 <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div class="space-y-2">
