@@ -857,11 +857,11 @@ const filteredRows = computed(() => {
     .filter((row) => {
       if (activeTab.value === 'cards') {
         // Cards tab must represent only card launches/invoice charges.
-        return Boolean(row.card_id)
+        return Boolean(row.card_id) && row.reimbursement_role !== 'reimbursement'
       }
 
-      // Non-card launches (including reimbursements) stay in Accounts tab.
-      return !row.card_id
+      // Accounts tab must include non-card launches and all reimbursements.
+      return !row.card_id || row.reimbursement_role === 'reimbursement'
     })
     .filter((row) => {
       if (!selectedPeriodMonthKey.value) {
