@@ -593,9 +593,13 @@ async function refreshRowsAfterMutation(options: {
   const previousTotalCount = options.previousTotalCount ?? rows.value.length
   const nextFilteredCount = filteredRows.value.length
   const nextTotalCount = rows.value.length
-  const isOutsideCurrentFilter = options.checkFilteredVisibility
+  const createdOutsideCurrentFilter = options.checkFilteredVisibility
+    && nextTotalCount > previousTotalCount
+    && nextFilteredCount <= previousFilteredCount
+  const updatedOutsideCurrentFilter = options.checkFilteredVisibility
+    && nextTotalCount === previousTotalCount
     && nextFilteredCount < previousFilteredCount
-    && nextTotalCount >= previousTotalCount
+  const isOutsideCurrentFilter = createdOutsideCurrentFilter || updatedOutsideCurrentFilter
 
   if (isOutsideCurrentFilter) {
     pageNotice.value = 'Lançamento salvo, mas fora do filtro atual.'
