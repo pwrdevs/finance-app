@@ -122,6 +122,8 @@ const categories = ref<CategoryItem[]>([])
 const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
+const isMoveModalOpen = ref(false)
+const pendingMoveRow = ref<TransactionInstanceItem | null>(null)
 const editingRow = ref<TransactionInstanceItem | null>(null)
 
 const formTitle = ref('')
@@ -686,39 +688,22 @@ const expectedValueHelpText = computed(() => {
   return ''
 })
 
-async function confirmMoveTransaction(row: TransactionInstanceItem) {
-  if (rowActionBusy.value) {
-    return
-  }
+function openMoveModal(row: TransactionInstanceItem) {
+  if (rowActionBusy.value) return
+  pendingMoveRow.value = row
+  isMoveModalOpen.value = true
+}
 
-  const isSeriesType = row.origin_type === 'installment' || row.origin_type === 'recurring'
+function closeMoveModal() {
+  isMoveModalOpen.value = false
+  pendingMoveRow.value = null
+}
 
-  let scope: 'single' | 'future' = 'single'
-
-  if (!isSeriesType) {
-    // Compra única: apenas confirmação simples
-    const confirmed = window.confirm(`Confirma mover o lancamento "${row.title}" para a proxima fatura?`)
-    if (!confirmed) return
-  } else {
-    // Parcelado ou recorrente: primeira pergunta = apenas este
-    const moveSingle = window.confirm(
-      `Mover apenas ESTE lancamento "${row.title}" para a proxima fatura?\n\nClique em OK para mover so este (o mes seguinte ficara com 2 lancamentos).\nClique em Cancelar para ver a opcao de mover todos os proximos.`
-    )
-
-    if (moveSingle) {
-      scope = 'single'
-    } else {
-      // Segunda pergunta = este e todos os próximos
-      const moveFuture = window.confirm(
-        `Mover ESTE E TODOS OS PROXIMOS lancamentos de "${row.title}" para a proxima fatura?\n\nTodos os lancamentos a partir deste mes serao deslocados um mes a frente.\n\nClique em OK para confirmar ou Cancelar para nao fazer nada.`
-      )
-      if (!moveFuture) return
-      scope = 'future'
-    }
-  }
-
+async function executeMoveTransaction(scope: 'single' | 'future') {
+  const row = pendingMoveRow.value
+  if (!row) return
+  closeMoveModal()
   rowActionBusy.value = true
-
   try {
     await moveTransactionInstanceToNextFinancialCompetence(row, scope)
     await refreshRowsAfterMutation({ successMessage: 'Lançamento movido para a próxima fatura.' })
@@ -2504,7 +2489,7 @@ onBeforeUnmount(() => {
                 aria-label="Mover para a proxima fatura"
                 title="Mover para a próxima fatura"
                 :disabled="rowActionBusy"
-                @click="confirmMoveTransaction(row as TransactionInstanceItem)"
+                @click="openMoveModal(row as TransactionInstanceItem)"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M5 12h14" />
@@ -2805,6 +2790,46 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </AppModal>
+
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="isMoveModalOpen" class="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" @click="closeMoveModal" />
+      </Transition>
+      <Transition name="slide-up">
+        <div v-if="isMoveModalOpen" class="fixed inset-0 z-[80] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
+          <div class="w-full max-w-md rounded-3xl bg-[#16181a] p-5 shadow-2xl ring-1 ring-white/10">
+            <h3 class="text-lg font-semibold text-white">Mover para a proxima fatura?</h3>
+            <p v-if="pendingMoveRow" class="mt-1 text-sm text-white/60">{{ pendingMoveRow.title }}</p>
+            <div class="mt-4 grid gap-3">
+              <button
+                type="button"
+                class="h-12 rounded-2xl bg-white text-sm font-semibold text-[#111315] transition hover:bg-white/90"
+                :disabled="rowActionBusy"
+                @click="executeMoveTransaction('single')"
+              >
+                Mover apenas este
+              </button>
+              <button
+                v-if="pendingMoveRow && (pendingMoveRow.origin_type === 'installment' || pendingMoveRow.origin_type === 'recurring')"
+                type="button"
+                class="h-12 rounded-2xl bg-[#2a2f34] text-sm font-semibold text-white transition hover:bg-[#353b41]"
+                :disabled="rowActionBusy"
+                @click="executeMoveTransaction('future')"
+              >
+                Mover este e os proximos
+              </button>
+              <button
+                type="button"
+                class="mt-1 h-11 rounded-2xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                @click="closeMoveModal"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
   </section>
 </template>
