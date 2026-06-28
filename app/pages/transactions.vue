@@ -855,13 +855,13 @@ const filteredRows = computed(() => {
 
   return rows.value
     .filter((row) => {
-      const isLinkedToCardInvoice = Boolean(row.linked_financial_competence_label)
-
       if (activeTab.value === 'cards') {
-        return Boolean(row.card_id) || isLinkedToCardInvoice
+        // Cards tab must represent only card launches/invoice charges.
+        return Boolean(row.card_id)
       }
 
-      return !row.card_id && !isLinkedToCardInvoice
+      // Non-card launches (including reimbursements) stay in Accounts tab.
+      return !row.card_id
     })
     .filter((row) => {
       if (!selectedPeriodMonthKey.value) {
