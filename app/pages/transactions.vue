@@ -540,6 +540,11 @@ function restoreAccountsFiltersFromStorage() {
 
 function switchTab(tab: 'cards' | 'accounts') {
   activeTab.value = tab
+
+  if (tab === 'accounts') {
+    accountsTypeFilter.value = 'all'
+  }
+
   saveActiveTabToStorage()
   isAdvancedFiltersOpen.value = false
 }
@@ -556,6 +561,11 @@ function applyTabFromRouteQuery() {
   }
 
   activeTab.value = routeTab
+
+  if (routeTab === 'accounts') {
+    accountsTypeFilter.value = 'all'
+  }
+
   saveActiveTabToStorage()
 }
 
