@@ -1634,7 +1634,10 @@ export function useTransactions() {
     const normalizedCategoryId = normalizeOptionalId(payload.category_id)
 
     const applyFromDate = item.instance_date
-    const effectiveFutureStartDate = payload.instance_date < applyFromDate
+    const applyFromMonthKey = applyFromDate.slice(0, 7)
+    const payloadMonthKey = payload.instance_date.slice(0, 7)
+    const shouldClampToSelectedDate = payload.instance_date < applyFromDate && payloadMonthKey !== applyFromMonthKey
+    const effectiveFutureStartDate = shouldClampToSelectedDate
       ? applyFromDate
       : payload.instance_date
 
