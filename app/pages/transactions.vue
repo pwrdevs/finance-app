@@ -2293,7 +2293,7 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
 
-    <AppCard>
+    <AppCard class="sticky top-16 z-30">
       <div class="space-y-3">
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="!isTabLocked">
@@ -2306,7 +2306,7 @@ onBeforeUnmount(() => {
           <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">{{ recordsCountLabel }}</span>
         </div>
 
-        <FilterToolbar class="sticky top-16 z-20 rounded-2xl bg-surface/95 backdrop-blur">
+        <FilterToolbar>
           <template #line1>
             <div class="relative w-full">
               <div class="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-border bg-background/40 p-2">
