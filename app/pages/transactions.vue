@@ -2292,7 +2292,7 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
 
-    <AppCard class="sticky top-16 z-30">
+    <AppCard class="sticky top-2 z-40 border-border/90 bg-surface/95 backdrop-blur-sm">
       <div class="space-y-3">
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="!isTabLocked">
