@@ -1569,7 +1569,7 @@ function fillFormFromRow(row: TransactionInstanceItem) {
   formRealValue.value = row.real_value == null ? '' : String(row.real_value)
   formPurchaseDate.value = row.instance_date
   formInstallmentTotal.value = String(row.installment_total ?? 2)
-  formRecurringStartDate.value = row.due_date
+  formRecurringStartDate.value = row.instance_date
   formRecurringEndDate.value = ''
   formRecurringFrequency.value = 'monthly'
   formRecurringEndingMode.value = 'count'
@@ -1597,7 +1597,6 @@ async function openEditModal(row: TransactionInstanceItem) {
 
   if (row.origin_type === 'recurring' && row.source_transaction_id) {
     const recurringConfig = await getRecurringConfiguration(row.source_transaction_id)
-    formRecurringStartDate.value = recurringConfig.start_date
     formRecurringFrequency.value = recurringConfig.frequency
     formRecurringEndingMode.value = recurringConfig.end_mode === 'no_end' ? 'count' : recurringConfig.end_mode
     formRecurringEndDate.value = recurringConfig.end_date || ''
@@ -2275,7 +2274,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="space-y-5 overflow-x-hidden">
+  <section class="space-y-5">
     <Transition
       enter-active-class="transition duration-200 ease-out"
       enter-from-class="translate-y-2 opacity-0"
@@ -2499,7 +2498,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="max-h-[calc(100vh-20rem)] overflow-y-auto">
+      <div>
         <AppTable :columns="columns" :rows="tableRows" empty-message="Nenhum lançamento encontrado.">
           <template #header-selection>
             <input
@@ -2731,7 +2730,7 @@ onBeforeUnmount(() => {
 
           <div v-if="formOriginType === 'recurring'" class="space-y-3 rounded-xl border border-border p-3">
             <div class="grid gap-4 sm:grid-cols-2">
-              <AppInput v-model="formRecurringStartDate" label="Data inicial" type="date" required />
+              <AppInput v-model="formRecurringStartDate" :label="editingRow ? 'Data do lançamento' : 'Data inicial'" type="date" required />
 
               <div class="space-y-2">
                 <label class="block text-sm font-medium text-foreground">Frequencia</label>

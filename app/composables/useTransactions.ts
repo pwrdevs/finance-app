@@ -1795,10 +1795,10 @@ export function useTransactions() {
         throw futureInstancesError
       }
 
-      const monthShift = Math.max(0, getMonthDiff(item.instance_date, payload.instance_date))
-
       for (const instance of futureInstances ?? []) {
-        const shiftedDate = addMonthsKeepingDay(instance.instance_date, monthShift)
+        const monthOffsetFromEditedItem = Math.max(0, getMonthDiff(item.instance_date, instance.instance_date))
+        // Keep each installment in its own month offset while applying the edited day to current/future rows.
+        const shiftedDate = addMonthsKeepingDay(payload.instance_date, monthOffsetFromEditedItem)
 
         const { error: updateFutureInstanceError } = await supabase
           .from('transaction_instances')
