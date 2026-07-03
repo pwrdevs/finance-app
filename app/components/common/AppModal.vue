@@ -27,13 +27,13 @@ function closeModal() {
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="modelValue" class="fixed inset-0 z-40 bg-foreground/45 backdrop-blur-sm" @click="closeModal" />
+      <div v-if="modelValue" class="fixed inset-0 z-[100] bg-foreground/45 backdrop-blur-sm" @click="closeModal" />
     </Transition>
 
     <Transition name="slide-up">
       <div
         v-if="modelValue"
-        class="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-2 sm:items-center sm:p-4"
+        class="fixed inset-0 z-[110] flex items-end justify-center overflow-y-auto p-2 sm:items-center sm:p-4"
         role="dialog"
         aria-modal="true"
       >
