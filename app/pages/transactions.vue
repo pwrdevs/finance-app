@@ -28,7 +28,6 @@ const {
   listFilterOptions,
   listManualInstances,
   moveTransactionInstanceToNextFinancialCompetence,
-  setChecked,
   setStatus,
   updateTransactionStatuses,
   updateInstallmentTransaction,
@@ -150,18 +149,17 @@ const formReimbursementDate = ref('')
 
 const columns = [
   { key: 'selection', label: '', align: 'center' as const },
-  { key: 'instance_date', label: 'Data' },
-  { key: 'description_text', label: 'Descricao' },
-  { key: 'link_badge', label: 'Vinculo' },
-  { key: 'person_name', label: 'Responsavel' },
-  { key: 'category_name', label: 'Categoria' },
-  { key: 'card_name', label: 'Cartao' },
-  { key: 'expected_value', label: 'Previsto', align: 'right' as const },
-  { key: 'installment_label', label: 'Parcela' },
-  { key: 'real_value_input', label: 'Realizado', align: 'right' as const },
-  { key: 'status_select', label: 'Status' },
-  { key: 'checked_toggle', label: 'Conferido', align: 'center' as const },
-  { key: 'actions', label: 'Acoes', align: 'right' as const }
+  { key: 'instance_date', label: 'Data', widthClass: 'w-[108px]' },
+  { key: 'description_text', label: 'Descricao', widthClass: 'w-[240px]' },
+  { key: 'link_badge', label: 'Vinculo', widthClass: 'w-[96px]' },
+  { key: 'person_name', label: 'Responsavel', widthClass: 'w-[132px]' },
+  { key: 'category_name', label: 'Categoria', widthClass: 'w-[132px]' },
+  { key: 'card_name', label: 'Cartao', widthClass: 'w-[150px]' },
+  { key: 'expected_value', label: 'Previsto', align: 'right' as const, widthClass: 'w-[110px]' },
+  { key: 'installment_label', label: 'Parcela', widthClass: 'w-[92px]' },
+  { key: 'real_value_input', label: 'Realizado', align: 'right' as const, widthClass: 'w-[114px]' },
+  { key: 'status_select', label: 'Status', widthClass: 'w-[120px]' },
+  { key: 'actions', label: 'Acoes', align: 'right' as const, widthClass: 'w-[132px]' }
 ]
 
 const originTypeOptions = [
@@ -1003,8 +1001,7 @@ const filteredRows = computed(() => {
         ? 'Original'
         : row.reimbursement_role === 'reimbursement'
           ? 'Reembolso'
-          : 'Normal',
-      checked_toggle: row.is_checked
+          : 'Normal'
     }))
 })
 
@@ -1662,6 +1659,18 @@ function patchRowInState(rowId: string, patch: Partial<TransactionInstanceItem>)
   })
 }
 
+function getStatusSelectClass(status: TransactionStatus) {
+  if (status === 'paid') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-900'
+  }
+
+  if (status === 'pending') {
+    return 'border-amber-200 bg-amber-50 text-amber-900'
+  }
+
+  return 'border-border bg-surface text-foreground'
+}
+
 async function fetchOptions() {
   try {
     const options = await listFilterOptions()
@@ -1834,7 +1843,7 @@ async function submitForm() {
   const resolvedOriginType = formOriginType.value === 'single' && cardId && parsedInstallmentTotal > 1
     ? 'installment'
     : formOriginType.value
-  const purchaseDate = formPurchaseDate.value
+  const purchaseDate = formPurchaseDate.value || editingRow.value?.instance_date || ''
   const instanceDate = formOriginType.value === 'recurring'
     ? formRecurringStartDate.value
     : purchaseDate
@@ -1974,34 +1983,6 @@ async function submitForm() {
     modalError.value = err instanceof Error ? err.message : 'Nao foi possivel salvar o lancamento.'
   } finally {
     saving.value = false
-  }
-}
-
-async function toggleChecked(row: TransactionInstanceItem) {
-  if (rowActionBusy.value) {
-    return
-  }
-
-  pageError.value = ''
-  rowActionBusy.value = true
-  const nextChecked = !row.is_checked
-
-  patchRowInState(row.id, {
-    is_checked: nextChecked,
-    checked_at: nextChecked ? new Date().toISOString() : null
-  })
-
-  try {
-    await setChecked(row, nextChecked)
-    await refreshRowsAfterMutation()
-  } catch (err) {
-    patchRowInState(row.id, {
-      is_checked: row.is_checked,
-      checked_at: row.checked_at
-    })
-    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel atualizar a conferencia.'
-  } finally {
-    rowActionBusy.value = false
   }
 }
 
@@ -2425,16 +2406,6 @@ onBeforeUnmount(() => {
             </div>
           </template>
 
-          <template #cell-checked_toggle="{ row }">
-            <input
-              type="checkbox"
-              class="h-4 w-4 rounded border-border"
-              :checked="Boolean((row as TransactionInstanceItem).is_checked)"
-              :disabled="rowActionBusy"
-              @change="toggleChecked(row as TransactionInstanceItem)"
-            />
-          </template>
-
           <template #cell-expected_value="{ value }">
             {{ formatCurrency(Number(value)) }}
           </template>
@@ -2453,7 +2424,8 @@ onBeforeUnmount(() => {
 
           <template #cell-status_select="{ row }">
             <select
-              class="h-9 w-36 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
+              class="h-9 w-full rounded-lg border px-2 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-primary-light"
+              :class="getStatusSelectClass((row as TransactionInstanceItem).status)"
               :value="(row as TransactionInstanceItem).status"
               :disabled="rowActionBusy"
               @change="changeStatus((row as TransactionInstanceItem), ($event.target as HTMLSelectElement).value as TransactionStatus)"
@@ -2497,7 +2469,7 @@ onBeforeUnmount(() => {
                 </svg>
               </AppButton>
               <AppButton
-                v-if="(row as TransactionInstanceItem).card_id && (row as TransactionInstanceItem).reimbursement_role !== 'reimbursement'"
+                v-if="(row as TransactionInstanceItem).reimbursement_role !== 'reimbursement'"
                 size="sm"
                 variant="ghost"
                 aria-label="Mover para a proxima fatura"

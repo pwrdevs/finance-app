@@ -3,6 +3,7 @@ interface TableColumn {
   key: string
   label: string
   align?: 'left' | 'center' | 'right'
+  widthClass?: string
 }
 
 const props = withDefaults(
@@ -31,15 +32,15 @@ function getRowKey(row: Record<string, unknown>, index: number) {
 </script>
 
 <template>
-  <div class="overflow-x-auto rounded-2xl border border-border bg-surface shadow-panel">
-    <table class="min-w-full divide-y divide-border text-sm">
+  <div class="group overflow-x-auto rounded-2xl border border-border bg-surface shadow-panel [scrollbar-gutter:stable]">
+    <table class="min-w-max w-full divide-y divide-border text-sm lg:min-w-full">
       <thead class="bg-primary-light/35">
         <tr>
           <th
             v-for="column in columns"
             :key="column.key"
-            class="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted"
-            :class="cellAlignClass(column.align)"
+            class="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-muted"
+            :class="[column.widthClass, cellAlignClass(column.align)]"
           >
             <slot :name="`header-${column.key}`">
               {{ column.label }}
@@ -53,8 +54,8 @@ function getRowKey(row: Record<string, unknown>, index: number) {
           <td
             v-for="column in columns"
             :key="column.key"
-            class="whitespace-nowrap px-4 py-3 text-foreground"
-            :class="cellAlignClass(column.align)"
+            class="whitespace-nowrap px-3 py-3 text-foreground"
+            :class="[column.widthClass, cellAlignClass(column.align)]"
           >
             <slot :name="`cell-${column.key}`" :row="row" :value="row[column.key]">
               {{ row[column.key] }}
