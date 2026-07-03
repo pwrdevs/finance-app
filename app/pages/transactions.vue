@@ -1693,6 +1693,19 @@ async function fetchRows() {
   }
 }
 
+async function handleManualRefresh() {
+  if (loading.value || rowActionBusy.value || bulkActionBusy.value) {
+    return
+  }
+
+  pageNotice.value = ''
+  await fetchRows()
+
+  if (!pageError.value) {
+    showToast('Tabela atualizada.', 'success')
+  }
+}
+
 function patchRowInState(rowId: string, patch: Partial<TransactionInstanceItem>) {
   rows.value = rows.value.map((entry) => {
     if (entry.id !== rowId) {
@@ -2220,7 +2233,7 @@ onBeforeUnmount(() => {
           <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">{{ recordsCountLabel }}</span>
         </div>
 
-        <FilterToolbar>
+        <FilterToolbar class="sticky top-16 z-20 rounded-2xl bg-surface/95 backdrop-blur">
           <template #line1>
             <div class="relative w-full">
               <div class="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-border bg-background/40 p-2">
@@ -2246,6 +2259,15 @@ onBeforeUnmount(() => {
                     <path d="M19 6l-1 14H6L5 6" />
                     <path d="M10 11v6" />
                     <path d="M14 11v6" />
+                  </svg>
+                </AppButton>
+
+                <AppButton size="sm" variant="ghost" :disabled="loading" title="Atualizar tabela" aria-label="Atualizar tabela" @click="handleManualRefresh">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 2v6h-6" />
+                    <path d="M3 22v-6h6" />
+                    <path d="M20.49 9A9 9 0 0 0 5.64 5.64L3 8" />
+                    <path d="M3.51 15A9 9 0 0 0 18.36 18.36L21 16" />
                   </svg>
                 </AppButton>
 
@@ -2404,7 +2426,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="overflow-x-auto">
+      <div class="max-h-[calc(100vh-20rem)] overflow-y-auto">
         <AppTable :columns="columns" :rows="tableRows" empty-message="Nenhum lançamento encontrado.">
           <template #header-selection>
             <input
