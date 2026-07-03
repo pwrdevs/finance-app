@@ -1363,12 +1363,81 @@ export function useTransactions() {
     }
   }
 
+  async function moveInstanceDateForwardForRow(itemId: string, currentInstanceDate: string) {
+    const { error } = await supabase
+      .from('transaction_instances')
+      .update({
+        instance_date: addMonthsKeepingDay(currentInstanceDate, 1),
+        financial_effective_date_override: null
+      })
+      .eq('id', itemId)
+
+    if (error) {
+      throw error
+    }
+  }
+
+  async function moveInstanceDateForwardForRows(rows: Array<{ id: string, instance_date: string }>) {
+    for (const row of rows) {
+      await moveInstanceDateForwardForRow(row.id, row.instance_date)
+    }
+  }
+
   async function moveTransactionInstanceToNextFinancialCompetence(
     item: TransactionInstanceItem,
     scope: DeleteRecurringScope = 'single'
   ) {
     if (item.reimbursement_role === 'reimbursement') {
       throw new Error('Movimentacao manual nao se aplica a reembolso vinculado.')
+    }
+
+    if (!item.card_id) {
+      if (scope === 'single' || item.origin_type === 'single') {
+        await moveInstanceDateForwardForRow(item.id, item.instance_date)
+        return
+      }
+
+      if (item.origin_type === 'installment') {
+        if (!item.source_transaction_id) {
+          throw new Error('Lancamento de origem parcelada obrigatorio.')
+        }
+
+        const { data: futureInstances, error } = await supabase
+          .from('transaction_instances')
+          .select('id, instance_date')
+          .eq('source_transaction_id', item.source_transaction_id)
+          .gte('instance_date', item.instance_date)
+          .order('instance_date', { ascending: true })
+
+        if (error) {
+          throw error
+        }
+
+        await moveInstanceDateForwardForRows(futureInstances ?? [])
+        return
+      }
+
+      if (item.origin_type === 'recurring') {
+        if (!item.source_transaction_id) {
+          throw new Error('Lancamento de origem recorrente obrigatorio.')
+        }
+
+        const { recurrenceRule } = await getRecurringContext(item.source_transaction_id)
+        const { data: futureInstances, error } = await supabase
+          .from('transaction_instances')
+          .select('id, instance_date')
+          .eq('recurrence_rule_id', recurrenceRule.id)
+          .gte('instance_date', item.instance_date)
+          .order('instance_date', { ascending: true })
+
+        if (error) {
+          throw error
+        }
+
+        await moveInstanceDateForwardForRows(futureInstances ?? [])
+      }
+
+      return
     }
 
     if (scope === 'single' || item.origin_type === 'single') {

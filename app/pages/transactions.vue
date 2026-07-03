@@ -718,7 +718,10 @@ async function executeMoveTransaction(scope: 'single' | 'future') {
   rowActionBusy.value = true
   try {
     await moveTransactionInstanceToNextFinancialCompetence(row, scope)
-    await refreshRowsAfterMutation({ successMessage: 'Lançamento movido para a próxima fatura.' })
+    const successMessage = row.card_id
+      ? 'Lançamento movido para a próxima fatura.'
+      : 'Lançamento movido para o próximo mês.'
+    await refreshRowsAfterMutation({ successMessage })
   } catch (err) {
     pageError.value = err instanceof Error ? err.message : 'Nao foi possivel mover o lancamento.'
   } finally {
@@ -2392,13 +2395,13 @@ onBeforeUnmount(() => {
                 Fatura: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
               </span>
               <span
-                v-if="(row as TransactionInstanceItem).financial_effective_date_override"
+                v-if="(row as TransactionInstanceItem).card_id && (row as TransactionInstanceItem).financial_effective_date_override"
                 class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700"
               >
                 Fatura ajustada
               </span>
               <span
-                v-else-if="Boolean((row as TransactionInstanceItem).linked_financial_competence_label)"
+                v-else-if="(row as TransactionInstanceItem).card_id && Boolean((row as TransactionInstanceItem).linked_financial_competence_label)"
                 class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
               >
                 Vinculado à fatura: {{ (row as { linked_financial_competence_label?: string | null }).linked_financial_competence_label }}
@@ -2472,8 +2475,8 @@ onBeforeUnmount(() => {
                 v-if="(row as TransactionInstanceItem).reimbursement_role !== 'reimbursement'"
                 size="sm"
                 variant="ghost"
-                aria-label="Mover para a proxima fatura"
-                title="Mover para a próxima fatura"
+                :aria-label="(row as TransactionInstanceItem).card_id ? 'Mover para a próxima fatura' : 'Mover para o próximo mês'"
+                :title="(row as TransactionInstanceItem).card_id ? 'Mover para a próxima fatura' : 'Mover para o próximo mês'"
                 :disabled="rowActionBusy"
                 @click="openMoveModal(row as TransactionInstanceItem)"
               >
@@ -2784,7 +2787,9 @@ onBeforeUnmount(() => {
       <Transition name="slide-up">
         <div v-if="isMoveModalOpen" class="fixed inset-0 z-[80] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
           <div class="w-full max-w-md rounded-3xl bg-[#16181a] p-5 shadow-2xl ring-1 ring-white/10">
-            <h3 class="text-lg font-semibold text-white">Mover para a proxima fatura?</h3>
+            <h3 class="text-lg font-semibold text-white">
+              {{ pendingMoveRow?.card_id ? 'Mover para a próxima fatura?' : 'Mover para o próximo mês?' }}
+            </h3>
             <p v-if="pendingMoveRow" class="mt-1 text-sm text-white/60">{{ pendingMoveRow.title }}</p>
             <div class="mt-4 grid gap-3">
               <button
