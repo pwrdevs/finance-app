@@ -1363,11 +1363,17 @@ export function useTransactions() {
     }
   }
 
-  async function moveInstanceDateForwardForRow(itemId: string, currentInstanceDate: string) {
+  async function moveInstanceDateForwardForRow(
+    itemId: string,
+    currentInstanceDate: string,
+    options: { detachFromRecurrenceOnConflict?: boolean } = {}
+  ) {
+    const nextInstanceDate = addMonthsKeepingDay(currentInstanceDate, 1)
+
     const { error } = await supabase
       .from('transaction_instances')
       .update({
-        instance_date: addMonthsKeepingDay(currentInstanceDate, 1),
+        instance_date: nextInstanceDate,
         financial_effective_date_override: null
       })
       .eq('id', itemId)
@@ -1377,8 +1383,25 @@ export function useTransactions() {
         ? String((error as { code?: unknown }).code ?? '')
         : ''
 
+      if (errorCode === '23505' && options.detachFromRecurrenceOnConflict) {
+        const { error: detachError } = await supabase
+          .from('transaction_instances')
+          .update({
+            recurrence_rule_id: null,
+            instance_date: nextInstanceDate,
+            financial_effective_date_override: null
+          })
+          .eq('id', itemId)
+
+        if (!detachError) {
+          return
+        }
+
+        throw detachError
+      }
+
       if (errorCode === '23505') {
-        throw new Error('Não foi possível mover apenas este lançamento porque já existe outro no próximo mês. Use "Mover este e os próximos".')
+        throw new Error('Não foi possível mover este lançamento porque já existe outro com a mesma data de recorrência.')
       }
 
       throw error
@@ -1403,7 +1426,9 @@ export function useTransactions() {
 
     if (!item.card_id) {
       if (scope === 'single' || item.origin_type === 'single') {
-        await moveInstanceDateForwardForRow(item.id, item.instance_date)
+        await moveInstanceDateForwardForRow(item.id, item.instance_date, {
+          detachFromRecurrenceOnConflict: item.origin_type === 'recurring'
+        })
         return
       }
 
