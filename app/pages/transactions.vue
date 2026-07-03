@@ -156,7 +156,7 @@ const columns = [
   { key: 'link_badge', label: 'Vinculo', widthClass: 'w-[96px]' },
   { key: 'person_name', label: 'Responsavel', widthClass: 'w-[132px]' },
   { key: 'category_name', label: 'Categoria', widthClass: 'w-[132px]' },
-  { key: 'card_name', label: 'Cartao', widthClass: 'w-[150px]' },
+  { key: 'card_name', label: 'Cartao', widthClass: 'w-[128px]' },
   { key: 'expected_value', label: 'Previsto', align: 'right' as const, widthClass: 'w-[110px]' },
   { key: 'installment_label', label: 'Parcela', widthClass: 'w-[92px]' },
   { key: 'real_value_input', label: 'Realizado', align: 'right' as const, widthClass: 'w-[114px]' },
@@ -2442,26 +2442,17 @@ onBeforeUnmount(() => {
           </template>
 
           <template #cell-card_name="{ row }">
-            <div class="space-y-1">
-              <p>{{ (row as { card_name: string }).card_name }}</p>
-              <span
+            <div class="min-w-0 space-y-0.5 leading-tight">
+              <p class="truncate" :title="(row as { card_name: string }).card_name">
+                {{ (row as { card_name: string }).card_name }}
+              </p>
+              <p
                 v-if="(row as TransactionInstanceItem).card_id"
-                class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
+                class="truncate text-[10px] uppercase tracking-[0.08em] text-muted"
+                :title="(row as { financial_competence_label?: string }).financial_competence_label || ''"
               >
-                Fatura: {{ (row as { financial_competence_label?: string }).financial_competence_label }}
-              </span>
-              <span
-                v-if="(row as TransactionInstanceItem).card_id && (row as TransactionInstanceItem).financial_effective_date_override"
-                class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700"
-              >
-                Fatura ajustada
-              </span>
-              <span
-                v-else-if="(row as TransactionInstanceItem).card_id && Boolean((row as TransactionInstanceItem).linked_financial_competence_label)"
-                class="inline-flex rounded-full border border-border/80 bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"
-              >
-                Vinculado à fatura: {{ (row as { linked_financial_competence_label?: string | null }).linked_financial_competence_label }}
-              </span>
+                {{ (row as { financial_competence_label?: string }).financial_competence_label }}
+              </p>
             </div>
           </template>
 
