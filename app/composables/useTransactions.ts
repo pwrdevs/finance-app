@@ -1634,6 +1634,9 @@ export function useTransactions() {
     const normalizedCategoryId = normalizeOptionalId(payload.category_id)
 
     const applyFromDate = item.instance_date
+    const effectiveFutureStartDate = payload.instance_date < applyFromDate
+      ? applyFromDate
+      : payload.instance_date
 
     const { data: futureInstanceRows, error: futureInstancesQueryError } = await supabase
       .from('transaction_instances')
@@ -1656,7 +1659,7 @@ export function useTransactions() {
       ? (payload.recurring_occurrences_count ?? recurrenceRule.occurrences_limit ?? futureDates.length)
       : null
     const recurringSchedule = buildRecurringSchedule(
-      payload.instance_date,
+      effectiveFutureStartDate,
       recurrenceRule.frequency,
       targetEndMode,
       targetEndDate,
@@ -1668,33 +1671,37 @@ export function useTransactions() {
       throw new Error('Nenhuma instancia recorrente foi gerada para o periodo informado.')
     }
 
-    const { error: sourceTransactionError } = await supabase
-      .from('transactions')
-      .update({
-        type: payload.type,
-        title: payload.title.trim(),
-        description: normalizedDescription,
-        expected_value: payload.expected_value,
-        real_value: payload.real_value ?? null,
-        due_date: payload.due_date,
-        is_checked: payload.is_checked,
-        checked_at: checkedAt,
-        person_id: normalizedPersonId,
-        card_id: normalizedCardId,
-        account_id: normalizedAccountId,
-        category_id: normalizedCategoryId
-      })
-      .eq('id', sourceTransaction.id)
+    const shouldUpdateRuleStartDate = applyFromDate === recurrenceRule.start_date
+    const shouldUpdateSourceTransaction = shouldUpdateRuleStartDate
 
-    if (sourceTransactionError) {
-      throw sourceTransactionError
+    if (shouldUpdateSourceTransaction) {
+      const { error: sourceTransactionError } = await supabase
+        .from('transactions')
+        .update({
+          type: payload.type,
+          title: payload.title.trim(),
+          description: normalizedDescription,
+          expected_value: payload.expected_value,
+          real_value: payload.real_value ?? null,
+          due_date: payload.due_date,
+          is_checked: payload.is_checked,
+          checked_at: checkedAt,
+          person_id: normalizedPersonId,
+          card_id: normalizedCardId,
+          account_id: normalizedAccountId,
+          category_id: normalizedCategoryId
+        })
+        .eq('id', sourceTransaction.id)
+
+      if (sourceTransactionError) {
+        throw sourceTransactionError
+      }
     }
 
-    const shouldUpdateRuleStartDate = applyFromDate === recurrenceRule.start_date
     const { error: recurrenceRuleUpdateError } = await supabase
       .from('recurrence_rules')
       .update({
-        start_date: shouldUpdateRuleStartDate ? payload.instance_date : recurrenceRule.start_date,
+        start_date: shouldUpdateRuleStartDate ? effectiveFutureStartDate : recurrenceRule.start_date,
         end_date: recurringSchedule.ruleEndDate,
         occurrences_limit: recurringSchedule.ruleOccurrencesLimit
       })
@@ -1788,7 +1795,7 @@ export function useTransactions() {
         throw futureInstancesError
       }
 
-      const monthShift = getMonthDiff(item.instance_date, payload.instance_date)
+      const monthShift = Math.max(0, getMonthDiff(item.instance_date, payload.instance_date))
 
       for (const instance of futureInstances ?? []) {
         const shiftedDate = addMonthsKeepingDay(instance.instance_date, monthShift)
@@ -1815,21 +1822,25 @@ export function useTransactions() {
       }
     }
 
-    const { error: sourceTransactionError } = await supabase
-      .from('transactions')
-      .update({
-        type: payload.type,
-        title: payload.title.trim(),
-        description: normalizedDescription,
-        person_id: normalizedPersonId,
-        card_id: normalizedCardId,
-        account_id: normalizedAccountId,
-        category_id: normalizedCategoryId
-      })
-      .eq('id', item.source_transaction_id)
+    const shouldUpdateSourceTransaction = scope === 'future' && (item.installment_number ?? 1) <= 1
 
-    if (sourceTransactionError) {
-      throw sourceTransactionError
+    if (shouldUpdateSourceTransaction) {
+      const { error: sourceTransactionError } = await supabase
+        .from('transactions')
+        .update({
+          type: payload.type,
+          title: payload.title.trim(),
+          description: normalizedDescription,
+          person_id: normalizedPersonId,
+          card_id: normalizedCardId,
+          account_id: normalizedAccountId,
+          category_id: normalizedCategoryId
+        })
+        .eq('id', item.source_transaction_id)
+
+      if (sourceTransactionError) {
+        throw sourceTransactionError
+      }
     }
   }
 
