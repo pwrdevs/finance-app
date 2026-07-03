@@ -124,8 +124,15 @@ const realValueDrafts = ref<Record<string, string>>({})
 
 const isModalOpen = ref(false)
 const isMoveModalOpen = ref(false)
+const isScopeModalOpen = ref(false)
 const pendingMoveRow = ref<TransactionInstanceItem | null>(null)
 const editingRow = ref<TransactionInstanceItem | null>(null)
+const scopeModalTitle = ref('Confirmar ação')
+const scopeModalDescription = ref('Escolha como deseja aplicar esta ação.')
+const scopeModalSingleLabel = ref('Aplicar apenas este')
+const scopeModalFutureLabel = ref('Aplicar este e os próximos')
+const scopeModalAllowFuture = ref(true)
+let scopeModalResolver: ((value: 'single' | 'future' | null) => void) | null = null
 
 const formTitle = ref('')
 const formOriginType = ref<TransactionOriginType>('single')
@@ -730,6 +737,39 @@ function openMoveModal(row: TransactionInstanceItem) {
 function closeMoveModal() {
   isMoveModalOpen.value = false
   pendingMoveRow.value = null
+}
+
+function resolveScopeModal(selection: 'single' | 'future' | null) {
+  isScopeModalOpen.value = false
+
+  if (scopeModalResolver) {
+    scopeModalResolver(selection)
+    scopeModalResolver = null
+  }
+}
+
+function openScopeModal(options: {
+  title: string
+  description?: string
+  singleLabel: string
+  futureLabel?: string
+  allowFuture?: boolean
+}) {
+  if (scopeModalResolver) {
+    scopeModalResolver(null)
+    scopeModalResolver = null
+  }
+
+  scopeModalTitle.value = options.title
+  scopeModalDescription.value = options.description ?? 'Escolha como deseja aplicar esta ação.'
+  scopeModalSingleLabel.value = options.singleLabel
+  scopeModalFutureLabel.value = options.futureLabel ?? 'Aplicar este e os próximos'
+  scopeModalAllowFuture.value = options.allowFuture !== false
+  isScopeModalOpen.value = true
+
+  return new Promise<'single' | 'future' | null>((resolve) => {
+    scopeModalResolver = resolve
+  })
 }
 
 async function executeMoveTransaction(scope: 'single' | 'future') {
@@ -1586,16 +1626,24 @@ async function handleDeleteClick(row: TransactionInstanceItem) {
     return
   }
 
-  const applyFuture = row.origin_type === 'recurring' || row.origin_type === 'installment'
-    ? !window.confirm(`Excluir apenas o lancamento "${row.title}"? Clique em Cancelar para excluir este e os proximos.`)
-    : false
-
   if (row.origin_type === 'recurring' || row.origin_type === 'installment') {
+    const scope = await openScopeModal({
+      title: 'Excluir lançamento?',
+      description: row.title,
+      singleLabel: 'Excluir apenas este',
+      futureLabel: 'Excluir este e os próximos',
+      allowFuture: true
+    })
+
+    if (!scope) {
+      return
+    }
+
     pageError.value = ''
     rowActionBusy.value = true
 
     try {
-      await removeTransactionInstance(row, applyFuture ? 'future' : 'single')
+      await removeTransactionInstance(row, scope)
       await refreshRowsAfterMutation({ successMessage: 'Lançamento excluído com sucesso.' })
     } catch (err) {
       pageError.value = err instanceof Error ? err.message : 'Nao foi possivel excluir o lancamento.'
@@ -1605,9 +1653,14 @@ async function handleDeleteClick(row: TransactionInstanceItem) {
     return
   }
 
-  const confirmed = window.confirm(`Confirma excluir o lancamento "${row.title}" em ${formatDateBr(row.instance_date)}? Esta acao nao pode ser desfeita.`)
+  const scope = await openScopeModal({
+    title: 'Excluir lançamento?',
+    description: `${row.title} em ${formatDateBr(row.instance_date)}`,
+    singleLabel: 'Excluir lançamento',
+    allowFuture: false
+  })
 
-  if (!confirmed) {
+  if (scope !== 'single') {
     return
   }
 
@@ -1936,12 +1989,22 @@ async function submitForm() {
       }
 
       if (shouldAskScopeForEdit.value) {
-        const applySingle = window.confirm(`Salvar alterações apenas neste lancamento "${editingRow.value.title}"? Clique em Cancelar para aplicar este e os proximos.`)
+        const scope = await openScopeModal({
+          title: 'Salvar alterações?',
+          description: editingRow.value.title,
+          singleLabel: 'Salvar apenas este',
+          futureLabel: 'Salvar este e os próximos',
+          allowFuture: true
+        })
+
+        if (!scope) {
+          return
+        }
 
         if (editingRow.value.origin_type === 'recurring') {
-          await updateRecurringTransaction(editingRow.value, editPayload, applySingle ? 'single' : 'future')
+          await updateRecurringTransaction(editingRow.value, editPayload, scope)
         } else if (editingRow.value.origin_type === 'installment') {
-          await updateInstallmentTransaction(editingRow.value, editPayload, applySingle ? 'single' : 'future')
+          await updateInstallmentTransaction(editingRow.value, editPayload, scope)
         } else {
           await updateTransactionInstance(
             editingRow.value.id,
@@ -2054,15 +2117,25 @@ async function changeStatus(row: TransactionInstanceItem, nextStatus: Transactio
   pageError.value = ''
 
   if ((row.origin_type === 'recurring' || row.origin_type === 'installment') && nextStatus === 'canceled') {
-    const applySingle = window.confirm(`Cancelar apenas o lancamento "${row.title}"? Clique em Cancelar para cancelar este e os proximos.`)
+    const scope = await openScopeModal({
+      title: 'Cancelar lançamento?',
+      description: row.title,
+      singleLabel: 'Cancelar apenas este',
+      futureLabel: 'Cancelar este e os próximos',
+      allowFuture: true
+    })
+
+    if (!scope) {
+      return
+    }
 
     rowActionBusy.value = true
 
     try {
       if (row.origin_type === 'recurring') {
-        await cancelRecurringTransaction(row, applySingle ? 'single' : 'future')
+        await cancelRecurringTransaction(row, scope)
       } else {
-        await cancelInstallmentTransaction(row, applySingle ? 'single' : 'future')
+        await cancelInstallmentTransaction(row, scope)
       }
 
       await refreshRowsAfterMutation({ successMessage: 'Lançamento cancelado com sucesso.' })
@@ -2882,6 +2955,44 @@ onBeforeUnmount(() => {
                 type="button"
                 class="mt-1 h-11 rounded-2xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 transition hover:bg-white/10"
                 @click="closeMoveModal"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[85] bg-black/60 backdrop-blur-sm" @click="resolveScopeModal(null)" />
+      </Transition>
+      <Transition name="slide-up">
+        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[90] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
+          <div class="w-full max-w-md rounded-3xl bg-[#16181a] p-5 shadow-2xl ring-1 ring-white/10">
+            <h3 class="text-lg font-semibold text-white">{{ scopeModalTitle }}</h3>
+            <p v-if="scopeModalDescription" class="mt-1 text-sm text-white/60">{{ scopeModalDescription }}</p>
+            <div class="mt-4 grid gap-3">
+              <button
+                type="button"
+                class="h-12 rounded-2xl bg-white text-sm font-semibold text-[#111315] transition hover:bg-white/90"
+                @click="resolveScopeModal('single')"
+              >
+                {{ scopeModalSingleLabel }}
+              </button>
+              <button
+                v-if="scopeModalAllowFuture"
+                type="button"
+                class="h-12 rounded-2xl bg-[#2a2f34] text-sm font-semibold text-white transition hover:bg-[#353b41]"
+                @click="resolveScopeModal('future')"
+              >
+                {{ scopeModalFutureLabel }}
+              </button>
+              <button
+                type="button"
+                class="mt-1 h-11 rounded-2xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                @click="resolveScopeModal(null)"
               >
                 Cancelar
               </button>
