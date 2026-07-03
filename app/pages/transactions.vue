@@ -91,6 +91,7 @@ const accountsPeriodYear = ref(String(initialPeriodYear))
 
 const cardsPeriodFilter = ref<string | 'all'>(monthYear.value)
 const cardsCardFilter = ref('all')
+const cardsPersonFilter = ref('all')
 const cardsInstallmentFilter = ref<'all' | 'installment' | 'single'>('all')
 const cardsStatusFilter = ref<'all' | TransactionStatus>('all')
 const cardsReimbursementLinkFilter = ref<'all' | 'normal' | 'reimbursement' | 'linked'>('all')
@@ -102,6 +103,7 @@ const cardsDayEnd = ref('')
 
 const accountsPeriodFilter = ref<string | 'all'>(monthYear.value)
 const accountsAccountFilter = ref('all')
+const accountsPersonFilter = ref('all')
 const accountsTypeFilter = ref<'all' | TransactionType>('all')
 const accountsCategoryFilter = ref('all')
 const accountsStatusFilter = ref<'all' | TransactionStatus>('all')
@@ -213,6 +215,18 @@ const activePaymentFilterModel = computed({
   }
 })
 
+const activePersonFilterModel = computed({
+  get: () => activeTab.value === 'cards' ? cardsPersonFilter.value : accountsPersonFilter.value,
+  set: (value: string) => {
+    if (activeTab.value === 'cards') {
+      cardsPersonFilter.value = value
+      return
+    }
+
+    accountsPersonFilter.value = value
+  }
+})
+
 const activeStatusFilterModel = computed({
   get: () => activeTab.value === 'cards' ? cardsStatusFilter.value : accountsStatusFilter.value,
   set: (value: 'all' | TransactionStatus) => {
@@ -293,6 +307,7 @@ const paymentMethodOptions = computed(() => {
 })
 const activeCardsForQuickFilter = computed(() => cards.value.filter(entry => entry.is_active))
 const activeAccountsForQuickFilter = computed(() => accounts.value.filter(entry => entry.is_active))
+const activePeopleForQuickFilter = computed(() => people.value.filter(entry => entry.is_active))
 
 const reimbursementOriginalCardMap = computed(() => {
   const map = new Map<string, string>()
@@ -314,6 +329,7 @@ const shouldAskScopeForEdit = computed(() => {
 interface PersistedCardsFilters {
   period_filter: string | 'all'
   card_filter: string
+  person_filter: string
   installment_filter: 'all' | 'installment' | 'single'
   status_filter: 'all' | TransactionStatus
   reimbursement_link_filter: 'all' | 'normal' | 'reimbursement' | 'linked'
@@ -327,6 +343,7 @@ interface PersistedCardsFilters {
 interface PersistedAccountsFilters {
   period_filter: string | 'all'
   account_filter: string
+  person_filter: string
   type_filter: 'all' | TransactionType
   category_filter: string
   status_filter: 'all' | TransactionStatus
@@ -386,6 +403,7 @@ function saveCardsFiltersToStorage() {
   const payload: PersistedCardsFilters = {
     period_filter: cardsPeriodFilter.value,
     card_filter: cardsCardFilter.value,
+    person_filter: cardsPersonFilter.value,
     installment_filter: cardsInstallmentFilter.value,
     status_filter: cardsStatusFilter.value,
     reimbursement_link_filter: cardsReimbursementLinkFilter.value,
@@ -407,6 +425,7 @@ function saveAccountsFiltersToStorage() {
   const payload: PersistedAccountsFilters = {
     period_filter: accountsPeriodFilter.value,
     account_filter: accountsAccountFilter.value,
+    person_filter: accountsPersonFilter.value,
     type_filter: accountsTypeFilter.value,
     category_filter: accountsCategoryFilter.value,
     status_filter: accountsStatusFilter.value,
@@ -474,6 +493,7 @@ function restoreCardsFiltersFromStorage() {
       cardsPeriodYear.value = String(year)
     }
     cardsCardFilter.value = pickPersistedOption(String(parsed.card_filter ?? 'all'), cards.value.map(entry => entry.id))
+    cardsPersonFilter.value = pickPersistedOption(String(parsed.person_filter ?? 'all'), people.value.map(entry => entry.id))
     cardsInstallmentFilter.value = parsed.installment_filter === 'installment' || parsed.installment_filter === 'single'
       ? parsed.installment_filter
       : 'all'
@@ -516,6 +536,7 @@ function restoreAccountsFiltersFromStorage() {
       accountsPeriodYear.value = String(year)
     }
     accountsAccountFilter.value = pickPersistedOption(String(parsed.account_filter ?? 'all'), accounts.value.map(entry => entry.id))
+    accountsPersonFilter.value = pickPersistedOption(String(parsed.person_filter ?? 'all'), people.value.map(entry => entry.id))
     accountsTypeFilter.value = typeof parsed.type_filter === 'string' && isValidTypeFilter(parsed.type_filter)
       ? parsed.type_filter
       : 'all'
@@ -723,7 +744,7 @@ async function executeMoveTransaction(scope: 'single' | 'future') {
       : 'Lançamento movido para o próximo mês.'
     await refreshRowsAfterMutation({ successMessage })
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Nao foi possivel mover o lancamento.'
+    pageError.value = resolveUnknownErrorMessage(err, 'Nao foi possivel mover o lancamento.')
   } finally {
     rowActionBusy.value = false
   }
@@ -859,6 +880,21 @@ function clearActiveSearch() {
   accountsSearchDescription.value = ''
 }
 
+function resolveUnknownErrorMessage(error: unknown, fallbackMessage: string) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (typeof error === 'object' && error && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim()
+    if (message) {
+      return message
+    }
+  }
+
+  return fallbackMessage
+}
+
 const filteredRows = computed(() => {
   const normalizedSearch = activeSearchDescription.value.trim().toLowerCase()
   const activeValueMin = parseOptionalMoney(activeTab.value === 'cards' ? cardsValueMin.value : accountsValueMin.value)
@@ -906,6 +942,10 @@ const filteredRows = computed(() => {
       }
 
       return row.account_id === accountsAccountFilter.value
+    })
+    .filter((row) => {
+      const activePersonFilter = activeTab.value === 'cards' ? cardsPersonFilter.value : accountsPersonFilter.value
+      return activePersonFilter === 'all' || row.person_id === activePersonFilter
     })
     .filter((row) => activeTab.value === 'cards' || accountsTypeFilter.value === 'all' || row.type === accountsTypeFilter.value)
     .filter((row) => activeTab.value === 'cards' || accountsCategoryFilter.value === 'all' || row.category_id === accountsCategoryFilter.value)
@@ -1044,6 +1084,7 @@ const selectionResetKey = computed(() => [
   activeTab.value,
   cardsPeriodFilter.value,
   cardsCardFilter.value,
+  cardsPersonFilter.value,
   cardsInstallmentFilter.value,
   cardsStatusFilter.value,
   cardsReimbursementLinkFilter.value,
@@ -1054,6 +1095,7 @@ const selectionResetKey = computed(() => [
   cardsDayEnd.value,
   accountsPeriodFilter.value,
   accountsAccountFilter.value,
+  accountsPersonFilter.value,
   accountsTypeFilter.value,
   accountsCategoryFilter.value,
   accountsStatusFilter.value,
@@ -1606,6 +1648,7 @@ function clearActiveTabFilters() {
     cardsPeriodMonth.value = monthYear.value.slice(5, 7)
     cardsPeriodYear.value = monthYear.value.slice(0, 4)
     cardsCardFilter.value = 'all'
+    cardsPersonFilter.value = 'all'
     cardsInstallmentFilter.value = 'all'
     cardsStatusFilter.value = 'all'
     cardsReimbursementLinkFilter.value = 'all'
@@ -1623,6 +1666,7 @@ function clearActiveTabFilters() {
   accountsPeriodMonth.value = monthYear.value.slice(5, 7)
   accountsPeriodYear.value = monthYear.value.slice(0, 4)
   accountsAccountFilter.value = 'all'
+  accountsPersonFilter.value = 'all'
   accountsTypeFilter.value = 'all'
   accountsCategoryFilter.value = 'all'
   accountsStatusFilter.value = 'all'
@@ -2094,14 +2138,14 @@ watch([accountsPeriodMonth, accountsPeriodYear], () => {
 })
 
 watch(
-  [cardsPeriodFilter, cardsCardFilter, cardsInstallmentFilter, cardsStatusFilter, cardsReimbursementLinkFilter, cardsSearchDescription, cardsValueMin, cardsValueMax, cardsDayStart, cardsDayEnd],
+  [cardsPeriodFilter, cardsCardFilter, cardsPersonFilter, cardsInstallmentFilter, cardsStatusFilter, cardsReimbursementLinkFilter, cardsSearchDescription, cardsValueMin, cardsValueMax, cardsDayStart, cardsDayEnd],
   () => {
     saveCardsFiltersToStorage()
   }
 )
 
 watch(
-  [accountsPeriodFilter, accountsAccountFilter, accountsTypeFilter, accountsCategoryFilter, accountsStatusFilter, accountsReimbursementLinkFilter, accountsSearchDescription, accountsValueMin, accountsValueMax, accountsDayStart, accountsDayEnd],
+  [accountsPeriodFilter, accountsAccountFilter, accountsPersonFilter, accountsTypeFilter, accountsCategoryFilter, accountsStatusFilter, accountsReimbursementLinkFilter, accountsSearchDescription, accountsValueMin, accountsValueMax, accountsDayStart, accountsDayEnd],
   () => {
     saveAccountsFiltersToStorage()
   }
@@ -2255,6 +2299,18 @@ onBeforeUnmount(() => {
                       <option
                         v-for="entry in (activeTab === 'cards' ? activeCardsForQuickFilter : activeAccountsForQuickFilter)"
                         :key="`payment-popover-${activeTab}-${entry.id}`"
+                        :value="entry.id"
+                      >
+                        {{ entry.name }}
+                      </option>
+                    </select>
+
+                    <p class="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Responsável</p>
+                    <select v-model="activePersonFilterModel" class="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground">
+                      <option value="all">Todos</option>
+                      <option
+                        v-for="entry in activePeopleForQuickFilter"
+                        :key="`person-popover-${entry.id}`"
                         :value="entry.id"
                       >
                         {{ entry.name }}

@@ -1373,12 +1373,22 @@ export function useTransactions() {
       .eq('id', itemId)
 
     if (error) {
+      const errorCode = typeof error === 'object' && error && 'code' in error
+        ? String((error as { code?: unknown }).code ?? '')
+        : ''
+
+      if (errorCode === '23505') {
+        throw new Error('Não foi possível mover apenas este lançamento porque já existe outro no próximo mês. Use "Mover este e os próximos".')
+      }
+
       throw error
     }
   }
 
   async function moveInstanceDateForwardForRows(rows: Array<{ id: string, instance_date: string }>) {
-    for (const row of rows) {
+    const sortedRows = [...rows].sort((a, b) => b.instance_date.localeCompare(a.instance_date))
+
+    for (const row of sortedRows) {
       await moveInstanceDateForwardForRow(row.id, row.instance_date)
     }
   }
