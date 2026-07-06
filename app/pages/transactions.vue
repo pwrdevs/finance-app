@@ -2923,10 +2923,10 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="isMoveModalOpen" class="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" @click="closeMoveModal" />
+        <div v-if="isMoveModalOpen" class="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm" @click="closeMoveModal" />
       </Transition>
       <Transition name="slide-up">
-        <div v-if="isMoveModalOpen" class="fixed inset-0 z-[80] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
+        <div v-if="isMoveModalOpen" class="fixed inset-0 z-[130] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
           <div class="w-full max-w-md rounded-3xl bg-[#16181a] p-5 shadow-2xl ring-1 ring-white/10">
             <h3 class="text-lg font-semibold text-white">
               {{ pendingMoveRow?.card_id ? 'Mover para a próxima fatura?' : 'Mover para o próximo mês?' }}
@@ -2965,10 +2965,10 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[85] bg-black/60 backdrop-blur-sm" @click="resolveScopeModal(null)" />
+        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm" @click="resolveScopeModal(null)" />
       </Transition>
       <Transition name="slide-up">
-        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[90] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
+        <div v-if="isScopeModalOpen" class="fixed inset-0 z-[150] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true">
           <div class="w-full max-w-md rounded-3xl bg-[#16181a] p-5 shadow-2xl ring-1 ring-white/10">
             <h3 class="text-lg font-semibold text-white">{{ scopeModalTitle }}</h3>
             <p v-if="scopeModalDescription" class="mt-1 text-sm text-white/60">{{ scopeModalDescription }}</p>
