@@ -1320,6 +1320,16 @@ function getTodayIsoDate() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function resolveDefaultFormDate() {
+  const activePeriod = activePeriodFilter.value
+
+  if (activePeriod !== 'all' && /^\d{4}-(0[1-9]|1[0-2])$/.test(activePeriod)) {
+    return `${activePeriod}-01`
+  }
+
+  return `${monthYear.value}-01`
+}
+
 function getRowAlertLevel(row: TransactionInstanceItem) {
   if (row.status === 'paid') {
     return 'paid'
@@ -1536,14 +1546,16 @@ function openExportPreview() {
 }
 
 function resetForm() {
+  const defaultFormDate = resolveDefaultFormDate()
+
   editingRow.value = null
   formTitle.value = ''
   formOriginType.value = 'single'
   formExpectedValue.value = ''
   formRealValue.value = ''
-  formPurchaseDate.value = `${monthYear.value}-01`
+  formPurchaseDate.value = defaultFormDate
   formInstallmentTotal.value = '1'
-  formRecurringStartDate.value = `${monthYear.value}-01`
+  formRecurringStartDate.value = defaultFormDate
   formRecurringEndDate.value = ''
   formRecurringFrequency.value = 'monthly'
   formRecurringEndingMode.value = 'count'
