@@ -760,9 +760,9 @@ export function useTransactions() {
   }
 
   async function listManualInstances(filters: TransactionFilters) {
-    await ensureAuthenticatedUserId()
+    const userId = await ensureAuthenticatedUserId()
 
-    let query = supabase
+    const baseQuery = supabase
       .from('transaction_instances')
       .select(`
         id,
@@ -805,17 +805,33 @@ export function useTransactions() {
         )
       `)
 
-    const { data, error } = await query
-      .order('created_at', { ascending: true })
-      .order('instance_date', { ascending: true })
+    const pageSize = 1000
+    let from = 0
+    const allRows: TransactionInstanceRecord[] = []
 
-    if (error) {
-      throw error
+    while (true) {
+      const { data, error } = await baseQuery
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .order('instance_date', { ascending: true })
+        .range(from, from + pageSize - 1)
+
+      if (error) {
+        throw error
+      }
+
+      const pageRows = (data ?? []) as TransactionInstanceRecord[]
+      allRows.push(...pageRows)
+
+      if (pageRows.length < pageSize) {
+        break
+      }
+
+      from += pageSize
     }
 
     const mapped = applyFinancialCompetenceRules(
-      ((data ?? []) as TransactionInstanceRecord[])
-        .map(mapInstance)
+      allRows.map(mapInstance)
     )
 
     return mapped
