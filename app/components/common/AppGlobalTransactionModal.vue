@@ -115,10 +115,6 @@ function applyReimbursementDefaults() {
 }
 
 async function loadOptionsIfNeeded() {
-  if (people.value.length || accounts.value.length || cards.value.length || categories.value.length) {
-    return
-  }
-
   loadingOptions.value = true
 
   try {
