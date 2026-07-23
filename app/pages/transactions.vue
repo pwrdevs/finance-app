@@ -2882,13 +2882,12 @@ onBeforeUnmount(() => {
                 <table class="w-full table-fixed text-xs text-[#2f3526]">
                   <colgroup>
                     <col class="w-[12%]" />
-                    <col class="w-[27%]" />
+                    <col class="w-[29%]" />
+                    <col class="w-[16%]" />
                     <col class="w-[15%]" />
+                    <col class="w-[12%]" />
+                    <col class="w-[8%]" />
                     <col class="w-[14%]" />
-                    <col class="w-[11%]" />
-                    <col class="w-[11%]" />
-                    <col class="w-[7%]" />
-                    <col class="w-[13%]" />
                   </colgroup>
                   <thead>
                     <tr class="bg-[#d7e0b5] text-[11px] font-semibold uppercase tracking-wide text-[#334127]">
@@ -2897,7 +2896,6 @@ onBeforeUnmount(() => {
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle whitespace-nowrap">Responsavel</th>
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Categoria</th>
                       <th class="border-b border-border/80 px-3 py-2 text-left align-middle">Cartao</th>
-                      <th class="border-b border-border/80 px-3 py-2 text-left align-middle whitespace-nowrap">Competencia</th>
                       <th class="border-b border-border/80 px-3 py-2 text-center align-middle">Parcela</th>
                       <th class="border-b border-border/80 px-3 py-2 text-right align-middle whitespace-nowrap">Valor</th>
                     </tr>
@@ -2923,16 +2921,13 @@ onBeforeUnmount(() => {
                           </span>
                         </div>
                       </td>
-                      <td class="px-3 py-2.5 text-left align-middle whitespace-nowrap">
-                        {{ getCompetenceDisplayValue((row as TransactionInstanceItem), activeTab) }}
-                      </td>
                       <td class="px-3 py-2.5 text-center align-middle">{{ (row as { installment_label: string }).installment_label }}</td>
                       <td class="px-3 py-2.5 text-right align-middle tabular-nums whitespace-nowrap">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</td>
                     </tr>
                   </tbody>
                   <tfoot>
                     <tr class="bg-[#c0cf8f] font-semibold text-[#2f3526]">
-                      <td colspan="7" class="px-3 py-3 text-right align-middle">Total</td>
+                      <td colspan="6" class="px-3 py-3 text-right align-middle">Total</td>
                       <td class="px-3 py-3 text-right align-middle text-xs tabular-nums whitespace-nowrap">{{ formatCurrency(exportTotalEffective) }}</td>
                     </tr>
                   </tfoot>
