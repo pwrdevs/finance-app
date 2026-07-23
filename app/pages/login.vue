@@ -3,6 +3,7 @@ import AppButton from '~/components/common/AppButton.vue'
 import AppCard from '~/components/common/AppCard.vue'
 import AppErrorAlert from '~/components/common/AppErrorAlert.vue'
 import AppInput from '~/components/common/AppInput.vue'
+import { getFriendlyRequestError } from '~/utils/friendlyRequestError'
 
 definePageMeta({
   middleware: 'auth',
@@ -26,7 +27,7 @@ const {
 } = useAuth()
 
 const resetMessage = ref('')
-const resetError = ref('')
+const resetError = ref<{ title: string, message: string } | null>(null)
 
 const routeInfoMessage = computed(() => {
   if (route.query.message === 'sessao-expirada') {
@@ -81,7 +82,7 @@ onBeforeUnmount(() => {
 async function onSubmit() {
   localError.value = ''
   resetMessage.value = ''
-  resetError.value = ''
+  resetError.value = null
 
   updateOfflineState()
 
@@ -122,10 +123,13 @@ async function onRetryLogin() {
 
 async function onRecoverPassword() {
   resetMessage.value = ''
-  resetError.value = ''
+  resetError.value = null
 
   if (!email.value) {
-    resetError.value = 'Informe o e-mail para recuperar a senha.'
+    resetError.value = {
+      title: 'Recuperação de senha',
+      message: 'Informe o e-mail para recuperar a senha.'
+    }
     return
   }
 
@@ -141,7 +145,11 @@ async function onRecoverPassword() {
 
     resetMessage.value = 'Enviamos um e-mail com instruções para redefinir sua senha.'
   } catch (err) {
-    resetError.value = err instanceof Error ? err.message : 'Não foi possível enviar o e-mail de recuperação.'
+    resetError.value = getFriendlyRequestError(
+      err,
+      'Recuperação de senha',
+      'Não foi possível enviar o e-mail de recuperação. Tente novamente em instantes.'
+    )
   }
 }
 </script>
@@ -229,9 +237,12 @@ async function onRecoverPassword() {
         />
       </form>
 
-      <p v-if="resetError" class="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">
-        {{ resetError }}
-      </p>
+      <AppErrorAlert
+        v-if="resetError"
+        class="mt-4"
+        :title="resetError.title"
+        :message="resetError.message"
+      />
 
       <p v-else-if="resetMessage" class="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
         {{ resetMessage }}

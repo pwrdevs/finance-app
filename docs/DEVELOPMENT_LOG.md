@@ -297,3 +297,4 @@
 - 2026-07-23: `useAuth.login` passou a expor estado estruturado (`authLoginError`) com título e mensagem amigáveis sem alterar o fluxo normal de autenticação; `register` e `logout` mantiveram comportamento funcional existente.
 - 2026-07-23: Tela `login.vue` atualizada para usar alerta reutilizável `AppErrorAlert` com suporte a indisponibilidade de serviço e ação `Tentar novamente` (reaproveitando e-mail/senha preenchidos), além de estado offline explícito via `navigator.onLine`.
 - 2026-07-23: Fluxo de retry no alerta de indisponibilidade ajustado para manter o bloco visível durante a nova tentativa, com botão desabilitado e rótulo `Tentando...` até a conclusão da requisição.
+- 2026-07-23: Recuperação de senha e painel `/developer/users` passaram a reutilizar `AppErrorAlert` e normalização amigável de falhas de rede/serviço, evitando mensagens técnicas em fluxos administrativos.

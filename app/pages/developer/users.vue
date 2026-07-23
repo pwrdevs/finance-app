@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import AppButton from '~/components/common/AppButton.vue'
 import AppCard from '~/components/common/AppCard.vue'
+import AppErrorAlert from '~/components/common/AppErrorAlert.vue'
 import AppInput from '~/components/common/AppInput.vue'
 import AppModal from '~/components/common/AppModal.vue'
 import { isProtectedAdminPrincipal } from '~/utils/admin'
+import { getFriendlyRequestError } from '~/utils/friendlyRequestError'
 
 definePageMeta({
   middleware: 'admin'
@@ -89,7 +91,11 @@ async function saveEditUser() {
     resetEditModal()
     await fetchUsers()
   } catch (err) {
-    editModalError.value = err instanceof Error ? err.message : 'Não foi possível atualizar usuário.'
+    editModalError.value = getFriendlyRequestError(
+      err,
+      'Erro ao salvar usuário',
+      'Não foi possível atualizar usuário.'
+    ).message
   } finally {
     editModalSaving.value = false
   }
@@ -112,7 +118,11 @@ async function fetchUsers() {
     const data = await $fetch<{ users: AdminUser[] }>('/api/admin/users')
     users.value = data.users
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Não foi possível carregar os usuários.'
+    pageError.value = getFriendlyRequestError(
+      err,
+      'Erro ao carregar usuários',
+      'Não foi possível carregar os usuários.'
+    ).message
   } finally {
     loading.value = false
   }
@@ -145,7 +155,11 @@ async function createUser() {
     fullName.value = ''
     await fetchUsers()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Não foi possível criar usuário.'
+    pageError.value = getFriendlyRequestError(
+      err,
+      'Erro ao criar usuário',
+      'Não foi possível criar usuário.'
+    ).message
   } finally {
     submitting.value = false
   }
@@ -171,7 +185,11 @@ async function toggleUser(user: AdminUser) {
     pageMessage.value = user.ativo ? 'Usuário desativado.' : 'Usuário ativado.'
     await fetchUsers()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Não foi possível atualizar usuário.'
+    pageError.value = getFriendlyRequestError(
+      err,
+      'Erro ao atualizar usuário',
+      'Não foi possível atualizar usuário.'
+    ).message
   }
 }
 
@@ -189,7 +207,11 @@ async function resetPassword(user: AdminUser) {
 
     pageMessage.value = `Reset de senha solicitado para ${user.email}.`
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Não foi possível gerar reset de senha.'
+    pageError.value = getFriendlyRequestError(
+      err,
+      'Erro ao redefinir senha',
+      'Não foi possível gerar reset de senha.'
+    ).message
   }
 }
 
@@ -216,7 +238,11 @@ async function deleteUser(user: AdminUser) {
     pageMessage.value = 'Usuário excluído com sucesso.'
     await fetchUsers()
   } catch (err) {
-    pageError.value = err instanceof Error ? err.message : 'Não foi possível excluir usuário.'
+    pageError.value = getFriendlyRequestError(
+      err,
+      'Erro ao excluir usuário',
+      'Não foi possível excluir usuário.'
+    ).message
   }
 }
 
@@ -315,7 +341,12 @@ onMounted(async () => {
       </template>
     </AppModal>
 
-    <p v-if="pageError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">{{ pageError }}</p>
+    <AppErrorAlert
+      v-if="pageError"
+      :title="'Erro administrativo'"
+      :message="pageError"
+    />
+
     <p v-else-if="pageMessage" class="rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-700">{{ pageMessage }}</p>
 
     <AppCard title="Usuários" :subtitle="loading ? 'Carregando...' : `${users.length} usuário(s)`">
