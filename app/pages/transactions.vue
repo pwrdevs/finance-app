@@ -1136,6 +1136,14 @@ const filteredExpenseValue = computed(() => {
   }, 0)
 })
 
+const filteredCardStatementValue = computed(() => {
+  return filteredRows.value.reduce((sum, row) => {
+    const item = row as TransactionInstanceItem
+    const value = getEffectiveValue(item)
+    return item.type === 'income' ? sum - value : sum + value
+  }, 0)
+})
+
 const filteredBalanceValue = computed(() => filteredIncomeValue.value - filteredExpenseValue.value)
 
 const filteredIndicators = computed(() => {
@@ -1425,7 +1433,7 @@ function getEffectiveValue(row: TransactionInstanceItem) {
   return row.real_value ?? row.expected_value
 }
 
-const exportTotalEffective = computed(() => filteredTotalValue.value)
+const exportTotalEffective = computed(() => activeTab.value === 'cards' ? filteredCardStatementValue.value : filteredTotalValue.value)
 
 function csvEscape(value: string | number | null | undefined) {
   const text = value == null ? '' : String(value)
@@ -2343,7 +2351,7 @@ onBeforeUnmount(() => {
           </template>
           <span v-else class="inline-flex h-8 items-center rounded-full border border-primary-dark bg-primary-dark px-3 text-xs font-semibold uppercase tracking-[0.08em] text-surface">{{ lockedTabLabel }}</span>
           <span class="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700">{{ selectedPeriodLabel }}</span>
-          <span class="inline-flex h-8 items-center rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700">{{ formatCurrency(activeTab === 'cards' ? filteredExpenseValue : filteredBalanceValue) }}</span>
+          <span class="inline-flex h-8 items-center rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700">{{ formatCurrency(activeTab === 'cards' ? filteredCardStatementValue : filteredBalanceValue) }}</span>
           <span class="inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-semibold text-muted">{{ recordsCountLabel }}</span>
         </div>
 
