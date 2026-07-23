@@ -29,17 +29,15 @@ function formatDateYmd(year, month, day) {
 }
 
 function getCardFinancialEffectiveDate(instanceDate, closingDay, dueDay) {
-  if (!closingDay || !dueDay) {
+  if (!closingDay) {
     return instanceDate
   }
 
   const { year, month, day } = toDateParts(instanceDate)
-  const monthOffset = dueDay > closingDay
-    ? (day <= closingDay ? 0 : 1)
-    : 1
+  const monthOffset = day <= closingDay ? 0 : 1
 
   const target = addMonths(year, month, monthOffset)
-  const safeDay = Math.min(dueDay, getLastDayOfMonth(target.year, target.month))
+  const safeDay = Math.min(day, getLastDayOfMonth(target.year, target.month))
   return formatDateYmd(target.year, target.month, safeDay)
 }
 
@@ -263,6 +261,38 @@ function run() {
 
   const juneProjection = projection(scenario2, '2026-06', 0)
   assertEqual('cenario2 aporte necessario', juneProjection.requiredContribution, 300)
+
+  const cardBeforeAndAfterClose = [
+    {
+      id: 'expense-card-jun-20',
+      instance_date: '2026-06-20',
+      expected_value: 120,
+      real_value: null,
+      status: 'pending',
+      type: 'expense',
+      card_id: 'card-1',
+      card,
+      reimbursement_group_id: null,
+      reimbursement_role: null
+    },
+    {
+      id: 'expense-card-jun-30',
+      instance_date: '2026-06-30',
+      expected_value: 180,
+      real_value: null,
+      status: 'pending',
+      type: 'expense',
+      card_id: 'card-1',
+      card,
+      reimbursement_group_id: null,
+      reimbursement_role: null
+    }
+  ]
+
+  const juneBeforeCloseSummary = summarizeMonth(cardBeforeAndAfterClose, '2026-06')
+  const julyAfterCloseSummary = summarizeMonth(cardBeforeAndAfterClose, '2026-07')
+  assertEqual('cartao antes do fechamento fica no mes atual', juneBeforeCloseSummary.totalExpense, 120)
+  assertEqual('cartao depois do fechamento vai para o mes seguinte', julyAfterCloseSummary.totalExpense, 180)
 
   const mayOnlyCardSummary = summarizeMonth(scenario2, '2026-05')
   assertEqual('cartao maio nao entra em maio', mayOnlyCardSummary.totalExpense, 0)

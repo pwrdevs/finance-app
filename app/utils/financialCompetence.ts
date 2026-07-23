@@ -37,17 +37,15 @@ export function shiftDateByMonthsKeepingDay(dateText: string, monthOffset: numbe
 }
 
 export function getCardFinancialEffectiveDate(instanceDate: string, closingDay: number | null, dueDay: number | null) {
-  if (!closingDay || !dueDay) {
+  if (!closingDay) {
     return instanceDate
   }
 
   const { year, month, day } = toDateParts(instanceDate)
-  const monthOffset = dueDay > closingDay
-    ? (day <= closingDay ? 0 : 1)
-    : 1
+  const monthOffset = day <= closingDay ? 0 : 1
 
   const target = addMonths(year, month, monthOffset)
-  const safeDay = Math.min(dueDay, getLastDayOfMonth(target.year, target.month))
+  const safeDay = Math.min(day, getLastDayOfMonth(target.year, target.month))
   return formatDateYmd(target.year, target.month, safeDay)
 }
 
