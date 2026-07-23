@@ -739,6 +739,15 @@ function closeMoveModal() {
   pendingMoveRow.value = null
 }
 
+function canMoveTransaction(row: TransactionInstanceItem) {
+  return true
+}
+function getMoveActionTitle(row: TransactionInstanceItem) {
+  return row.card_id ? 'Mover para a próxima fatura' : 'Mover para o próximo mês'
+}
+function handleMoveAction(row: TransactionInstanceItem) {
+  openMoveModal(row)
+}
 function resolveScopeModal(selection: 'single' | 'future' | null) {
   isScopeModalOpen.value = false
 
@@ -2634,7 +2643,8 @@ onBeforeUnmount(() => {
             <div class="flex justify-end gap-2">
               <AppButton
                 size="sm"
-                variant="ghost"
+                variant="secondary"
+                class="shrink-0"
                 aria-label="Editar lancamento"
                 title="Editar"
                 :disabled="rowActionBusy"
@@ -2646,13 +2656,13 @@ onBeforeUnmount(() => {
                 </svg>
               </AppButton>
               <AppButton
-                v-if="(row as TransactionInstanceItem).reimbursement_role !== 'reimbursement'"
                 size="sm"
-                variant="ghost"
-                :aria-label="(row as TransactionInstanceItem).card_id ? 'Mover para a próxima fatura' : 'Mover para o próximo mês'"
-                :title="(row as TransactionInstanceItem).card_id ? 'Mover para a próxima fatura' : 'Mover para o próximo mês'"
+                variant="secondary"
+                class="shrink-0"
+                :aria-label="getMoveActionTitle(row as TransactionInstanceItem)"
+                :title="getMoveActionTitle(row as TransactionInstanceItem)"
                 :disabled="rowActionBusy"
-                @click="openMoveModal(row as TransactionInstanceItem)"
+                @click="handleMoveAction(row as TransactionInstanceItem)"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M5 12h14" />
@@ -2662,6 +2672,7 @@ onBeforeUnmount(() => {
               <AppButton
                 size="sm"
                 variant="danger"
+                class="shrink-0"
                 aria-label="Deletar lancamento"
                 title="Deletar"
                 :disabled="rowActionBusy"

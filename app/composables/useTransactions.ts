@@ -1436,10 +1436,6 @@ export function useTransactions() {
     item: TransactionInstanceItem,
     scope: DeleteRecurringScope = 'single'
   ) {
-    if (item.reimbursement_role === 'reimbursement') {
-      throw new Error('Movimentacao manual nao se aplica a reembolso vinculado.')
-    }
-
     if (!item.card_id) {
       if (scope === 'single' || item.origin_type === 'single') {
         await moveInstanceDateForwardForRow(item.id, item.instance_date, {
