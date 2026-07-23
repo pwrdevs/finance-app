@@ -935,6 +935,34 @@ function resolveUnknownErrorMessage(error: unknown, fallbackMessage: string) {
   return fallbackMessage
 }
 
+function isLinkedCardReimbursement(row: TransactionInstanceItem) {
+  return row.reimbursement_role === 'reimbursement' && Boolean(row.linked_financial_competence_label)
+}
+
+function getCompetenceReferenceDate(row: TransactionInstanceItem, tab: 'cards' | 'accounts') {
+  if (tab === 'cards') {
+    return row.financial_effective_date
+  }
+
+  if (isLinkedCardReimbursement(row)) {
+    return row.financial_effective_date
+  }
+
+  return row.instance_date
+}
+
+function getCompetenceDisplayValue(row: TransactionInstanceItem, tab: 'cards' | 'accounts') {
+  if (tab === 'cards') {
+    return row.linked_financial_competence_label ?? row.financial_competence_label
+  }
+
+  if (isLinkedCardReimbursement(row)) {
+    return row.linked_financial_competence_label ?? row.financial_competence_label
+  }
+
+  return row.instance_date
+}
+
 const filteredRows = computed(() => {
   const normalizedSearch = activeSearchDescription.value.trim().toLowerCase()
   const activeValueMin = parseOptionalMoney(activeTab.value === 'cards' ? cardsValueMin.value : accountsValueMin.value)
@@ -959,11 +987,8 @@ const filteredRows = computed(() => {
         return true
       }
 
-      if (activeTab.value === 'cards') {
-        return row.financial_effective_date.slice(0, 7) === selectedPeriodMonthKey.value
-      }
-
-      return row.instance_date.slice(0, 7) === selectedPeriodMonthKey.value
+      const periodReference = getCompetenceReferenceDate(row, activeTab.value)
+      return periodReference.slice(0, 7) === selectedPeriodMonthKey.value
     })
     .filter((row) => {
       if (activeTab.value === 'cards') {
@@ -1032,9 +1057,7 @@ const filteredRows = computed(() => {
         return true
       }
 
-      const dayReference = activeTab.value === 'cards'
-        ? row.financial_effective_date
-        : row.instance_date
+      const dayReference = getCompetenceReferenceDate(row, activeTab.value)
 
       const dayNumber = Number(dayReference.slice(8, 10))
 
@@ -1443,9 +1466,7 @@ function buildCsvLines() {
       link_badge: string
     }
 
-    const competenceLabel = activeTab.value === 'cards'
-      ? (entry.linked_financial_competence_label ?? entry.financial_competence_label)
-      : entry.instance_date
+    const competenceLabel = getCompetenceDisplayValue(entry, activeTab.value)
     const hasManualAdjustment = Boolean(entry.financial_effective_date_override)
 
     csvLines.push([
@@ -2903,9 +2924,7 @@ onBeforeUnmount(() => {
                         </div>
                       </td>
                       <td class="px-3 py-2.5 text-left align-middle whitespace-nowrap">
-                        {{ activeTab === 'cards'
-                          ? ((row as TransactionInstanceItem).linked_financial_competence_label ?? (row as TransactionInstanceItem).financial_competence_label)
-                          : (row as TransactionInstanceItem).instance_date }}
+                        {{ getCompetenceDisplayValue((row as TransactionInstanceItem), activeTab) }}
                       </td>
                       <td class="px-3 py-2.5 text-center align-middle">{{ (row as { installment_label: string }).installment_label }}</td>
                       <td class="px-3 py-2.5 text-right align-middle tabular-nums whitespace-nowrap">{{ formatCurrency(getEffectiveValue(row as TransactionInstanceItem)) }}</td>
