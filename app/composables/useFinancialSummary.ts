@@ -405,13 +405,20 @@ export function useFinancialSummary() {
         continue
       }
 
-      if (row.source_transaction?.type !== 'expense' || !row.card_id) {
+      if (!row.card_id) {
         continue
       }
 
+      const transactionType = row.source_transaction?.type
+      if (transactionType !== 'expense' && transactionType !== 'income') {
+        continue
+      }
+
+      const value = resolveInstanceValue(toNumber(row.expected_value), row.real_value == null ? null : Number(row.real_value))
       const current = cardStatementsMap.get(row.card_id) || { totalExpense: 0, transactionCount: 0 }
+
       cardStatementsMap.set(row.card_id, {
-        totalExpense: current.totalExpense + resolveInstanceValue(toNumber(row.expected_value), row.real_value == null ? null : Number(row.real_value)),
+        totalExpense: current.totalExpense + (transactionType === 'expense' ? value : -value),
         transactionCount: current.transactionCount + 1
       })
     }
