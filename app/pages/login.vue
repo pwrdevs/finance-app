@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppButton from '~/components/common/AppButton.vue'
 import AppCard from '~/components/common/AppCard.vue'
+import AppErrorAlert from '~/components/common/AppErrorAlert.vue'
 import AppInput from '~/components/common/AppInput.vue'
 
 definePageMeta({
@@ -11,10 +12,13 @@ definePageMeta({
 const email = ref('')
 const password = ref('')
 const localError = ref('')
+const isOffline = ref(false)
+const isRetrying = ref(false)
 const route = useRoute()
 
 const {
   authError,
+  authLoginError,
   authMessage,
   initAuthListener,
   isSubmitting,
@@ -32,14 +36,58 @@ const routeInfoMessage = computed(() => {
   return ''
 })
 
+const retryDisabled = computed(() => {
+  return isOffline.value || isSubmitting.value || isRetrying.value || !email.value || !password.value
+})
+
+const isServiceUnavailableError = computed(() => authLoginError.value?.type === 'service_unavailable')
+
+const offlineAlert = computed(() => {
+  if (!isOffline.value) {
+    return null
+  }
+
+  return {
+    title: 'Sem conexão com a internet',
+    message: 'Verifique sua conexão e tente novamente.'
+  }
+})
+
+function updateOfflineState() {
+  if (!process.client) {
+    return
+  }
+
+  isOffline.value = navigator.onLine === false
+}
+
 onMounted(() => {
   initAuthListener()
+  updateOfflineState()
+
+  if (process.client) {
+    window.addEventListener('online', updateOfflineState)
+    window.addEventListener('offline', updateOfflineState)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (process.client) {
+    window.removeEventListener('online', updateOfflineState)
+    window.removeEventListener('offline', updateOfflineState)
+  }
 })
 
 async function onSubmit() {
   localError.value = ''
   resetMessage.value = ''
   resetError.value = ''
+
+  updateOfflineState()
+
+  if (isOffline.value) {
+    return
+  }
 
   if (!email.value || !password.value) {
     localError.value = 'E-mail e senha são obrigatórios.'
@@ -55,6 +103,20 @@ async function onSubmit() {
     await navigateTo('/dashboard')
   } catch {
     // Error message is exposed by useAuth.
+  }
+}
+
+async function onRetryLogin() {
+  if (retryDisabled.value) {
+    return
+  }
+
+  isRetrying.value = true
+
+  try {
+    await onSubmit()
+  } finally {
+    isRetrying.value = false
   }
 }
 
@@ -124,6 +186,24 @@ async function onRecoverPassword() {
         <p v-else-if="routeInfoMessage" class="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
           {{ routeInfoMessage }}
         </p>
+
+        <AppErrorAlert
+          v-else-if="offlineAlert"
+          :title="offlineAlert.title"
+          :message="offlineAlert.message"
+          tone="warning"
+        />
+
+        <AppErrorAlert
+          v-else-if="authLoginError"
+          :title="authLoginError.title"
+          :message="authLoginError.message"
+          :tone="isServiceUnavailableError ? 'warning' : 'error'"
+          :action-label="isServiceUnavailableError ? 'Tentar novamente' : ''"
+          :action-loading="isServiceUnavailableError && (isSubmitting || isRetrying)"
+          :action-disabled="retryDisabled"
+          @action="onRetryLogin"
+        />
 
         <p v-else-if="authError" class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700">
           {{ authError }}

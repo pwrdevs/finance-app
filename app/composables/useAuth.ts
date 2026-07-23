@@ -1,3 +1,6 @@
+import type { FriendlyAuthError } from '~/utils/authError'
+import { getFriendlyAuthError } from '~/utils/authError'
+
 interface AuthCredentials {
   email: string
   password: string
@@ -15,6 +18,7 @@ export function useAuth() {
   const isSubmitting = useState('auth:isSubmitting', () => false)
   const authError = useState<string | null>('auth:error', () => null)
   const authMessage = useState<string | null>('auth:message', () => null)
+  const authLoginError = useState<FriendlyAuthError | null>('auth:loginError', () => null)
   const listenerInitialized = useState('auth:listenerInitialized', () => false)
 
   const { ensureProfile } = useProfile()
@@ -61,6 +65,7 @@ export function useAuth() {
     isSubmitting.value = true
     authError.value = null
     authMessage.value = null
+    authLoginError.value = null
 
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -110,11 +115,15 @@ export function useAuth() {
         await ensureProfileIfAuthenticated(data.user.id)
       }
 
+      authLoginError.value = null
       touchLastActivity()
 
       authMessage.value = 'Logged in successfully.'
     } catch (err) {
-      authError.value = err instanceof Error ? err.message : 'Unknown login error'
+      const friendlyError = getFriendlyAuthError(err)
+
+      authLoginError.value = friendlyError
+      authError.value = friendlyError.message
       throw err
     } finally {
       isSubmitting.value = false
@@ -125,6 +134,7 @@ export function useAuth() {
     isSubmitting.value = true
     authError.value = null
     authMessage.value = null
+    authLoginError.value = null
 
     try {
       const { error } = await supabase.auth.signOut()
@@ -147,6 +157,7 @@ export function useAuth() {
   return {
     authEmail,
     authError,
+    authLoginError,
     authMessage,
     authUid,
     initAuthListener,
